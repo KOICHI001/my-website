@@ -11,6 +11,15 @@
       "desc": "代表的な天然石3種の意味と扱い方",
       "records": 3,
       "file": "koichi.pack.powerstones.json"
+    },
+    {
+      "id": "koichi.pack.dinosaurs",
+      "name": "恐竜ずかん",
+      "icon": "🦖",
+      "color": "#3f8a4d",
+      "desc": "人気の恐竜3種を肉食・草食で",
+      "records": 3,
+      "file": "koichi.pack.dinosaurs.json"
     }
   ]
 }
