@@ -1,0 +1,16 @@
+{
+  "_boxCatalog": 1,
+  "title": "コーイチの箱パック倉庫",
+  "updated": "2026-06-18",
+  "packs": [
+    {
+      "id": "koichi.pack.powerstones",
+      "name": "パワーストーン入門",
+      "icon": "💎",
+      "color": "#7e57c2",
+      "desc": "代表的な天然石3種の意味と扱い方",
+      "records": 3,
+      "file": "koichi.pack.powerstones.json"
+    }
+  ]
+}
