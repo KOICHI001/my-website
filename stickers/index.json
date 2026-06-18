@@ -1,0 +1,1 @@
+{"_boxCatalog": 1, "kind": "sticker", "title": "スタンプ倉庫", "updated": "2026-06-18", "packs": [{"id": "stk.marks", "name": "きほんマーク", "icon": "⭐", "color": "#f5b301", "desc": "星・ハート・チェック・まる・バツ", "records": 5, "file": "marks.json"}, {"id": "stk.arrows", "name": "やじるし", "icon": "➡️", "color": "#e23b3b", "desc": "上下左右の矢印4種(地図やラフに)", "records": 4, "file": "arrows.json"}]}
