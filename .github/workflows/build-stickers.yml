@@ -1,0 +1,37 @@
+name: Build stickers
+
+on:
+  push:
+    paths:
+      - 'stickers_src/**'
+      - 'scripts/build_stickers.py'
+      - '.github/workflows/build-stickers.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: パック生成＆カタログ再構築
+        run: python scripts/build_stickers.py
+
+      - name: 生成物をコミット
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add stickers/
+          if git diff --cached --quiet; then
+            echo "変更なし。"
+          else
+            git commit -m "Auto-build stickers [skip ci]"
+            git push
+          fi
