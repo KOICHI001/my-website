@@ -306,7 +306,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.3";
+const VER = "0.6.4";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -1010,10 +1010,22 @@ function nvInitMap(){
     {maxZoom:20,maxNativeZoom:18,attribution:ATT});
   NV.photo=L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
     {maxZoom:20,maxNativeZoom:18,attribution:ATT});
+  /* 名前入り地図（OSM）: 神社・店・施設の名称が載る。ピン置きの既定 */
+  NV.osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
   NV.map=L.map("nvMap",{zoomControl:false});
   NV.map.attributionControl.setPosition("topright");
-  NV.std.addTo(NV.map);
+  NV.lay=""; nvSetLayer("std");
   NV.map.on("dragstart",()=>nvFollow(false));
+}
+/* レイヤー切替: std(地理院・道が正確) / photo(航空写真) / osm(名前入り) */
+function nvSetLayer(k){
+  if(!NV.map||NV.lay===k) return;
+  [NV.std,NV.photo,NV.osm].forEach(l=>{ if(l&&NV.map.hasLayer(l)) NV.map.removeLayer(l); });
+  ({std:NV.std,photo:NV.photo,osm:NV.osm})[k].addTo(NV.map);
+  NV.lay=k;
+  /* ボタンには「次に押すと何になるか」を表示 */
+  nvEl("nvLayer").textContent = k==="std"?"写真":(k==="photo"?"名前":"地図");
 }
 function nvTargetLL(){
   if(NV.mode==="car") return (parking&&parking.lat!=null)?[parking.lat,parking.lng]:null;
@@ -1078,7 +1090,7 @@ function nvOpen(mode,place){
   nvEl("nvNote").innerHTML = mode==="car"
     ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
     : "青い丸があなた（輪はGPSの誤差）。ピンに重なるまで歩いてください。";
-  nvInitMap();
+  nvInitMap(); nvSetLayer("std");   /* ナビは道の正確な地理院から */
   setTimeout(()=>NV.map.invalidateSize(),60);
   nvSetDest(); nvDrawTrail();
   const t=nvTargetLL();
@@ -1160,10 +1172,10 @@ function nvOpenPick(initLL,cb,autoQ){
   nvEl("nvov").classList.add("on","pick");
   nvEl("nvUnpark").style.display="none";
   nvEl("nvName").textContent="地図で位置を決める";
-  nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下で航空写真に切替可）";
+  nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下ボタンで写真・地理院に切替可）";
   nvEl("nvDist").textContent="";
   nvEl("nvSearch").value=autoQ||""; nvEl("nvCands").innerHTML="";
-  nvInitMap();
+  nvInitMap(); nvSetLayer("osm");   /* ピン置きは名称が載る地図から */
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
   ["destMk","trailLn","meMk","accC"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
@@ -1332,11 +1344,8 @@ document.getElementById("nvUnpark").onclick=()=>{
   if(!confirm("駐車メモを解除しますか？\n（駐車位置と足あとが消えます）")) return;
   parking=null; saveParking(); nvClose(); toast("駐車メモを解除しました");
 };
-document.getElementById("nvLayer").onclick=e=>{
-  NV.photoOn=!NV.photoOn;
-  if(!NV.map) return;
-  if(NV.photoOn){NV.map.removeLayer(NV.std);NV.photo.addTo(NV.map);e.target.textContent="地図";}
-  else{NV.map.removeLayer(NV.photo);NV.std.addTo(NV.map);e.target.textContent="写真";}
+document.getElementById("nvLayer").onclick=()=>{
+  nvSetLayer(NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std"));
 };
 document.getElementById("nvFollow").onclick=()=>nvFollow(!NV.follow);
 document.getElementById("nvSearchBtn").onclick=nvSearchGo;
