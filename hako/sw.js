@@ -1,7 +1,7 @@
 /* 雑学帳(箱) service worker — network first + ETag再検証
    毎回タップで最新を確認するが、変更が無ければ304(数KB)で済む。
    オフライン時はキャッシュ済みの直近版で起動。 */
-const CACHE = "hako-v2.9.29";
+const CACHE = "hako-v2.9.30";
 const ASSETS = ["./", "./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
