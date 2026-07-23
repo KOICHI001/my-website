@@ -306,7 +306,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.2";
+const VER = "0.6.3";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -873,14 +873,12 @@ function shareAdd(name,url,c){
     };
     updatePref(rec); places.push(rec); save(); closeSheet();
     if(rec.lat&&rec.lng){ toast("「"+nm+"」を登録しました"); return; }
-    /* 座標なし → そのままピン置きへ（検索欄に名前をプリセットして自動検索） */
-    nvOpenPick(lastPos?[lastPos.lat,lastPos.lng]:null,(lat,lng)=>{
+    /* 座標なし → そのままピン置きへ（名前で自動検索し、見つかればその辺りへジャンプ） */
+    nvOpenPick(null,(lat,lng)=>{
       rec.lat=String(lat); rec.lng=String(lng); rec.acc=null;
       updatePref(rec); save();
       toast("「"+nm+"」の位置も設定しました");
-    });
-    nvEl("nvSearch").value=nm;
-    nvSearchGo();
+    },nm);
     toast("＋印を合わせて「この位置にする」（あとで入れるなら戻る）");
   };
 }
@@ -936,7 +934,7 @@ function form(d){
   document.getElementById("pickmap").onclick=()=>{
     const la=parseFloat(document.getElementById("f_lat").value),
           lo=parseFloat(document.getElementById("f_lng").value);
-    const init=(isFinite(la)&&isFinite(lo))?[la,lo]:(lastPos?[lastPos.lat,lastPos.lng]:null);
+    const init=(isFinite(la)&&isFinite(lo))?[la,lo]:null;
     nvOpenPick(init,(lat,lng)=>{
       document.getElementById("f_lat").value=lat;
       document.getElementById("f_lng").value=lng;
@@ -1141,6 +1139,13 @@ function nvOpen(mode,place){
   nvWakeLock();
 }
 function nvClose(){
+  /* ピン置き地図は「前回どこを見ていたか」を覚えておく（次回の開始位置） */
+  if(nvEl("nvov").classList.contains("pick")&&NV.map){
+    try{const c=NV.map.getCenter();
+      localStorage.setItem("basho_pickview",
+        JSON.stringify({lat:+c.lat.toFixed(5),lng:+c.lng.toFixed(5),z:NV.map.getZoom()}));
+    }catch(e){}
+  }
   nvEl("nvov").classList.remove("on","pick");
   nvEl("nvCands").innerHTML=""; NV.pickCb=null;
   if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
@@ -1150,40 +1155,65 @@ function nvClose(){
 }
 
 /* ───── 地図で位置を決める（＋印を合わせてピンを置く・住所検索付き） ───── */
-function nvOpenPick(initLL,cb){
+function nvOpenPick(initLL,cb,autoQ){
   NV.mode="pick"; NV.pickCb=cb;
   nvEl("nvov").classList.add("on","pick");
   nvEl("nvUnpark").style.display="none";
   nvEl("nvName").textContent="地図で位置を決める";
   nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下で航空写真に切替可）";
   nvEl("nvDist").textContent="";
-  nvEl("nvSearch").value=""; nvEl("nvCands").innerHTML="";
+  nvEl("nvSearch").value=autoQ||""; nvEl("nvCands").innerHTML="";
   nvInitMap();
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
   ["destMk","trailLn","meMk","accC"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
+  /* 開始位置: 既存座標 → 前回のピン置き地図 → 現在地 → 日本全体 */
+  let pv=null;
+  try{pv=JSON.parse(localStorage.getItem("basho_pickview"));}catch(e){}
   if(initLL) NV.map.setView(initLL,17);
-  else NV.map.setView([36.5,137.8],5);   /* 手がかりゼロなら日本全体から */
+  else if(pv&&isFinite(pv.lat)&&isFinite(pv.lng)) NV.map.setView([pv.lat,pv.lng],pv.z||15);
+  else if(lastPos) NV.map.setView([lastPos.lat,lastPos.lng],14);
+  else NV.map.setView([36.5,137.8],5);
+  if(autoQ) nvSearchGo(true);   /* 名前で自動検索→最初の候補へジャンプ */
 }
-function nvSearchGo(){
+function nvSearchGo(autoJump){
   const q=nvEl("nvSearch").value.trim(); if(!q) return;
   const list=nvEl("nvCands");
   list.innerHTML='<div class="nv-cand" style="color:var(--soft)">検索中…</div>';
+  const show=(items,jumpOk)=>{
+    list.innerHTML="";
+    if(!items.length){
+      list.innerHTML='<div class="nv-cand" style="color:var(--soft)">見つかりませんでした（地図を動かして合わせてください）</div>';
+      setTimeout(()=>{list.innerHTML="";},2200); return;
+    }
+    items.slice(0,6).forEach(it=>{
+      const b=document.createElement("button");
+      b.className="nv-cand"; b.textContent=it.t;
+      b.onclick=()=>{list.innerHTML="";NV.map.setView([it.lat,it.lng],it.z);};
+      list.appendChild(b);
+    });
+    if(autoJump&&jumpOk) NV.map.setView([items[0].lat,items[0].lng],items[0].z);
+  };
+  /* 検索語との一致度で並べ替え（「明治神宮」で北海道の地名「明治」に飛ばないように） */
+  const rank=t=>t===q?0:(t.startsWith(q)?1:(t.includes(q)?2:3));
+  /* ①地理院（住所・地名に強い）→ ②OpenStreetMap（施設名に強い）の順で探す */
   fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q))
     .then(r=>r.json())
     .then(a=>{
-      list.innerHTML="";
-      if(!Array.isArray(a)||!a.length){
-        list.innerHTML='<div class="nv-cand" style="color:var(--soft)">見つかりませんでした</div>';
-        setTimeout(()=>{list.innerHTML="";},1800); return;
-      }
-      a.slice(0,6).forEach(it=>{
-        const b=document.createElement("button");
-        b.className="nv-cand"; b.textContent=it.properties.title;
-        b.onclick=()=>{list.innerHTML="";
-          NV.map.setView([it.geometry.coordinates[1],it.geometry.coordinates[0]],16);};
-        list.appendChild(b);
-      });
+      const items=(Array.isArray(a)?a:[]).map(it=>({
+        t:it.properties.title,
+        lat:it.geometry.coordinates[1], lng:it.geometry.coordinates[0], z:16}));
+      items.sort((x,y)=>rank(x.t)-rank(y.t));
+      if(items.length&&items[0].t.includes(q)) return show(items,true);
+      return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q="+encodeURIComponent(q))
+        .then(r=>r.json())
+        .then(b=>{
+          const ni=(Array.isArray(b)?b:[]).map(it=>({
+            t:(it.display_name||"").split(",").slice(0,3).join("、"),
+            lat:+it.lat, lng:+it.lon, z:17}));
+          if(ni.length) return show(ni,true);
+          return show(items,false);   /* 緩い候補のみ＝一覧は出すが自動ジャンプしない */
+        });
     })
     .catch(()=>{list.innerHTML="";toast("検索できませんでした（通信を確認）");});
 }
