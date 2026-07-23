@@ -64,16 +64,19 @@
   .card-main:active{background:rgba(11,110,95,.05)}
   .cm-text{flex:1;min-width:0}
 
-  /* 写真ボックス（カード右・独立エリア） */
-  .phstrip{flex:0 0 auto;display:flex;align-items:center;gap:6px;max-width:150px;
-    overflow-x:auto;scrollbar-width:none;overscroll-behavior-x:contain;padding:2px 0}
+  /* 写真ボックス（カード右・独立エリア）: 上=サムネ列(スワイプ) / 下=固定ボタン2つ */
+  .phbox{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;width:150px}
+  .phstrip{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;
+    overscroll-behavior-x:contain;padding:2px 0}
   .phstrip::-webkit-scrollbar{display:none}
-  .ph{width:46px;height:46px;border-radius:8px;object-fit:cover;flex:0 0 auto;
+  .ph{width:70px;height:70px;border-radius:8px;object-fit:cover;flex:0 0 auto;
     border:1px solid var(--line);background:#E3E6DE;cursor:pointer;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
-  .phadd{width:46px;height:46px;border-radius:8px;border:1.5px dashed var(--line);
-    background:none;color:var(--soft);font-size:17px;flex:0 0 auto;cursor:pointer;padding:0}
-  .phadd:active{background:rgba(11,110,95,.07)}
+  .phbtns{display:flex;gap:4px}
+  .phbtns button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--soft);
+    border-radius:8px;padding:6px 2px;font-size:11px;font-family:var(--gothic);
+    cursor:pointer;white-space:nowrap}
+  .phbtns button:active{background:rgba(11,110,95,.07)}
 
   /* ライトボックス */
   .lb{position:fixed;inset:0;background:rgba(10,14,13,.93);z-index:70;display:none;
@@ -199,7 +202,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.5";
+const VER = "0.5.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -302,9 +305,10 @@ function phGet(id){
   if(phCache.has(id)) return Promise.resolve(phCache.get(id));
   return IDB.get(id).then(v=>{if(v)phCache.set(id,v);return v;}).catch(()=>null);
 }
-function phShoot(p){
+function phShoot(p,fromGallery){
   const inp=document.createElement("input");
-  inp.type="file"; inp.accept="image/*"; inp.capture="environment";
+  inp.type="file"; inp.accept="image/*";
+  if(!fromGallery) inp.capture="environment";
   inp.onchange=()=>{
     const f=inp.files&&inp.files[0]; if(!f) return;
     const img=new Image();
@@ -595,7 +599,13 @@ function render(){
           '<div class="name">'+esc(p.name)+'</div>'+
           (sub?'<div class="sub">'+esc(sub)+'</div>':'')+pill+
         '</div>'+
-        '<div class="phstrip"></div>'+
+        '<div class="phbox">'+
+          '<div class="phstrip"></div>'+
+          '<div class="phbtns">'+
+            '<button data-ph="cam">📷写真</button>'+
+            '<button data-ph="pick">📁保存画像</button>'+
+          '</div>'+
+        '</div>'+
       '</div>'+
       '<button class="star'+(p.fav?" on":"")+'" aria-label="よく行く">'+(p.fav?"★":"☆")+'</button>'+
       '<div class="actions">'+
@@ -605,12 +615,12 @@ function render(){
         '<button data-a="edit">編集</button>'+
       '</div>';
     el.querySelector(".card-main").onclick=()=>hasSpot(p)?openMap(p):form(p);
-    /* 写真ボックス: 📷+サムネ(新しい順)。タップ=ライトボックス/長押し=削除 */
+    /* 写真ボックス: サムネ列(新しい順)+下の固定2ボタン。タップ=ライトボックス/長押し=削除 */
     const strip=el.querySelector(".phstrip");
-    const cam=document.createElement("button");
-    cam.className="phadd"; cam.textContent="📷"; cam.title="この場所の写真を撮る";
-    cam.onclick=e=>{e.stopPropagation();phShoot(p);};
-    strip.appendChild(cam);
+    if(!(p.ph&&p.ph.length)) strip.style.display="none";
+    el.querySelectorAll(".phbtns button").forEach(b=>{
+      b.onclick=e=>{e.stopPropagation();phShoot(p,b.dataset.ph==="pick");};
+    });
     (p.ph||[]).forEach(id=>{
       const im=document.createElement("img");
       im.className="ph"; im.alt="";

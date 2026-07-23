@@ -1,5 +1,5 @@
 /* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.5";
+const CACHE = "basho-v0.5.1";
 const ASSETS = ["./", "./index.html", "./pref_data.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
