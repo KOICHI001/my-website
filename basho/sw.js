@@ -1,6 +1,6 @@
 /* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.5.2";
-const ASSETS = ["./", "./index.html", "./pref_data.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const CACHE = "basho-v0.6";
+const ASSETS = ["./", "./index.html", "./pref_data.js", "./leaflet.js", "./leaflet.css", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));

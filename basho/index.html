@@ -6,6 +6,7 @@
 <meta name="theme-color" content="#EDEFE8">
 <meta name="description" content="今いる場所をひと押しで登録。次からは名前を選ぶだけで地図が開きます。">
 <link rel="manifest" href="manifest.webmanifest">
+<link rel="stylesheet" href="leaflet.css">
 <link rel="apple-touch-icon" href="icon-192.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>場所帳</title>
@@ -167,6 +168,52 @@
   .t-sub{font-size:11.5px;color:var(--soft)}
   .t-edit{position:absolute;right:2px;top:2px;border:0;background:none;color:#C8CEC4;
     font-size:14px;padding:8px;cursor:pointer}
+  /* ───── 周辺モード（拡大地図ナビ） ───── */
+  .nvov{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;flex-direction:column}
+  .nvov.on{display:flex}
+  .nv-top{display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;
+    background:var(--paper);border-bottom:1px solid var(--line);z-index:2}
+  .nv-back{border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;
+    padding:9px 13px;font-size:14px;font-family:var(--gothic);cursor:pointer;white-space:nowrap}
+  .nv-tt{flex:1;min-width:0}
+  .nv-name{font-family:var(--mincho);font-size:15px;font-weight:600;line-height:1.25;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nv-sub{font-size:11px;color:var(--soft);font-family:var(--mono)}
+  .nv-dist{font-family:var(--mono);font-size:22px;font-weight:700;color:var(--route);white-space:nowrap}
+  .nv-dist small{font-size:11px;font-weight:400;color:var(--soft)}
+  .nv-unpark{border:1px solid rgba(163,58,42,.4);background:var(--card);color:var(--danger);
+    border-radius:10px;padding:9px 11px;font-size:13px;font-family:var(--gothic);cursor:pointer;white-space:nowrap}
+  #nvMap{flex:1;background:#DDE2D8}
+  .nv-side{position:absolute;right:10px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:1000;
+    display:flex;flex-direction:column;gap:8px}
+  .nv-side button{width:52px;height:52px;border-radius:50%;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:12px;font-family:var(--gothic);cursor:pointer;
+    box-shadow:0 3px 10px rgba(27,36,34,.18)}
+  .nv-side button.on{background:var(--route);border-color:var(--route);color:#fff}
+  .nv-note{position:absolute;left:0;right:0;bottom:0;z-index:1000;text-align:center;
+    padding:9px 14px calc(10px + env(safe-area-inset-bottom));font-size:12px;color:var(--soft);
+    background:linear-gradient(0deg,var(--paper) 55%,rgba(237,239,232,0));pointer-events:none}
+  .nv-note b{color:var(--route)}
+  /* 自位置マーカー（青丸＋向きの扇） */
+  .me-wrap{position:relative;width:0;height:0}
+  .me-cone{position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;
+    background:conic-gradient(from -30deg,rgba(28,110,225,.34) 0 60deg,transparent 60deg);
+    transform-origin:50% 50%;display:none}
+  .me-dot{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;
+    background:#1C6EE1;border:2.5px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.35)}
+  /* 目的地・駐車ピン */
+  .dest-pin{font-size:30px;line-height:1;filter:drop-shadow(0 2px 2px rgba(0,0,0,.3));
+    transform:translate(-50%,-92%);position:absolute}
+  .dest-name{position:absolute;transform:translate(-50%,10px);background:rgba(27,36,34,.82);color:#F8F9F5;
+    font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;font-family:var(--gothic)}
+  /* 駐車FAB（左下） */
+  .fab2{position:fixed;left:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
+    background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:999px;
+    padding:13px 18px;font-size:14px;font-family:var(--gothic);font-weight:700;
+    box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
+  .fab2 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
+  .fab2.parked{background:#274A73;border-color:#274A73;color:#fff}
+  .fab2.parked small{color:rgba(255,255,255,.8)}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -194,16 +241,36 @@
 <main class="wrap"><div class="list" id="list"></div></main>
 
 <button class="fab" id="addBtn">ここを登録<small>GPSで今の位置を記録</small></button>
+<button class="fab2" id="parkBtn">🚗 駐車メモ<small>車の位置を記録</small></button>
+
+<div class="nvov" id="nvov">
+  <div class="nv-top">
+    <button class="nv-back" id="nvClose">← 戻る</button>
+    <div class="nv-tt">
+      <div class="nv-name" id="nvName"></div>
+      <div class="nv-sub" id="nvSub"></div>
+    </div>
+    <div class="nv-dist" id="nvDist">—</div>
+    <button class="nv-unpark" id="nvUnpark" style="display:none">解除</button>
+  </div>
+  <div id="nvMap"></div>
+  <div class="nv-side">
+    <button id="nvLayer">写真</button>
+    <button id="nvFollow" class="on">追従</button>
+  </div>
+  <div class="nv-note" id="nvNote"></div>
+</div>
 
 <div class="veil" id="veil"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
 <div class="lb" id="lb"></div>
 
 <script src="pref_data.js"></script>
+<script src="leaflet.js"></script>
 <script>
 (function(){
 "use strict";
-const VER = "0.5.2";
+const VER = "0.6";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -614,6 +681,7 @@ function render(){
         '<button data-a="route">経路</button>'+
         (p.tel?'<button data-a="tel">電話</button>':'')+
         '<button data-a="edit">編集</button>'+
+        '<button data-a="nav">周辺</button>'+
       '</div>';
     el.querySelector(".card-main").onclick=()=>hasSpot(p)?openMap(p):form(p);
     /* 写真ボックス: サムネ列(新しい順)+下の固定2ボタン。タップ=ライトボックス/長押し=削除 */
@@ -643,6 +711,10 @@ function render(){
       if(a==="map") hasSpot(p)?openMap(p):(toast("位置がまだ入っていません"),form(p));
       else if(a==="route") hasSpot(p)?openRoute(p):(toast("位置がまだ入っていません"),form(p));
       else if(a==="tel") location.href="tel:"+p.tel.replace(/[^\d+]/g,"");
+      else if(a==="nav"){
+        if(p.lat&&p.lng){bump(p);nvOpen("place",p);}
+        else toast("座標が無いため周辺マップを開けません（編集で位置を入れてください）");
+      }
       else form(p);
     });
     list.appendChild(el);
@@ -784,6 +856,168 @@ function form(d){
   };
 }
 
+/* ───── 駐車メモ（車の位置＋足あと） ───── */
+let parking=null;
+try{const s=localStorage.getItem("basho_parking"); if(s)parking=JSON.parse(s);}catch(e){}
+function saveParking(){
+  try{ if(parking)localStorage.setItem("basho_parking",JSON.stringify(parking));
+       else localStorage.removeItem("basho_parking"); }catch(e){}
+}
+function fmtTime(t){const d=new Date(t),p=n=>String(n).padStart(2,"0");return p(d.getHours())+":"+p(d.getMinutes());}
+function parkBtnSync(){
+  const b=document.getElementById("parkBtn");
+  if(parking){b.className="fab2 parked";b.innerHTML="🚗 車へ戻る<small>"+fmtTime(parking.t)+" に駐車</small>";}
+  else{b.className="fab2";b.innerHTML="🚗 駐車メモ<small>車の位置を記録</small>";}
+}
+
+/* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
+const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
+  watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null};
+const nvEl=id=>document.getElementById(id);
+
+function nvInitMap(){
+  if(NV.map) return;
+  const ATT='<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>';
+  NV.std=L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/std/{z}/{x}/{y}.png",
+    {maxZoom:20,maxNativeZoom:18,attribution:ATT});
+  NV.photo=L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/{z}/{x}/{y}.jpg",
+    {maxZoom:20,maxNativeZoom:18,attribution:ATT});
+  NV.map=L.map("nvMap",{zoomControl:false});
+  NV.map.attributionControl.setPosition("topright");
+  NV.std.addTo(NV.map);
+  NV.map.on("dragstart",()=>nvFollow(false));
+}
+function nvTargetLL(){
+  if(NV.mode==="car") return (parking&&parking.lat!=null)?[parking.lat,parking.lng]:null;
+  return NV.target?[NV.target.lat,NV.target.lng]:null;
+}
+function nvSetDest(){
+  const t=nvTargetLL();
+  if(NV.destMk){NV.map.removeLayer(NV.destMk);NV.destMk=null;}
+  if(!t) return;
+  const car=NV.mode==="car";
+  const ic=L.divIcon({className:"",iconSize:[0,0],html:
+    '<div class="dest-pin">'+(car?"🚗":"📍")+'</div>'+
+    '<div class="dest-name">'+esc(car?"駐車位置":(NV.target.name||""))+'</div>'});
+  NV.destMk=L.marker(t,{icon:ic,interactive:false}).addTo(NV.map);
+}
+function nvDrawTrail(){
+  if(NV.trailLn){NV.map.removeLayer(NV.trailLn);NV.trailLn=null;}
+  if(!parking||parking.lat==null) return;
+  const pts=[[parking.lat,parking.lng]].concat(parking.trail||[]);
+  if(pts.length<2) return;
+  NV.trailLn=L.polyline(pts,{color:"#274A73",weight:4,opacity:.75,dashArray:"1 8",lineCap:"round"}).addTo(NV.map);
+}
+function nvCone(h){
+  if(!NV.meMk) return;
+  const el=NV.meMk.getElement&&NV.meMk.getElement();
+  const c=el&&el.querySelector(".me-cone");
+  if(c){c.style.display="block";c.style.transform="rotate("+h+"deg)";}
+}
+function nvMe(ll,acc,hd){
+  if(!NV.meMk){
+    const ic=L.divIcon({className:"",iconSize:[0,0],html:
+      '<div class="me-wrap"><div class="me-cone"></div><div class="me-dot"></div></div>'});
+    NV.meMk=L.marker(ll,{icon:ic,interactive:false,zIndexOffset:1000}).addTo(NV.map);
+    NV.accC=L.circle(ll,{radius:acc,color:"#1C6EE1",weight:1,opacity:.4,fillColor:"#1C6EE1",fillOpacity:.1,interactive:false}).addTo(NV.map);
+  }else{
+    NV.meMk.setLatLng(ll); NV.accC.setLatLng(ll); NV.accC.setRadius(acc);
+  }
+  if(hd!=null) nvCone(hd);
+}
+function nvFollow(v){
+  NV.follow=v; nvEl("nvFollow").classList.toggle("on",v);
+  if(v&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
+}
+function nvWakeLock(){
+  if(navigator.wakeLock&&navigator.wakeLock.request)
+    navigator.wakeLock.request("screen").then(w=>{NV.wl=w;}).catch(()=>{});
+}
+document.addEventListener("visibilitychange",()=>{
+  if(!document.hidden&&nvEl("nvov").classList.contains("on")) nvWakeLock();
+});
+
+function nvOpen(mode,place){
+  NV.mode=mode; NV.fitted=false; NV.lastFix=null;
+  NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
+  nvEl("nvov").classList.add("on");
+  nvEl("nvUnpark").style.display = mode==="car"?"":"none";
+  nvEl("nvName").textContent = mode==="car"?"駐車位置":place.name;
+  nvEl("nvSub").textContent = mode==="car"
+    ? (parking?fmtTime(parking.t)+" に駐車"+(parking.acc!=null?" ±"+parking.acc+"m":""):"")
+    : (place.acc?"登録精度 ±"+place.acc+"m":"");
+  nvEl("nvDist").textContent="—";
+  nvEl("nvNote").innerHTML = mode==="car"
+    ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
+    : "青い丸があなた（輪はGPSの誤差）。ピンに重なるまで歩いてください。";
+  nvInitMap();
+  setTimeout(()=>NV.map.invalidateSize(),60);
+  nvSetDest(); nvDrawTrail();
+  const t=nvTargetLL();
+  if(t) NV.map.setView(t,17);
+  nvFollow(true);
+  /* GPS追従開始 */
+  if(NV.watch!=null) navigator.geolocation.clearWatch(NV.watch);
+  if(navigator.geolocation && location.protocol!=="file:"){
+    NV.watch=navigator.geolocation.watchPosition(p=>{
+      const c=p.coords, me=[+c.latitude,+c.longitude], acc=Math.round(c.accuracy);
+      const hd=(c.heading!=null&&!isNaN(c.heading)&&c.speed!=null&&c.speed>0.4)?c.heading:null;
+      NV.lastFix={lat:me[0],lng:me[1],acc:acc,hd:hd};
+      /* 駐車直後は位置を磨く（40秒間・より良い精度が来たら差し替え）
+         ただし歩き出していたら磨かない（車ピンが引きずられるのを防ぐ） */
+      const nearPark = parking&&parking.lat!=null
+        ? distM({lat:parking.lat,lng:parking.lng},{lat:me[0],lng:me[1]}) < Math.max(15,(parking.acc||15)*1.5)
+        : true;
+      if(NV.mode==="car"&&parking&&(parking.lat==null||(Date.now()-parking.t<40000&&acc<parking.acc&&nearPark))){
+        parking.lat=+me[0].toFixed(6); parking.lng=+me[1].toFixed(6); parking.acc=acc;
+        saveParking(); nvSetDest();
+        nvEl("nvSub").textContent=fmtTime(parking.t)+" に駐車 ±"+parking.acc+"m";
+      }
+      /* 足あと：駐車中は4m以上動くたびに記録（精度35m以内のみ） */
+      if(parking&&parking.lat!=null&&acc<=35){
+        const tr=parking.trail=parking.trail||[];
+        const last=tr.length?tr[tr.length-1]:[parking.lat,parking.lng];
+        if(distM({lat:last[0],lng:last[1]},{lat:me[0],lng:me[1]})>=4){
+          tr.push([+me[0].toFixed(6),+me[1].toFixed(6)]);
+          if(tr.length>1500)tr.splice(0,tr.length-1500);
+          saveParking(); nvDrawTrail();
+        }
+      }
+      nvMe(me,acc,hd);
+      const tg=nvTargetLL();
+      if(tg){
+        const d=distM({lat:me[0],lng:me[1]},{lat:tg[0],lng:tg[1]});
+        nvEl("nvDist").innerHTML="あと "+fmtDist(d)+" <small>±"+acc+"m</small>";
+        if(!NV.fitted){NV.fitted=true;
+          NV.map.fitBounds(L.latLngBounds([me,tg]).pad(0.3),{maxZoom:18});}
+        else if(NV.follow) NV.map.panTo(me);
+      }else{
+        if(!NV.fitted){NV.fitted=true;NV.map.setView(me,18);}
+        else if(NV.follow) NV.map.panTo(me);
+      }
+    },err=>{
+      if(!NV.lastFix)
+        nvEl("nvNote").innerHTML = err.code===1?"位置情報が許可されていません":"位置を取得できませんでした";
+    },{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  }
+  /* コンパス（対応端末のみ・向きの扇を回す） */
+  NV.hdgFn=e=>{
+    let h=null;
+    if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading;
+    else if(e.absolute&&e.alpha!=null) h=360-e.alpha;
+    if(h!=null) nvCone(h);
+  };
+  window.addEventListener("deviceorientationabsolute",NV.hdgFn,true);
+  nvWakeLock();
+}
+function nvClose(){
+  nvEl("nvov").classList.remove("on");
+  if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
+  if(NV.hdgFn){window.removeEventListener("deviceorientationabsolute",NV.hdgFn,true);NV.hdgFn=null;}
+  if(NV.wl){NV.wl.release&&NV.wl.release().catch(()=>{});NV.wl=null;}
+  parkBtnSync();
+}
+
 /* ───── 設定 ───── */
 function menu(){
   sheet.innerHTML=
@@ -876,8 +1110,35 @@ document.getElementById("viewBtn").onclick=e=>{
   render();
 };
 document.addEventListener("keydown",e=>{
-  if(e.key==="Escape"){ if(lb.classList.contains("on")) lbClose(); else closeSheet(); }
+  if(e.key==="Escape"){
+    if(lb.classList.contains("on")) lbClose();
+    else if(document.getElementById("nvov").classList.contains("on")) nvClose();
+    else closeSheet();
+  }
 });
+/* 周辺モード・駐車メモ */
+parkBtnSync();
+document.getElementById("parkBtn").onclick=()=>{
+  if(!parking){
+    parking={lat:null,lng:null,acc:null,t:Date.now(),trail:[]};
+    saveParking();
+    toast("車の位置を記録します");
+  }
+  parkBtnSync();
+  nvOpen("car");
+};
+document.getElementById("nvClose").onclick=nvClose;
+document.getElementById("nvUnpark").onclick=()=>{
+  if(!confirm("駐車メモを解除しますか？\n（駐車位置と足あとが消えます）")) return;
+  parking=null; saveParking(); nvClose(); toast("駐車メモを解除しました");
+};
+document.getElementById("nvLayer").onclick=e=>{
+  NV.photoOn=!NV.photoOn;
+  if(!NV.map) return;
+  if(NV.photoOn){NV.map.removeLayer(NV.std);NV.photo.addTo(NV.map);e.target.textContent="地図";}
+  else{NV.map.removeLayer(NV.photo);NV.std.addTo(NV.map);e.target.textContent="写真";}
+};
+document.getElementById("nvFollow").onclick=()=>nvFollow(!NV.follow);
 Store.load().then(d=>{
   places=Array.isArray(d)?d:[];
   /* 既存データの県を一括判定（初回のみ） */
