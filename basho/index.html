@@ -66,10 +66,11 @@
 
   /* 写真ボックス（カード右・独立エリア）: 上=サムネ列(スワイプ) / 下=固定ボタン2つ */
   .phbox{flex:0 0 auto;display:flex;flex-direction:column;gap:5px;width:150px}
-  .phstrip{display:flex;align-items:center;gap:6px;overflow-x:auto;scrollbar-width:none;
+  /* サムネ62px+隙間5px: 2枚(134px)フル表示+3枚目が16px(約1/4)右から顔を出す=続きがあると分かる */
+  .phstrip{display:flex;align-items:center;gap:5px;overflow-x:auto;scrollbar-width:none;
     overscroll-behavior-x:contain;padding:2px 0}
   .phstrip::-webkit-scrollbar{display:none}
-  .ph{width:70px;height:70px;border-radius:8px;object-fit:cover;flex:0 0 auto;
+  .ph{width:62px;height:62px;border-radius:8px;object-fit:cover;flex:0 0 auto;
     border:1px solid var(--line);background:#E3E6DE;cursor:pointer;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   .phbtns{display:flex;gap:4px}
@@ -202,7 +203,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.5.1";
+const VER = "0.5.2";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
