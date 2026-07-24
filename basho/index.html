@@ -206,8 +206,12 @@
   .dest-name{position:absolute;transform:translate(-50%,10px);background:rgba(27,36,34,.82);color:#F8F9F5;
     font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;font-family:var(--gothic)}
   /* 位置ピック（地図で位置を決める） */
-  .nv-mapwrap{flex:1;position:relative;min-height:0}
-  #nvMap{width:100%;height:100%;background:#DDE2D8}
+  .nv-mapwrap{flex:1;position:relative;min-height:0;overflow:hidden}
+  #nvMap{width:100%;height:100%;background:#DDE2D8;transition:transform .3s ease-out}
+  /* 「向き上」モード: 地図ごとCSSで回転。ピン絵文字と名前ラベルは.crで逆回転して読める向きを保つ */
+  .cr{position:absolute;left:0;top:0;width:0;height:0;
+    transform:rotate(var(--mrot,0deg));transition:transform .3s ease-out}
+  .nvov.pick #nvHead{display:none}
   .nv-pickbar{display:none;gap:8px;padding:8px 10px;background:var(--paper);
     border-bottom:1px solid var(--line);position:relative;z-index:3}
   .nvov.pick .nv-pickbar{display:flex}
@@ -293,6 +297,7 @@
   <div class="nv-side">
     <button id="nvLayer">写真</button>
     <button id="nvFollow" class="on">追従</button>
+    <button id="nvHead">北上</button>
   </div>
   <div class="nv-note" id="nvNote"></div>
 </div>
@@ -306,7 +311,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.4";
+const VER = "0.6.5";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -716,10 +721,10 @@ function render(){
         '<button data-a="map">地図を開く</button>'+
         '<button data-a="route">経路</button>'+
         (p.tel?'<button data-a="tel">電話</button>':'')+
-        '<button data-a="edit">編集</button>'+
         '<button data-a="nav">周辺</button>'+
       '</div>';
-    el.querySelector(".card-main").onclick=()=>hasSpot(p)?openMap(p):form(p);
+    /* カード本体タップ＝編集（地図は「地図を開く」ボタンから） */
+    el.querySelector(".card-main").onclick=()=>form(p);
     /* 写真ボックス: サムネ列(新しい順)+下の固定2ボタン。タップ=ライトボックス/長押し=削除 */
     const strip=el.querySelector(".phstrip");
     if(!(p.ph&&p.ph.length)) strip.style.display="none";
@@ -1000,7 +1005,8 @@ function parkBtnSync(){
 
 /* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
 const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
-  watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null};
+  watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null,
+  headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false};
 const nvEl=id=>document.getElementById(id);
 
 function nvInitMap(){
@@ -1037,8 +1043,8 @@ function nvSetDest(){
   if(!t) return;
   const car=NV.mode==="car";
   const ic=L.divIcon({className:"",iconSize:[0,0],html:
-    '<div class="dest-pin">'+(car?"🚗":"📍")+'</div>'+
-    '<div class="dest-name">'+esc(car?"駐車位置":(NV.target.name||""))+'</div>'});
+    '<div class="cr"><div class="dest-pin">'+(car?"🚗":"📍")+'</div>'+
+    '<div class="dest-name">'+esc(car?"駐車位置":(NV.target.name||""))+'</div></div>'});
   NV.destMk=L.marker(t,{icon:ic,interactive:false}).addTo(NV.map);
 }
 function nvDrawTrail(){
@@ -1069,6 +1075,38 @@ function nvFollow(v){
   NV.follow=v; nvEl("nvFollow").classList.toggle("on",v);
   if(v&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
 }
+/* ───── 北上⇄向き上（自分の向きを上に固定して地図を回す） ───── */
+function nvApplyRot(){
+  const m=document.getElementById("nvMap");
+  const tgt=(NV.headUp&&NV.curHd!=null)?-NV.curHd:0;
+  /* 359°→0°の境目で一回転して見えないよう、常に近い側へ回す */
+  const d=(((tgt-NV.rotShown)%360)+540)%360-180;
+  NV.rotShown+=d;
+  m.style.transform="rotate("+NV.rotShown+"deg)";
+  m.style.setProperty("--mrot",(-NV.rotShown)+"deg");
+}
+function nvSetHead(v){
+  NV.headUp=v;
+  const b=nvEl("nvHead");
+  b.classList.toggle("on",v); b.textContent=v?"向き上":"北上";
+  const wrap=document.querySelector(".nv-mapwrap"), m=document.getElementById("nvMap");
+  if(v){
+    /* 回転しても四隅が欠けないよう、対角線サイズの正方形に広げて中央に置く */
+    const d=Math.ceil(Math.hypot(wrap.clientWidth,wrap.clientHeight));
+    m.style.position="absolute"; m.style.left="50%"; m.style.top="50%";
+    m.style.width=d+"px"; m.style.height=d+"px";
+    m.style.marginLeft=(-d/2)+"px"; m.style.marginTop=(-d/2)+"px";
+  }else{
+    ["position","left","top","width","height","marginLeft","marginTop"].forEach(k=>m.style[k]="");
+  }
+  if(NV.map){
+    NV.map.invalidateSize();
+    /* 回転中のドラッグは指の向きと地図の動きがズレるため封印（北上に戻せば動かせる） */
+    if(NV.map.dragging){ v?NV.map.dragging.disable():NV.map.dragging.enable(); }
+    if(NV.follow&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
+  }
+  nvApplyRot();
+}
 function nvWakeLock(){
   if(navigator.wakeLock&&navigator.wakeLock.request)
     navigator.wakeLock.request("screen").then(w=>{NV.wl=w;}).catch(()=>{});
@@ -1091,7 +1129,12 @@ function nvOpen(mode,place){
     ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
     : "青い丸があなた（輪はGPSの誤差）。ピンに重なるまで歩いてください。";
   nvInitMap(); nvSetLayer("std");   /* ナビは道の正確な地理院から */
-  setTimeout(()=>NV.map.invalidateSize(),60);
+  setTimeout(()=>{
+    NV.map.invalidateSize();
+    /* 前回「向き上」で使っていたら今回もその向きで開く */
+    let hu=false; try{hu=localStorage.getItem("basho_headup")==="1";}catch(e){}
+    nvSetHead(hu);
+  },60);
   nvSetDest(); nvDrawTrail();
   const t=nvTargetLL();
   if(t) NV.map.setView(t,17);
@@ -1124,12 +1167,14 @@ function nvOpen(mode,place){
         }
       }
       nvMe(me,acc,hd);
+      /* コンパス非対応端末: 歩いている間だけGPSの進行方向で地図を回す */
+      if(hd!=null&&!NV.hasCompass){NV.curHd=hd;nvApplyRot();}
       const tg=nvTargetLL();
       if(tg){
         const d=distM({lat:me[0],lng:me[1]},{lat:tg[0],lng:tg[1]});
         nvEl("nvDist").innerHTML="あと "+fmtDist(d)+" <small>±"+acc+"m</small>";
         if(!NV.fitted){NV.fitted=true;
-          NV.map.fitBounds(L.latLngBounds([me,tg]).pad(0.3),{maxZoom:18});}
+          NV.map.fitBounds(L.latLngBounds([me,tg]).pad(NV.headUp?0.55:0.3),{maxZoom:18});}
         else if(NV.follow) NV.map.panTo(me);
       }else{
         if(!NV.fitted){NV.fitted=true;NV.map.setView(me,18);}
@@ -1145,7 +1190,11 @@ function nvOpen(mode,place){
     let h=null;
     if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading;
     else if(e.absolute&&e.alpha!=null) h=360-e.alpha;
-    if(h!=null) nvCone(h);
+    if(h==null) return;
+    NV.hasCompass=true; NV.curHd=h;
+    /* コンパスは高頻度で来るため200msに間引いて扇と地図回転を更新 */
+    const now=Date.now();
+    if(now-NV.rotT>200){ NV.rotT=now; nvCone(h); nvApplyRot(); }
   };
   window.addEventListener("deviceorientationabsolute",NV.hdgFn,true);
   nvWakeLock();
@@ -1176,6 +1225,7 @@ function nvOpenPick(initLL,cb,autoQ){
   nvEl("nvDist").textContent="";
   nvEl("nvSearch").value=autoQ||""; nvEl("nvCands").innerHTML="";
   nvInitMap(); nvSetLayer("osm");   /* ピン置きは名称が載る地図から */
+  nvSetHead(false);                 /* ピン置きは常に北が上（＋印を正確に合わせるため） */
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
   ["destMk","trailLn","meMk","accC"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
@@ -1321,13 +1371,20 @@ document.getElementById("viewBtn").onclick=e=>{
   e.target.textContent=viewLabel();
   render();
 };
-document.addEventListener("keydown",e=>{
-  if(e.key==="Escape"){
-    if(lb.classList.contains("on")) lbClose();
-    else if(document.getElementById("nvov").classList.contains("on")) nvClose();
-    else closeSheet();
-  }
-});
+/* 開いている面を上から順に1つ閉じる（Escape・Android戻るボタン共通） */
+function closeTopOverlay(){
+  if(lb.classList.contains("on")) lbClose();
+  else if(document.getElementById("nvov").classList.contains("on")) nvClose();
+  else if(veil.classList.contains("on")) closeSheet();
+}
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
+/* Android戻るボタン対応（番兵方式）: 戻る＝面を1つ閉じる。アプリ自体は終了させない */
+try{
+  window.addEventListener("popstate",()=>{
+    closeTopOverlay();
+    history.pushState({basho:"guard"},"");
+  });
+}catch(e){}
 /* 周辺モード・駐車メモ */
 parkBtnSync();
 document.getElementById("parkBtn").onclick=()=>{
@@ -1348,6 +1405,17 @@ document.getElementById("nvLayer").onclick=()=>{
   nvSetLayer(NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std"));
 };
 document.getElementById("nvFollow").onclick=()=>nvFollow(!NV.follow);
+document.getElementById("nvHead").onclick=()=>{
+  const v=!NV.headUp;
+  try{ if(v)localStorage.setItem("basho_headup","1"); else localStorage.removeItem("basho_headup"); }catch(e){}
+  nvSetHead(v);
+  if(v){ nvFollow(true); toast("自分の向きが上に固定されます。地図をずらしたい時は「北上」に戻してください"); }
+};
+/* 画面回転・リサイズ時は「向き上」の正方形サイズを取り直す */
+window.addEventListener("resize",()=>{
+  const ov=document.getElementById("nvov");
+  if(NV.headUp&&ov.classList.contains("on")&&!ov.classList.contains("pick")) nvSetHead(true);
+});
 document.getElementById("nvSearchBtn").onclick=nvSearchGo;
 document.getElementById("nvSearch").addEventListener("keydown",e=>{if(e.key==="Enter")nvSearchGo();});
 document.getElementById("nvPickOk").onclick=()=>{
@@ -1367,6 +1435,8 @@ Store.load().then(d=>{
   render();
   if(sortMode==="near")ensurePos();
   handleShare();   /* Googleマップ「共有」経由で開かれた場合は登録シートを出す */
+  /* 番兵を1つ積む: 戻るボタンはこれを消費→popstateで面を閉じ、番兵を積み直す */
+  try{ history.replaceState({basho:"root"},""); history.pushState({basho:"guard"},""); }catch(e){}
 });
 if("serviceWorker" in navigator && location.protocol==="https:"){
   navigator.serviceWorker.register("sw.js").catch(()=>{});
