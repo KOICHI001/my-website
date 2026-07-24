@@ -169,7 +169,9 @@
   .t-edit{position:absolute;right:2px;top:2px;border:0;background:none;color:#C8CEC4;
     font-size:14px;padding:8px;cursor:pointer}
   /* ───── 周辺モード（拡大地図ナビ） ───── */
-  .nvov{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;flex-direction:column}
+  .nvov{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;flex-direction:column;
+    touch-action:none}   /* 地図中はブラウザのスクロール/引っ張って更新を渡さない */
+  html.nvon,html.nvon body{overscroll-behavior:none}   /* 周辺モード中は「引っ張って更新」無効 */
   .nvov.on{display:flex}
   .nv-top{display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 10px 8px;
     background:var(--paper);border-bottom:1px solid var(--line);z-index:2}
@@ -311,7 +313,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.5";
+const VER = "0.6.6";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -1101,12 +1103,34 @@ function nvSetHead(v){
   }
   if(NV.map){
     NV.map.invalidateSize();
-    /* 回転中のドラッグは指の向きと地図の動きがズレるため封印（北上に戻せば動かせる） */
+    /* 回転中はLeaflet標準ドラッグを止め、下の自前ドラッグ（回転を逆補正）が引き継ぐ */
     if(NV.map.dragging){ v?NV.map.dragging.disable():NV.map.dragging.enable(); }
     if(NV.follow&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
   }
   nvApplyRot();
 }
+/* 「向き上」用の自前1本指ドラッグ: 指の動きを回転角ぶん逆補正してpan
+   （Leaflet標準dragはCSS回転を知らず指とズレるため。2本指ピンチはLeafletに任せる） */
+(function(){
+  const el=document.getElementById("nvMap");
+  const pts=new Map(); let dragging=false, moved=0;
+  el.addEventListener("pointerdown",e=>{
+    pts.set(e.pointerId,[e.clientX,e.clientY]);
+    dragging=(pts.size===1&&NV.headUp&&NV.mode!=="pick"); moved=0;
+  });
+  el.addEventListener("pointermove",e=>{
+    if(!pts.has(e.pointerId)) return;
+    const p=pts.get(e.pointerId), dx=e.clientX-p[0], dy=e.clientY-p[1];
+    pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(!dragging||pts.size!==1||!NV.headUp||!NV.map) return;
+    moved+=Math.abs(dx)+Math.abs(dy);
+    if(moved>6&&NV.follow) nvFollow(false);
+    const th=NV.rotShown*Math.PI/180;
+    NV.map.panBy([-(dx*Math.cos(th)+dy*Math.sin(th)), -(-dx*Math.sin(th)+dy*Math.cos(th))],{animate:false});
+  });
+  const up=e=>{ pts.delete(e.pointerId); if(pts.size!==1) dragging=false; };
+  el.addEventListener("pointerup",up); el.addEventListener("pointercancel",up);
+})();
 function nvWakeLock(){
   if(navigator.wakeLock&&navigator.wakeLock.request)
     navigator.wakeLock.request("screen").then(w=>{NV.wl=w;}).catch(()=>{});
@@ -1118,6 +1142,7 @@ document.addEventListener("visibilitychange",()=>{
 function nvOpen(mode,place){
   NV.mode=mode; NV.fitted=false; NV.lastFix=null;
   NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
+  document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on"); nvEl("nvov").classList.remove("pick");
   nvEl("nvUnpark").style.display = mode==="car"?"":"none";
   nvEl("nvName").textContent = mode==="car"?"駐車位置":place.name;
@@ -1128,7 +1153,11 @@ function nvOpen(mode,place){
   nvEl("nvNote").innerHTML = mode==="car"
     ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
     : "青い丸があなた（輪はGPSの誤差）。ピンに重なるまで歩いてください。";
-  nvInitMap(); nvSetLayer("std");   /* ナビは道の正確な地理院から */
+  /* ナビの地図は前回使っていたレイヤーで開く（初期値=名前入り。本人の見やすさ優先） */
+  let lay="osm";
+  try{lay=localStorage.getItem("basho_navlay")||"osm";}catch(e){}
+  if(lay!=="std"&&lay!=="photo"&&lay!=="osm") lay="osm";
+  nvInitMap(); nvSetLayer(lay);
   setTimeout(()=>{
     NV.map.invalidateSize();
     /* 前回「向き上」で使っていたら今回もその向きで開く */
@@ -1208,6 +1237,7 @@ function nvClose(){
     }catch(e){}
   }
   nvEl("nvov").classList.remove("on","pick");
+  document.documentElement.classList.remove("nvon");
   nvEl("nvCands").innerHTML=""; NV.pickCb=null;
   if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
   if(NV.hdgFn){window.removeEventListener("deviceorientationabsolute",NV.hdgFn,true);NV.hdgFn=null;}
@@ -1218,6 +1248,7 @@ function nvClose(){
 /* ───── 地図で位置を決める（＋印を合わせてピンを置く・住所検索付き） ───── */
 function nvOpenPick(initLL,cb,autoQ){
   NV.mode="pick"; NV.pickCb=cb;
+  document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on","pick");
   nvEl("nvUnpark").style.display="none";
   nvEl("nvName").textContent="地図で位置を決める";
@@ -1403,14 +1434,21 @@ document.getElementById("nvUnpark").onclick=()=>{
 };
 document.getElementById("nvLayer").onclick=()=>{
   nvSetLayer(NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std"));
+  /* ナビ中の切替は記憶して次回もその地図で開く（ピン置きは常にosm開始なので記憶しない） */
+  if(NV.mode!=="pick"){ try{localStorage.setItem("basho_navlay",NV.lay);}catch(e){} }
 };
 document.getElementById("nvFollow").onclick=()=>nvFollow(!NV.follow);
 document.getElementById("nvHead").onclick=()=>{
   const v=!NV.headUp;
   try{ if(v)localStorage.setItem("basho_headup","1"); else localStorage.removeItem("basho_headup"); }catch(e){}
   nvSetHead(v);
-  if(v){ nvFollow(true); toast("自分の向きが上に固定されます。地図をずらしたい時は「北上」に戻してください"); }
+  if(v){ nvFollow(true); toast("自分の向きが常に上になります"); }
 };
+/* 保険: 周辺モード内のスワイプをブラウザに渡さない（引っ張って更新の完全封じ） */
+document.getElementById("nvov").addEventListener("touchmove",e=>{
+  if(e.target.closest(".nv-pickbar")) return;   /* 検索欄まわりの操作は邪魔しない */
+  if(e.cancelable) e.preventDefault();
+},{passive:false});
 /* 画面回転・リサイズ時は「向き上」の正方形サイズを取り直す */
 window.addEventListener("resize",()=>{
   const ov=document.getElementById("nvov");
