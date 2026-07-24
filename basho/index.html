@@ -247,6 +247,28 @@
   .fab2 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
   .fab2.parked{background:#274A73;border-color:#274A73;color:#fff}
   .fab2.parked small{color:rgba(255,255,255,.8)}
+  /* ───── OCR（スクショから座標を読む） ───── */
+  .ocrov{position:fixed;inset:0;z-index:55;background:rgba(10,14,13,.96);display:none;
+    flex-direction:column;touch-action:none}
+  .ocrov.on{display:flex}
+  .ocr-top{display:flex;align-items:center;gap:8px;
+    padding:calc(8px + env(safe-area-inset-top)) 10px 8px;color:#F8F9F5}
+  .ocr-tt{flex:1;font-family:var(--mincho);font-size:15px;font-weight:600;letter-spacing:.06em}
+  .ocr-stage{flex:1;position:relative;min-height:0;display:flex;align-items:center;
+    justify-content:center;overflow:hidden;padding:4px}
+  #ocrImg{max-width:100%;max-height:100%;
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none}
+  .ocr-selbox{position:absolute;border:2px solid #F4C960;background:rgba(244,201,96,.16);
+    border-radius:4px;pointer-events:none;display:none}
+  .ocr-bar{padding:10px 14px calc(14px + env(safe-area-inset-bottom));background:var(--paper);
+    border-radius:14px 14px 0 0}
+  .ocr-status{font-size:12.5px;color:var(--soft);line-height:1.55;min-height:1.55em}
+  .ocr-status b{color:var(--route)}
+  .ocr-res{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--route);
+    margin:4px 0 0;word-break:break-all;min-height:1.3em}
+  .ocr-btns{display:flex;gap:8px;margin-top:8px}
+  .ocr-btns .btn{padding:12px}
+  .ocr-btns .btn:disabled{opacity:.4;cursor:default}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -308,12 +330,32 @@
 <div class="toast" id="toast"></div>
 <div class="lb" id="lb"></div>
 
+<div class="ocrov" id="ocrov">
+  <div class="ocr-top">
+    <button class="nv-back" id="ocrCloseBtn">← 戻る</button>
+    <div class="ocr-tt">スクショから座標を読む</div>
+  </div>
+  <div class="ocr-stage" id="ocrStage">
+    <img id="ocrImg" alt="">
+    <div class="ocr-selbox" id="ocrSel"></div>
+  </div>
+  <div class="ocr-bar">
+    <div class="ocr-status" id="ocrStatus"></div>
+    <div class="ocr-res" id="ocrRes"></div>
+    <div class="ocr-btns">
+      <button class="btn" id="ocrCopy" disabled>📋 コピー</button>
+      <button class="btn primary" id="ocrUse" disabled>この座標を使う</button>
+    </div>
+  </div>
+</div>
+<input type="file" id="ocrFile" accept="image/*" hidden>
+
 <script src="pref_data.js"></script>
 <script src="leaflet.js"></script>
 <script>
 (function(){
 "use strict";
-const VER = "0.6.6";
+const VER = "0.6.7";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const CATS=[
@@ -904,11 +946,13 @@ function form(d){
       ((d.lat&&d.lng)?'記録あり<span class="mono">'+d.lat+", "+d.lng+(d.acc?" ±"+d.acc+"m":"")+'</span>':'まだ入っていません')+
     '</div>'+
     '<button class="subbtn" id="here">今いる場所で上書きする</button> '+
-    '<button class="subbtn" id="pickmap">🗺 地図で位置を決める</button>'+
+    '<button class="subbtn" id="pickmap">🗺 地図で位置を決める</button> '+
+    '<button class="subbtn" id="ocrBtn">🔢 スクショから座標を読む</button>'+
     '<label>Googleマップのリンク（共有 → リンクをコピー）</label>'+
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
     '<div class="hint">「地図を開く」はこのリンクを優先して開きます。ただし短縮リンクには座標が入っていないため、'+
-    '<b>周辺モード</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。</div>'+
+    '<b>周辺モード</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
+    '座標が写ったスクショがあれば「🔢 スクショから座標を読む」でも取り込めます。</div>'+
     '<details><summary>住所・電話・メモ・座標を直接いじる</summary>'+
       '<label>住所</label><input type="text" id="f_addr" value="'+esc(d.addr)+'">'+
       '<label>電話番号</label><input type="tel" id="f_tel" value="'+esc(d.tel)+'">'+
@@ -949,6 +993,16 @@ function form(d){
       box.className="gps ok";
       box.innerHTML='地図で位置を設定しました<span class="mono">'+lat+", "+lng+'</span>';
       toast("位置を設定しました。「保存する」を忘れずに");
+    });
+  };
+  document.getElementById("ocrBtn").onclick=()=>{
+    ocrPick((lat,lng)=>{
+      document.getElementById("f_lat").value=lat;
+      document.getElementById("f_lng").value=lng;
+      accPend=null; accFor=lat+","+lng;
+      box.className="gps ok";
+      box.innerHTML='スクショから読み取りました<span class="mono">'+lat+", "+lng+'</span>';
+      toast("座標を入れました。「保存する」を忘れずに");
     });
   };
   document.getElementById("f_url").addEventListener("input",e=>{
@@ -1363,6 +1417,214 @@ function menu(){
   };
 }
 
+/* ───── OCR: スクショから座標を読む ─────
+   Googleマップでピンを長押し→検索窓に出る座標をスクショ→ここで読み取る。
+   Tesseract.jsをローカル同梱（ocr/）＝画像も座標も端末の外に出さない。
+   エンジンは初回タップ時にだけ読み込み、閉じたら破棄（メモリ対策） */
+const OCR={img:null,url:null,cb:null,found:null,libP:null,wk:null,wkP:null,q:Promise.resolve()};
+const ocrEl=id=>document.getElementById(id);
+function ocrBase(){return new URL("ocr",location.href).href;}   /* 絶対URL（worker内の相対解決ズレ防止） */
+function ocrLib(){
+  if(!OCR.libP){
+    OCR.libP=new Promise((ok,ng)=>{
+      if(window.Tesseract)return ok();
+      const s=document.createElement("script");
+      s.src="ocr/tesseract.min.js";
+      s.onload=()=>ok();
+      s.onerror=()=>{OCR.libP=null;ng(new Error("lib"));};
+      document.head.appendChild(s);
+    });
+  }
+  return OCR.libP;
+}
+function ocrWorker(){
+  if(!OCR.wkP){
+    OCR.wkP=(async()=>{
+      await ocrLib();
+      const b=ocrBase();
+      /* cacheMethod:none = Tesseract内蔵のIndexedDBキャッシュを使わない
+         （環境により読み込みが固まる不具合を実測。オフライン持続はsw.jsのbasho-ocrキャッシュが担う） */
+      const wk=await Tesseract.createWorker("eng",1,{
+        workerPath:b+"/worker.min.js",corePath:b,langPath:b,cacheMethod:"none"});
+      OCR.wk=wk; return wk;
+    })();
+    OCR.wkP.catch(()=>{OCR.wkP=null;OCR.wk=null;});
+  }
+  return OCR.wkP;
+}
+/* recognizeの直列化（範囲選択の連打とautoScanが混ざらないように） */
+function ocrJob(fn){const p=OCR.q.then(fn);OCR.q=p.catch(()=>{});return p;}
+/* OCR結果テキスト→「緯度, 経度」抽出。小数3桁以上の数字ペアだけを座標とみなす */
+function ocrParseCoords(text){
+  const t=String(text||"")
+    .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    .replace(/[．]/g,".").replace(/[，、]/g,",").replace(/[ー−―–—]/g,"-");
+  const re=/(-?\d{1,3}[.,]\d{3,8})[^\d-]{1,8}(-?\d{1,3}[.,]\d{3,8})/g;
+  const cands=[]; let m;
+  while((m=re.exec(t))){
+    let s1=m[1].replace(",","."),s2=m[2].replace(",",".");
+    let a=parseFloat(s1),b=parseFloat(s2);
+    if(!isFinite(a)||!isFinite(b))continue;
+    if(Math.abs(a)>90&&Math.abs(b)<=90){const ss=s1;s1=s2;s2=ss;const nn=a;a=b;b=nn;}  /* 経度,緯度の順で写っていた */
+    if(Math.abs(a)>90||Math.abs(b)>180)continue;
+    let sc=Math.min(s1.split(".")[1].length,s2.split(".")[1].length);
+    if(a>=20&&a<=46&&b>=122&&b<=154)sc+=4;   /* 日本域ボーナス */
+    cands.push({lat:s1,lng:s2,sc});
+  }
+  if(!cands.length)return null;
+  cands.sort((x,y)=>y.sc-x.sc);
+  return cands[0];
+}
+/* 元画像の指定範囲を切り出し＋拡大。暗い画像（ダークモード）は白黒反転してOCRを通す */
+function ocrCropCanvas(nx,ny,nw,nh){
+  const scale=Math.max(1,Math.min(nh<90?3:2,1600/nw));
+  const c=document.createElement("canvas");
+  c.width=Math.max(1,Math.round(nw*scale));c.height=Math.max(1,Math.round(nh*scale));
+  const g=c.getContext("2d",{willReadFrequently:true});
+  g.imageSmoothingEnabled=true;g.imageSmoothingQuality="high";
+  g.drawImage(OCR.img,nx,ny,nw,nh,0,0,c.width,c.height);
+  try{
+    const d=g.getImageData(0,0,c.width,c.height),px=d.data;
+    let sum=0,n=0;
+    for(let i=0;i<px.length;i+=64){sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;n++;}
+    if(sum/n<110){
+      for(let i=0;i<px.length;i+=4){px[i]=255-px[i];px[i+1]=255-px[i+1];px[i+2]=255-px[i+2];}
+      g.putImageData(d,0,0);
+    }
+  }catch(e){}
+  return c;
+}
+function ocrScanRegion(nx,ny,nw,nh,psm){
+  return ocrJob(async()=>{
+    const wk=await ocrWorker();
+    const c=ocrCropCanvas(nx,ny,nw,nh);
+    await wk.setParameters({tessedit_pageseg_mode:String(psm)});
+    const r=await wk.recognize(c);
+    return ocrParseCoords(r.data.text);
+  });
+}
+/* statusは固定文言のみ（ユーザーデータを混ぜない） */
+function ocrStatus(html){ocrEl("ocrStatus").innerHTML=html;}
+function ocrSetFound(c,msg){
+  OCR.found=c||null;
+  ocrEl("ocrRes").textContent=c?(c.lat+", "+c.lng):"";
+  ocrEl("ocrCopy").disabled=!c;
+  ocrEl("ocrUse").disabled=!c;
+  if(c)ocrStatus((msg||"")+"違う数字を読みたい時は、その部分を<b>指でなぞって囲み直せます</b>");
+}
+async function ocrAutoScan(){
+  const im=OCR.img; if(!im)return;
+  const W=im.naturalWidth,H=im.naturalHeight;
+  ocrStatus("読み取り中…（初回はエンジンの準備に少し時間がかかります）");
+  try{
+    /* 検索窓＝画面上部をまず読む（速い）。ダメなら下部のカード帯も試す */
+    let c=await ocrScanRegion(0,0,W,Math.round(H*0.22),6);
+    if(!c&&OCR.img===im) c=await ocrScanRegion(0,Math.round(H*0.60),W,H-Math.round(H*0.60),6);
+    if(OCR.img!==im)return;   /* 途中で閉じられた */
+    if(c)ocrSetFound(c,"見つかりました。");
+    else ocrStatus("自動では見つかりませんでした。座標の数字を<b>指でなぞって囲んで</b>ください");
+  }catch(e){
+    if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
+  }
+}
+function ocrOpen(file,cb){
+  if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}}
+  OCR.url=URL.createObjectURL(file);
+  const im=new Image();
+  im.onload=()=>{
+    OCR.img=im;OCR.cb=cb||null;
+    ocrEl("ocrImg").src=OCR.url;
+    ocrSetFound(null);
+    ocrEl("ocrov").classList.add("on");
+    ocrAutoScan();
+  };
+  im.onerror=()=>toast("画像を読み込めませんでした");
+  im.src=OCR.url;
+}
+function ocrPick(cb){
+  const inp=ocrEl("ocrFile");
+  inp.onchange=()=>{
+    const f=inp.files&&inp.files[0];
+    inp.value="";
+    if(f)ocrOpen(f,cb);
+  };
+  inp.click();
+}
+function ocrClose(){
+  ocrEl("ocrov").classList.remove("on");
+  ocrEl("ocrImg").removeAttribute("src");
+  ocrEl("ocrSel").style.display="none";
+  if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}OCR.url=null;}
+  OCR.img=null;OCR.found=null;OCR.cb=null;
+  /* エンジンは閉じるたびに破棄（スマホのメモリを食い続けない。言語データはキャッシュ済みで再開は速い） */
+  if(OCR.wkP){OCR.wkP.then(wk=>{try{wk.terminate();}catch(e){}}).catch(()=>{});OCR.wkP=null;OCR.wk=null;}
+  OCR.q=Promise.resolve();
+}
+ocrEl("ocrCloseBtn").onclick=ocrClose;
+ocrEl("ocrCopy").onclick=async()=>{
+  const c=OCR.found; if(!c)return;
+  const s=c.lat+", "+c.lng;
+  try{await navigator.clipboard.writeText(s);toast("コピーしました: "+s);}
+  catch(e){
+    const ta=document.createElement("textarea");
+    ta.value=s;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");toast("コピーしました: "+s);}catch(x){toast("コピーできませんでした");}
+    ta.remove();
+  }
+};
+ocrEl("ocrUse").onclick=()=>{
+  const c=OCR.found,cb=OCR.cb;
+  if(!c)return;
+  ocrClose();
+  if(cb)cb(c.lat,c.lng);
+};
+/* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR */
+(function(){
+  const st=ocrEl("ocrStage"),sel=ocrEl("ocrSel");
+  let p0=null;
+  function rectOf(e){
+    const sr=st.getBoundingClientRect();
+    const x1=Math.min(p0.x,e.clientX),y1=Math.min(p0.y,e.clientY);
+    const x2=Math.max(p0.x,e.clientX),y2=Math.max(p0.y,e.clientY);
+    return {l:x1-sr.left,t:y1-sr.top,w:x2-x1,h:y2-y1,x1,y1,x2,y2};
+  }
+  function show(r){
+    sel.style.display="block";
+    sel.style.left=r.l+"px";sel.style.top=r.t+"px";
+    sel.style.width=r.w+"px";sel.style.height=r.h+"px";
+  }
+  st.addEventListener("pointerdown",e=>{
+    if(!OCR.img)return;
+    try{st.setPointerCapture(e.pointerId);}catch(x){}
+    p0={x:e.clientX,y:e.clientY};
+    show(rectOf(e));
+  });
+  st.addEventListener("pointermove",e=>{if(p0)show(rectOf(e));});
+  st.addEventListener("pointerup",async e=>{
+    if(!p0)return;
+    const r=rectOf(e);p0=null;
+    if(r.w<24||r.h<10){sel.style.display="none";return;}   /* タップだけなら無視 */
+    /* 表示px→元画像pxへ変換（imgはアスペクト比維持で縮小表示＝要素枠がそのまま画像） */
+    const ir=ocrEl("ocrImg").getBoundingClientRect();
+    const im=OCR.img,W=im.naturalWidth,H=im.naturalHeight;
+    const fx=W/ir.width,fy=H/ir.height;
+    let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
+    let nx2=Math.min(W,(r.x2-ir.left)*fx),ny2=Math.min(H,(r.y2-ir.top)*fy);
+    setTimeout(()=>sel.style.display="none",300);
+    if(nx2-nx<10||ny2-ny<6)return;
+    ocrStatus("囲んだ範囲を読み取り中…");
+    try{
+      const c=await ocrScanRegion(nx,ny,nx2-nx,ny2-ny,7);
+      if(!OCR.img)return;
+      if(c)ocrSetFound(c,"読み取りました。");
+      else ocrStatus("数字を読めませんでした。<b>数字の行だけを少し広めに</b>囲み直してみてください");
+    }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度囲んでみてください");}
+  });
+  st.addEventListener("pointercancel",()=>{p0=null;sel.style.display="none";});
+})();
+/* 保険: OCR画面のスワイプをブラウザに渡さない（引っ張って更新の封じ・周辺モードと同方式） */
+ocrEl("ocrov").addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault();},{passive:false});
+
 /* ───── トースト ───── */
 let tt;
 function toast(m,actLabel,actFn){
@@ -1405,6 +1667,7 @@ document.getElementById("viewBtn").onclick=e=>{
 /* 開いている面を上から順に1つ閉じる（Escape・Android戻るボタン共通） */
 function closeTopOverlay(){
   if(lb.classList.contains("on")) lbClose();
+  else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
 }
