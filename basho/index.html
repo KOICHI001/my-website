@@ -167,6 +167,13 @@
   .cpick-row:active{background:rgba(11,110,95,.07)}
   .cpick-ring{width:14px;height:14px;border-radius:50%;flex:0 0 auto;border:6px solid var(--c);background:#fff}
   .cpick-ring.sel{background:var(--c)}
+  .cpick-row.cat{border-radius:12px;margin:3px 0}
+  /* カテゴリ選択フィールド（ネイティブselectの代替・現在色をうっすら敷く） */
+  .catsel{display:flex;align-items:center;gap:10px;width:100%;font-family:var(--gothic);font-size:16px;
+    padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);
+    color:var(--ink);cursor:pointer;text-align:left}
+  .catsel-dot{width:16px;height:16px;border-radius:50%;flex:0 0 auto}
+  .catsel-arrow{margin-left:auto;color:var(--soft);font-size:12px}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:60;background:var(--ink);
     color:#F8F9F5;padding:11px 18px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;
     transition:opacity .22s;max-width:88%;text-align:center}
@@ -401,7 +408,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.9";
+const VER = "0.6.10";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -914,7 +921,7 @@ function quickAdd(){
     '<label>名前</label>'+
     '<input type="text" id="f_name" placeholder="例：駅前の立体駐車場">'+
     '<details><summary>カテゴリ・メモも入れる</summary>'+
-      '<label>カテゴリ</label><select id="f_cat">'+CATS.map(c=>'<option'+(c.n==="その他"?" selected":"")+'>'+c.n+'</option>').join("")+'</select>'+
+      '<label>カテゴリ</label>'+catFieldHTML("その他")+
       '<label>メモ</label><textarea id="f_memo" placeholder="3階が空いている／木曜定休 など"></textarea>'+
     '</details>'+
     '<div class="sheet-actions">'+
@@ -923,6 +930,7 @@ function quickAdd(){
     '</div>'+
     '<div class="hint">位置が取れなくても登録できます。あとから「位置を直す」で入れ直せます。</div>';
   veil.classList.add("on"); sheet.scrollTop=0;
+  catFieldWire();
 
   const box=document.getElementById("gpsbox");
   Gps.start((state,best,reason)=>{
@@ -991,7 +999,7 @@ function shareAdd(name,url,c){
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
     '<details><summary>カテゴリ・メモも入れる</summary>'+
-      '<label>カテゴリ</label><select id="f_cat">'+CATS.map(x=>'<option'+(x.n==="その他"?" selected":"")+'>'+x.n+'</option>').join("")+'</select>'+
+      '<label>カテゴリ</label>'+catFieldHTML("その他")+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
     (c?'':'<div class="hint">共有には座標が入っていませんでした。座標が写ったスクショがあれば「🔢 スクショから座標を読む」で。'+
@@ -1001,6 +1009,7 @@ function shareAdd(name,url,c){
       '<button class="btn primary" id="ok">登録する</button>'+
     '</div>';
   veil.classList.add("on"); sheet.scrollTop=0;
+  catFieldWire();
   const shbox=document.getElementById("shbox");
   const shSync=()=>{ shbox.innerHTML='Googleマップから受け取りました'+
     (cc?'<span class="mono">'+esc(cc.lat)+", "+esc(cc.lng)+'</span>':''); };
@@ -1049,7 +1058,7 @@ function form(d){
     '<label>名前</label><input type="text" id="f_name" value="'+esc(d.name)+'">'+
     '<div class="two">'+
       '<div><label>よみ（検索用・任意）</label><input type="text" id="f_kana" value="'+esc(d.kana)+'"></div>'+
-      '<div><label>カテゴリ</label><select id="f_cat">'+CATS.map(c=>'<option'+(c.n===d.cat?" selected":"")+'>'+c.n+'</option>').join("")+'</select></div>'+
+      '<div><label>カテゴリ</label>'+catFieldHTML(d.cat)+'</div>'+
     '</div>'+
     '<label>位置</label>'+
     '<div class="gps'+((d.lat&&d.lng)?" ok":"")+'" id="gpsbox">'+
@@ -1076,6 +1085,7 @@ function form(d){
       '<button class="btn primary" id="ok">保存する</button>'+
     '</div>';
   veil.classList.add("on"); sheet.scrollTop=0;
+  catFieldWire();
 
   const box=document.getElementById("gpsbox");
   /* accは保存を押すまでdに書き込まない（「やめる」で元に戻るように） */
@@ -1654,6 +1664,44 @@ function cpickOpen(cur,cb){
 }
 function cpickClose(){document.getElementById("cpick").classList.remove("on");}
 document.getElementById("cpick").onclick=e=>{ if(e.target.id==="cpick") cpickClose(); };
+
+/* カテゴリ選択（登録・編集・共有シート共通）:
+   ネイティブselectはOS描画で色が付けられないため、同じ窓UIでリスト選択に置き換え。
+   各行の背景にカテゴリ色をうっすら敷く（末尾"18"/"3A"=8桁HEXの透過度） */
+function catPickOpen(cur,cb){
+  const w=document.getElementById("cpickWin");
+  w.innerHTML="";
+  CATS.forEach(x=>{
+    const b=document.createElement("button");
+    b.className="cpick-row cat";
+    b.style.background=x.c+(x.n===cur?"3A":"18");
+    b.innerHTML='<span class="cpick-ring'+(x.n===cur?" sel":"")+'" style="--c:'+esc(x.c)+'"></span>'+esc(x.n);
+    b.onclick=()=>{cpickClose();cb(x.n);};
+    w.appendChild(b);
+  });
+  document.getElementById("cpick").classList.add("on");
+  const sel=w.querySelector(".sel");
+  if(sel) sel.parentNode.scrollIntoView({block:"center"});
+  else w.scrollTop=0;
+}
+function catFieldHTML(cur){
+  return '<input type="hidden" id="f_cat" value="'+esc(cur)+'">'+
+    '<button type="button" class="catsel" id="f_catBtn">'+
+    '<span class="catsel-dot" id="f_catDot"></span>'+
+    '<span id="f_catLabel">'+esc(cur)+'</span><span class="catsel-arrow">▼</span></button>';
+}
+function catFieldWire(){
+  const btn=document.getElementById("f_catBtn");
+  const tint=()=>{const c=catColor(document.getElementById("f_cat").value);
+    document.getElementById("f_catDot").style.background=c;
+    btn.style.background=c+"14";};
+  tint();
+  btn.onclick=()=>catPickOpen(document.getElementById("f_cat").value,v=>{
+    document.getElementById("f_cat").value=v;
+    document.getElementById("f_catLabel").textContent=v;
+    tint();
+  });
+}
 
 /* ───── カテゴリ編集（名前変更・色変え・削除・新設。「その他」は受け皿として固定） ───── */
 function catEdit(){
