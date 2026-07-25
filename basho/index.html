@@ -86,8 +86,10 @@
     align-items:center;justify-content:center}
   .lb.on{display:flex}
   .lb img{max-width:96vw;max-height:92vh;object-fit:contain;border-radius:6px}
-  .lbnav{position:fixed;top:50%;transform:translateY(-50%);border:0;background:rgba(248,249,245,.14);
-    color:#F8F9F5;font-size:26px;line-height:1;padding:16px 13px;border-radius:10px;cursor:pointer}
+  .lbnav{position:fixed;top:50%;transform:translateY(-50%);border:0;background:rgba(0,0,0,.35);
+    color:#fff;font-size:44px;font-weight:700;line-height:1;padding:22px 16px;border-radius:14px;cursor:pointer;
+    text-shadow:0 0 4px #000,0 2px 6px rgba(0,0,0,.9);box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  .lbnav:active{background:rgba(0,0,0,.55)}
   .lbc{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));text-align:center;
     color:#F8F9F5;font-family:var(--mono);font-size:12px;letter-spacing:.1em}
   .cat{font-size:11px;letter-spacing:.1em;color:var(--catcolor,#6B7280);font-weight:700}
@@ -408,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.11";
+const VER = "0.6.12";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -594,7 +596,21 @@ function lbShow(){
   lb.classList.add("on");
 }
 function lbOpen(p,id){ lbList=(p.ph||[]).slice(); lbIdx=Math.max(0,lbList.indexOf(id)); if(lbList.length)lbShow(); }
-lb.onclick=lbClose;
+/* 左右フリックで前後の画像へ（最後→先頭のループ。箱と同じ操作感） */
+let lbSwiped=false, lbTx=0, lbTy=0;
+lb.addEventListener("touchstart",e=>{
+  const t=e.touches[0]; lbTx=t.clientX; lbTy=t.clientY; lbSwiped=false;
+},{passive:true});
+lb.addEventListener("touchend",e=>{
+  const t=e.changedTouches[0], dx=t.clientX-lbTx, dy=t.clientY-lbTy;
+  if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)*1.5 && lbList.length>1){
+    lbSwiped=true;   /* 直後のclickで閉じないように（clickが来ない端末もあるため時間で自動解除） */
+    setTimeout(()=>{lbSwiped=false;},400);
+    lbIdx=(lbIdx+(dx<0?1:-1)+lbList.length)%lbList.length;
+    lbShow();
+  }
+},{passive:true});
+lb.onclick=()=>{ if(lbSwiped) return; lbClose(); };
 let sortMode=localStorage.getItem("basho_sort")||"use";
 if(sortMode!=="use"&&sortMode!=="kana"&&sortMode!=="near") sortMode="use";
 let viewMode=localStorage.getItem("basho_view")==="tile"?"tile":"list";
@@ -735,6 +751,14 @@ function sorted(){
   });
 }
 function render(){
+  /* 再描画（編集保存・★・写真操作など）で一覧のスクロールが先頭に戻らないよう保持。
+     内容が減った時はブラウザが自動で上限に丸めてくれる */
+  const se=document.scrollingElement||document.documentElement;
+  const y=se.scrollTop;
+  _renderBody();
+  se.scrollTop=y;
+}
+function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
 
