@@ -149,6 +149,11 @@
   .menu-item{display:block;width:100%;text-align:left;padding:15px 8px;border:0;
     border-bottom:1px solid var(--line);background:none;font-family:var(--gothic);font-size:15px;
     color:var(--ink);cursor:pointer}
+  .catrow{display:flex;align-items:center;gap:10px;margin:9px 0}
+  .catrow input{flex:1;min-width:0;margin:0}
+  .catdot{width:32px;height:32px;border-radius:50%;border:2px solid rgba(0,0,0,.15);
+    flex:0 0 auto;cursor:pointer;padding:0}
+  .catdel{background:none;border:0;font-size:19px;padding:6px 4px;cursor:pointer;flex:0 0 auto}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:60;background:var(--ink);
     color:#F8F9F5;padding:11px 18px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;
     transition:opacity .22s;max-width:88%;text-align:center}
@@ -208,6 +213,18 @@
   .dest-name{position:absolute;transform:translate(-50%,10px);background:rgba(27,36,34,.82);color:#F8F9F5;
     font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;font-family:var(--gothic)}
   /* 位置ピック（地図で位置を決める） */
+  /* 駐車写真（駐車メモの時だけ表示・3枚まで・解除で消える一時保存） */
+  .nv-photos{display:none;gap:8px;padding:8px 10px;background:var(--bg)}
+  .nvov.car .nv-photos{display:flex}
+  .nv-photos .pslot{flex:1;min-width:0;aspect-ratio:1;border-radius:12px;overflow:hidden;
+    border:2px dashed var(--line);background:var(--card);padding:0;cursor:pointer;
+    display:flex;align-items:center;justify-content:center;position:relative;
+    font-size:30px;color:var(--route);font-family:var(--gothic)}
+  .nv-photos .pslot.filled{border:2px solid var(--line)}
+  .nv-photos .pslot img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+  .nv-photos .pdel{position:absolute;right:4px;top:4px;width:26px;height:26px;border-radius:50%;
+    border:0;background:rgba(0,0,0,.55);color:#fff;font-size:14px;line-height:1;cursor:pointer;
+    display:flex;align-items:center;justify-content:center}
   .nv-mapwrap{flex:1;position:relative;min-height:0;overflow:hidden}
   #nvMap{width:100%;height:100%;background:#DDE2D8;transition:transform .3s ease-out}
   /* 「向き上」モード: 地図ごとCSSで回転。ピン絵文字と名前ラベルは.crで逆回転して読める向きを保つ */
@@ -231,6 +248,16 @@
     z-index:1000;pointer-events:none;color:var(--danger);font-size:34px;line-height:1;
     text-shadow:0 0 3px #fff,0 0 6px #fff;font-weight:700}
   .nvov.pick .nv-cross{display:block}
+  /* 画面外ピンの方向インジケータ（ピンが見えない時だけ端に出る・タップでピンへ） */
+  .nv-edge{display:none;position:absolute;z-index:940;width:60px;height:60px;margin:-30px 0 0 -30px;
+    border-radius:50%;background:#fff;border:2px solid var(--danger);
+    box-shadow:0 3px 12px rgba(0,0,0,.35);cursor:pointer;padding:0;font-family:var(--gothic);
+    flex-direction:column;align-items:center;justify-content:center;gap:1px}
+  .nv-edge.on{display:flex}
+  .nv-edge .ico{font-size:18px;line-height:1;pointer-events:none}
+  .nv-edge .d{font-size:11px;font-weight:800;color:#274A73;line-height:1;pointer-events:none}
+  .nv-edge-arr{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none;
+    border:8px solid transparent;border-left:13px solid var(--danger)}
   .nv-okbar{display:none;position:absolute;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom));
     z-index:1000;text-align:center;pointer-events:none}
   .nvov.pick .nv-okbar{display:block}
@@ -285,7 +312,7 @@
       <button class="iconbtn" id="menuBtn">⋯</button>
     </div>
     <div class="searchrow">
-      <input type="text" id="q" placeholder="名前・よみ・住所で検索" autocomplete="off">
+      <input type="text" id="q" placeholder="名前・住所・メモ・電話などで検索" autocomplete="off">
       <button class="iconbtn" id="clearq">✕</button>
     </div>
     <div class="legend" id="legend"></div>
@@ -308,6 +335,7 @@
     <div class="nv-dist" id="nvDist">—</div>
     <button class="nv-unpark" id="nvUnpark" style="display:none">解除</button>
   </div>
+  <div class="nv-photos" id="nvPhotos"></div>
   <div class="nv-pickbar">
     <input type="text" id="nvSearch" placeholder="地名・住所で検索（例：明治神宮）" autocomplete="off">
     <button id="nvSearchBtn">検索</button>
@@ -316,6 +344,10 @@
   <div class="nv-mapwrap">
     <div id="nvMap"></div>
     <div class="nv-cross">＋</div>
+    <button class="nv-edge" id="nvEdge">
+      <div class="nv-edge-arr" id="nvEdgeArr"></div>
+      <span class="ico" id="nvEdgeIco">📍</span><span class="d" id="nvEdgeDist"></span>
+    </button>
     <div class="nv-okbar"><button id="nvPickOk">この位置にする</button></div>
   </div>
   <div class="nv-side">
@@ -355,14 +387,31 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.7";
+const VER = "0.6.8";
 
 /* ───── カテゴリ（凡例の色） ───── */
-const CATS=[
+const DEFAULT_CATS=[
   {n:"飲食",c:"#B4462F"},{n:"買い物",c:"#8A5FB0"},{n:"病院・薬局",c:"#2F7DBF"},
   {n:"仕事",c:"#0B6E5F"},{n:"公共",c:"#5A6B7A"},{n:"駐車場",c:"#7B6A2E"},
-  {n:"レジャー",c:"#C07C00"},{n:"その他",c:"#6B7280"}
+  {n:"レジャー",c:"#C07C00"}
 ];
+/* カテゴリは自由に変更・新設できる（設定→カテゴリを編集）。
+   「その他」だけは削除分の受け皿として常に最後に固定 */
+const CAT_OTHER={n:"その他",c:"#6B7280"};
+const CAT_COLORS=["#B4462F","#8A5FB0","#2F7DBF","#0B6E5F","#5A6B7A","#7B6A2E","#C07C00",
+  "#B03A5B","#3B8A5E","#4A5BB0","#8C6A4F","#C05050"];
+let CATS;
+function loadCats(){
+  let arr=null;
+  try{arr=JSON.parse(localStorage.getItem("basho_cats"));}catch(e){}
+  if(!Array.isArray(arr)||!arr.length) arr=DEFAULT_CATS.slice();
+  arr=arr.filter(x=>x&&x.n&&x.n!==CAT_OTHER.n).map(x=>({n:String(x.n),c:x.c||CAT_COLORS[0]}));
+  CATS=arr.concat([CAT_OTHER]);
+}
+loadCats();
+function saveCats(){
+  try{localStorage.setItem("basho_cats",JSON.stringify(CATS.filter(x=>x.n!==CAT_OTHER.n)));}catch(e){}
+}
 const catColor=n=>(CATS.find(x=>x.n===n)||{c:"#6B7280"}).c;
 
 /* ───── 保存 ───── */
@@ -458,7 +507,8 @@ function phGet(id){
   if(phCache.has(id)) return Promise.resolve(phCache.get(id));
   return IDB.get(id).then(v=>{if(v)phCache.set(id,v);return v;}).catch(()=>null);
 }
-function phShoot(p,fromGallery){
+/* 撮影/選択→縮小→IndexedDBへ保存し、新しい画像idをcbに渡す（場所の写真・駐車写真の共通部品） */
+function phCapture(fromGallery,cb){
   const inp=document.createElement("input");
   inp.type="file"; inp.accept="image/*";
   if(!fromGallery) inp.capture="environment";
@@ -473,15 +523,18 @@ function phShoot(p,fromGallery){
       const du=cv.toDataURL("image/jpeg",.82);
       URL.revokeObjectURL(img.src);
       const id="i"+Date.now()+Math.random().toString(36).slice(2,5);
-      IDB.set(id,du).then(()=>{
-        phCache.set(id,du);
-        p.ph=p.ph||[]; p.ph.unshift(id); p.updated=Date.now(); save();
-      }).catch(()=>toast("写真を保存できませんでした（空き容量を確認）"));
+      IDB.set(id,du).then(()=>{ phCache.set(id,du); cb(id); })
+        .catch(()=>toast("写真を保存できませんでした（空き容量を確認）"));
     };
     img.onerror=()=>toast("この画像は読み込めません");
     img.src=URL.createObjectURL(f);
   };
   inp.click();
+}
+function phShoot(p,fromGallery){
+  phCapture(fromGallery,id=>{
+    p.ph=p.ph||[]; p.ph.unshift(id); p.updated=Date.now(); save();
+  });
 }
 function phDelete(p,id){
   if(!confirm("この写真を削除します。\nこのアプリの中にしか無いため、元に戻せません。よろしいですか？")) return;
@@ -888,26 +941,60 @@ function handleShare(){
   /* 座標が拾えるなら拾う（フルURL内・共有テキスト内の「lat, lng」） */
   let c=pickCoords(url);
   if(!c){ const m=text.match(/(-?\d{1,2}\.\d{3,}),\s*(-?\d{1,3}\.\d{3,})/); if(m)c={lat:m[1],lng:m[2]}; }
-  if(!name&&!url) return false;
+  if(!c){ c=dmsToDec(title)||dmsToDec(text); }
+  /* ピン長押しの共有は「名称」が座標の文字列そのもの → 名前欄には入れず座標として扱う */
+  const nm=name.match(/^\s*(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})\s*$/);
+  if(nm){ if(!c)c={lat:nm[1],lng:nm[2]}; name=""; }
+  else if(dmsToDec(name)||/^(ドロップされたピン|dropped pin|指定した地点|plus\s?code)/i.test(name.trim())) name="";
+  if(!name&&!url&&!c) return false;
   shareAdd(name,url,c);
   return true;
 }
+/* 度分秒（35°40'48.4"N 139°46'07.7"E）→ 10進。ピン長押し共有はこの形式で来ることがある */
+function dmsToDec(t){
+  const m=String(t||"").match(/(\d{1,2})[°度]\s*(\d{1,2})['′]\s*([\d.]+)["″]?\s*([NS])[^\dNSEW]{0,5}(\d{1,3})[°度]\s*(\d{1,2})['′]\s*([\d.]+)["″]?\s*([EW])/i);
+  if(!m)return null;
+  const la=(+m[1]+m[2]/60+m[3]/3600)*(/s/i.test(m[4])?-1:1);
+  const lo=(+m[5]+m[6]/60+m[7]/3600)*(/w/i.test(m[8])?-1:1);
+  if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180)return null;
+  return {lat:la.toFixed(6),lng:lo.toFixed(6)};
+}
 function shareAdd(name,url,c){
+  let cc=c?{lat:String(c.lat),lng:String(c.lng)}:null;   /* OCR・コピペで後から入ることがある */
   sheet.innerHTML=
     '<h2>共有から登録</h2>'+
-    '<div class="gps ok">Googleマップから受け取りました'+(c?'<span class="mono">座標あり</span>':'')+'</div>'+
-    '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'">'+
+    '<div class="gps ok" id="shbox"></div>'+
+    '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'"'+(name?'':' placeholder="この場所の名前を入力"')+'>'+
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
+    (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
     '<details><summary>カテゴリ・メモも入れる</summary>'+
       '<label>カテゴリ</label><select id="f_cat">'+CATS.map(x=>'<option'+(x.n==="その他"?" selected":"")+'>'+x.n+'</option>').join("")+'</select>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
-    (c?'':'<div class="hint">短縮リンクには座標が入っていないため、登録するとそのまま「地図で位置を決める」が開きます（検索欄に名前が入った状態・不要なら戻るでスキップ）。</div>')+
+    (c?'':'<div class="hint">共有には座標が入っていませんでした。座標が写ったスクショがあれば「🔢 スクショから座標を読む」で。'+
+      'なければ登録後にそのまま「地図で位置を決める」が開きます（検索欄に名前が入った状態・不要なら戻るでスキップ）。</div>')+
     '<div class="sheet-actions">'+
       '<button class="btn" id="cancel">やめる</button>'+
       '<button class="btn primary" id="ok">登録する</button>'+
     '</div>';
   veil.classList.add("on"); sheet.scrollTop=0;
+  const shbox=document.getElementById("shbox");
+  const shSync=()=>{ shbox.innerHTML='Googleマップから受け取りました'+
+    (cc?'<span class="mono">'+esc(cc.lat)+", "+esc(cc.lng)+'</span>':''); };
+  shSync();
+  const shOcr=document.getElementById("shOcr");
+  if(shOcr) shOcr.onclick=()=>{
+    ocrPick((lat,lng)=>{ cc={lat:String(lat),lng:String(lng)}; shSync(); toast("座標を入れました。「登録する」で確定"); });
+  };
+  /* リンク欄：フルURL・座標コピペ（35.67, 139.69）からの自動読み取り（編集シートと同じ挙動） */
+  document.getElementById("f_url").addEventListener("input",e=>{
+    const v=e.target.value;
+    const p=pickCoords(v);
+    if(p){ cc={lat:String(p.lat),lng:String(p.lng)}; shSync(); toast("リンクから座標を読み取りました"); return; }
+    const m=v.match(/^\s*(-?\d{1,2}\.\d{3,}),\s*(-?\d{1,3}\.\d{3,})\s*$/);
+    if(m){ cc={lat:m[1],lng:m[2]}; shSync(); e.target.value=url;
+      toast("座標を読み取りました（リンク欄は元に戻しています）"); }
+  });
   document.getElementById("cancel").onclick=closeSheet;
   document.getElementById("ok").onclick=()=>{
     const nm=document.getElementById("f_name").value.trim();
@@ -916,7 +1003,7 @@ function shareAdd(name,url,c){
       id:"p"+Date.now()+Math.random().toString(36).slice(2,5),
       name:nm, kana:"", cat:document.getElementById("f_cat").value,
       memo:document.getElementById("f_memo").value.trim(),
-      lat:c?c.lat:"", lng:c?c.lng:"", acc:null,
+      lat:cc?cc.lat:"", lng:cc?cc.lng:"", acc:null,
       addr:"", url:document.getElementById("f_url").value.trim(), tel:"",
       fav:false, count:0, created:Date.now(), updated:Date.now()
     };
@@ -1058,6 +1145,41 @@ function parkBtnSync(){
   if(parking){b.className="fab2 parked";b.innerHTML="🚗 車へ戻る<small>"+fmtTime(parking.t)+" に駐車</small>";}
   else{b.className="fab2";b.innerHTML="🚗 駐車メモ<small>車の位置を記録</small>";}
 }
+/* 駐車写真: 3枠。空き枠＋はタップで撮影、写真はタップで拡大・✕で削除。解除で全部消える一時保存 */
+function nvPhotosRender(){
+  const box=document.getElementById("nvPhotos");
+  box.innerHTML="";
+  if(NV.mode!=="car"||!parking) return;
+  const ph=parking.ph=parking.ph||[];
+  for(let i=0;i<3;i++){
+    const id=ph[i];
+    const b=document.createElement("div");
+    b.className="pslot"+(id?" filled":"");
+    if(id){
+      const im=document.createElement("img");
+      phGet(id).then(du=>{if(du)im.src=du;});
+      b.appendChild(im);
+      const x=document.createElement("button");
+      x.className="pdel"; x.textContent="✕";
+      x.onclick=e=>{e.stopPropagation();
+        if(!confirm("この写真を削除しますか？")) return;
+        parking.ph=(parking.ph||[]).filter(v=>v!==id);
+        IDB.del(id).catch(()=>{}); phCache.delete(id);
+        saveParking(); nvPhotosRender();
+      };
+      b.appendChild(x);
+      b.onclick=()=>lbOpen(parking,id);
+    }else{
+      b.textContent="＋";
+      b.onclick=()=>phCapture(false,nid=>{
+        (parking.ph=parking.ph||[]).push(nid);
+        saveParking(); nvPhotosRender();
+        toast("写真を保存しました（解除すると消えます）");
+      });
+    }
+    box.appendChild(b);
+  }
+}
 
 /* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
 const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
@@ -1079,6 +1201,7 @@ function nvInitMap(){
   NV.map.attributionControl.setPosition("topright");
   NV.lay=""; nvSetLayer("std");
   NV.map.on("dragstart",()=>nvFollow(false));
+  NV.map.on("move zoom viewreset resize",nvEdgeSync);
 }
 /* レイヤー切替: std(地理院・道が正確) / photo(航空写真) / osm(名前入り) */
 function nvSetLayer(k){
@@ -1102,7 +1225,52 @@ function nvSetDest(){
     '<div class="cr"><div class="dest-pin">'+(car?"🚗":"📍")+'</div>'+
     '<div class="dest-name">'+esc(car?"駐車位置":(NV.target.name||""))+'</div></div>'});
   NV.destMk=L.marker(t,{icon:ic,interactive:false}).addTo(NV.map);
+  nvEdgeSync();
 }
+/* ───── 画面外ピンの方向インジケータ ─────
+   ピンが画面から外れている間だけ、中心→ピンの直線が画面枠に当たる位置に
+   丸バッジ（📍＋距離＋外向き矢印）を出す。タップでピンの位置へジャンプ。
+   「向き上」の回転中は #nvMap がCSS回転しているため、コンテナ座標を
+   回転角ぶん座標変換してから画面内外を判定する */
+let nvEdgeQ=false;
+function nvEdgeSync(){
+  if(nvEdgeQ) return; nvEdgeQ=true;
+  requestAnimationFrame(()=>{ nvEdgeQ=false; nvEdgeDo(); });
+}
+function nvEdgeDo(){
+  const el=nvEl("nvEdge");
+  const ov=nvEl("nvov");
+  const t=nvTargetLL();
+  if(!ov.classList.contains("on")||ov.classList.contains("pick")||!t||!NV.map){
+    el.classList.remove("on"); return;
+  }
+  const wrap=document.querySelector(".nv-mapwrap"), m=document.getElementById("nvMap");
+  const W=wrap.clientWidth, H=wrap.clientHeight;
+  if(!W||!H){ el.classList.remove("on"); return; }
+  /* ピンのコンテナ座標 → 回転を織り込んだ画面（wrap）座標 */
+  const p=NV.map.latLngToContainerPoint(t);
+  const th=NV.rotShown*Math.PI/180;
+  const rx=p.x-m.clientWidth/2, ry=p.y-m.clientHeight/2;   /* #nvMapは常にwrap中央 */
+  const sx=W/2 + rx*Math.cos(th)-ry*Math.sin(th);
+  const sy=H/2 + rx*Math.sin(th)+ry*Math.cos(th);
+  if(sx>=0&&sx<=W&&sy>=0&&sy<=H){ el.classList.remove("on"); return; }
+  /* 中心→ピンの直線が枠（余白PAD）に当たる点へクランプ */
+  const dx=sx-W/2, dy=sy-H/2, PAD=44;
+  const k=Math.min((W/2-PAD)/Math.max(Math.abs(dx),1e-9),(H/2-PAD)/Math.max(Math.abs(dy),1e-9));
+  el.style.left=(W/2+dx*k)+"px"; el.style.top=(H/2+dy*k)+"px";
+  const ang=Math.atan2(dy,dx)*180/Math.PI;
+  nvEl("nvEdgeArr").style.transform="translate(-50%,-50%) rotate("+ang+"deg) translateX(34px)";
+  nvEl("nvEdgeIco").textContent = NV.mode==="car"?"🚗":"📍";
+  const c=NV.map.getCenter();
+  nvEl("nvEdgeDist").textContent=fmtDist(distM({lat:c.lat,lng:c.lng},{lat:t[0],lng:t[1]}));
+  el.classList.add("on");
+}
+nvEl("nvEdge").onclick=()=>{
+  const t=nvTargetLL(); if(!t||!NV.map) return;
+  nvFollow(false);                       /* 追従で引き戻されないように */
+  NV.map.panTo(t);
+  toast("ピンの位置へ移動しました（「追従」で自分に戻ります）");
+};
 function nvDrawTrail(){
   if(NV.trailLn){NV.map.removeLayer(NV.trailLn);NV.trailLn=null;}
   if(!parking||parking.lat==null) return;
@@ -1129,7 +1297,13 @@ function nvMe(ll,acc,hd){
 }
 function nvFollow(v){
   NV.follow=v; nvEl("nvFollow").classList.toggle("on",v);
-  if(v&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
+  if(!v||!NV.lastFix) return;
+  /* 追従ONの最初の一回だけ「自分とピンの両方が見える」ように拡縮。以降は自分を中央に */
+  const me=[NV.lastFix.lat,NV.lastFix.lng], tg=nvTargetLL();
+  if(tg&&!NV.fitted){
+    NV.fitted=true; NV.fitT=Date.now();
+    NV.map.fitBounds(L.latLngBounds([me,tg]).pad(NV.headUp?0.55:0.3),{maxZoom:18});
+  }else NV.map.panTo(me);
 }
 /* ───── 北上⇄向き上（自分の向きを上に固定して地図を回す） ───── */
 function nvApplyRot(){
@@ -1140,6 +1314,7 @@ function nvApplyRot(){
   NV.rotShown+=d;
   m.style.transform="rotate("+NV.rotShown+"deg)";
   m.style.setProperty("--mrot",(-NV.rotShown)+"deg");
+  nvEdgeSync();
 }
 function nvSetHead(v){
   NV.headUp=v;
@@ -1194,10 +1369,12 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 function nvOpen(mode,place){
-  NV.mode=mode; NV.fitted=false; NV.lastFix=null;
+  NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null;
   NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
   document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on"); nvEl("nvov").classList.remove("pick");
+  nvEl("nvov").classList.toggle("car",mode==="car");
+  nvPhotosRender();
   nvEl("nvUnpark").style.display = mode==="car"?"":"none";
   nvEl("nvName").textContent = mode==="car"?"駐車位置":place.name;
   nvEl("nvSub").textContent = mode==="car"
@@ -1206,7 +1383,7 @@ function nvOpen(mode,place){
   nvEl("nvDist").textContent="—";
   nvEl("nvNote").innerHTML = mode==="car"
     ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
-    : "青い丸があなた（輪はGPSの誤差）。ピンに重なるまで歩いてください。";
+    : "まずはピンの周りをゆっくり確認できます。<b>「追従」</b>を押すと、あなた（青い丸）とピンの両方が見える表示になります。";
   /* ナビの地図は前回使っていたレイヤーで開く（初期値=名前入り。本人の見やすさ優先） */
   let lay="osm";
   try{lay=localStorage.getItem("basho_navlay")||"osm";}catch(e){}
@@ -1221,7 +1398,10 @@ function nvOpen(mode,place){
   nvSetDest(); nvDrawTrail();
   const t=nvTargetLL();
   if(t) NV.map.setView(t,17);
-  nvFollow(true);
+  /* 場所の周辺: まずピンそばをゆっくり見られるよう追従OFFで開く
+     （「追従」を押した時に初めて自分とピンの両方が見えるよう拡縮する）
+     駐車メモ: 車へ戻る用途なので従来どおり追従ONで開く */
+  nvFollow(mode==="car");
   /* GPS追従開始 */
   if(NV.watch!=null) navigator.geolocation.clearWatch(NV.watch);
   if(navigator.geolocation && location.protocol!=="file:"){
@@ -1256,12 +1436,16 @@ function nvOpen(mode,place){
       if(tg){
         const d=distM({lat:me[0],lng:me[1]},{lat:tg[0],lng:tg[1]});
         nvEl("nvDist").innerHTML="あと "+fmtDist(d)+" <small>±"+acc+"m</small>";
-        if(!NV.fitted){NV.fitted=true;
-          NV.map.fitBounds(L.latLngBounds([me,tg]).pad(NV.headUp?0.55:0.3),{maxZoom:18});}
-        else if(NV.follow) NV.map.panTo(me);
-      }else{
+        /* 地図を勝手に動かすのは追従ON中だけ（最初の一回は両方が見えるよう拡縮）。
+           拡縮直後の数秒は引き戻さず、両方が見える表示を保つ */
+        if(NV.follow){
+          if(!NV.fitted){NV.fitted=true; NV.fitT=Date.now();
+            NV.map.fitBounds(L.latLngBounds([me,tg]).pad(NV.headUp?0.55:0.3),{maxZoom:18});}
+          else if(!NV.fitT||Date.now()-NV.fitT>4000) NV.map.panTo(me);
+        }
+      }else if(NV.follow){
         if(!NV.fitted){NV.fitted=true;NV.map.setView(me,18);}
-        else if(NV.follow) NV.map.panTo(me);
+        else NV.map.panTo(me);
       }
     },err=>{
       if(!NV.lastFix)
@@ -1290,7 +1474,8 @@ function nvClose(){
         JSON.stringify({lat:+c.lat.toFixed(5),lng:+c.lng.toFixed(5),z:NV.map.getZoom()}));
     }catch(e){}
   }
-  nvEl("nvov").classList.remove("on","pick");
+  nvEl("nvov").classList.remove("on","pick","car");
+  nvEl("nvEdge").classList.remove("on");
   document.documentElement.classList.remove("nvon");
   nvEl("nvCands").innerHTML=""; NV.pickCb=null;
   if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
@@ -1304,6 +1489,7 @@ function nvOpenPick(initLL,cb,autoQ){
   NV.mode="pick"; NV.pickCb=cb;
   document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on","pick");
+  nvEl("nvov").classList.remove("car");
   nvEl("nvUnpark").style.display="none";
   nvEl("nvName").textContent="地図で位置を決める";
   nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下ボタンで写真・地理院に切替可）";
@@ -1370,6 +1556,7 @@ function menu(){
   sheet.innerHTML=
     '<h2>設定</h2>'+
     '<button class="menu-item" id="m_add">名前だけで追加する（位置はあとで）</button>'+
+    '<button class="menu-item" id="m_cats">カテゴリを編集する</button>'+
     '<button class="menu-item" id="m_exp">バックアップを書き出す</button>'+
     '<button class="menu-item" id="m_imp">バックアップを読み込む</button>'+
     '<div class="hint" style="margin-top:12px">データはこの端末の中だけに保存されます。'+
@@ -1382,11 +1569,13 @@ function menu(){
       addr:"",url:"",tel:"",fav:false,count:0,created:Date.now(),updated:Date.now()};
     places.push(rec); Store.save(places); form(rec);
   };
+  document.getElementById("m_cats").onclick=catEdit;
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
     const nImg=Object.keys(images).length;
-    const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images})],{type:"application/json"});
+    const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
+      cats:CATS.filter(x=>x.n!==CAT_OTHER.n)})],{type:"application/json"});
     const a=document.createElement("a"); const t=new Date(), p2=n=>String(n).padStart(2,"0");
     a.href=URL.createObjectURL(blob);
     a.download="basho_"+t.getFullYear()+p2(t.getMonth()+1)+p2(t.getDate())+".json";
@@ -1406,6 +1595,13 @@ function menu(){
           if(data&&data.images){
             for(const k in data.images){ await IDB.set(k,data.images[k]); phCache.set(k,data.images[k]); }
           }
+          /* 自作カテゴリも引き継ぐ（同名は既存を優先・「その他」の位置は保つ） */
+          if(data&&Array.isArray(data.cats)){
+            const have=new Set(CATS.map(x=>x.n));
+            const add=data.cats.filter(x=>x&&x.n&&!have.has(String(x.n)))
+              .map(x=>({n:String(x.n),c:x.c||CAT_COLORS[0]}));
+            if(add.length){ CATS=CATS.filter(x=>x.n!==CAT_OTHER.n).concat(add,[CAT_OTHER]); saveCats(); }
+          }
           const ids=new Set(places.map(x=>x.id)); let add=0;
           arr.forEach(x=>{ if(x&&x.name&&!ids.has(x.id)){ if(!x.pref)updatePref(x); places.push(x);add++;} });
           save(); closeSheet(); toast(add+"件を追加しました");
@@ -1415,6 +1611,68 @@ function menu(){
     };
     inp.click();
   };
+}
+
+/* ───── カテゴリ編集（名前変更・色変え・削除・新設。「その他」は受け皿として固定） ───── */
+function catEdit(){
+  const rows=CATS.filter(x=>x.n!==CAT_OTHER.n).map(x=>({orig:x.n,n:x.n,c:x.c}));
+  function draw(){
+    sheet.innerHTML=
+      '<h2>カテゴリを編集</h2>'+
+      '<div id="catList"></div>'+
+      '<button class="subbtn" id="c_add">＋ カテゴリを追加</button>'+
+      '<div class="hint">●をタップすると色が変わります。名前を変えると、そのカテゴリの場所もまとめて変わります。'+
+      '「その他」は削除したカテゴリの受け皿として固定です。</div>'+
+      '<div class="sheet-actions"><button class="btn" id="c_cancel">やめる</button>'+
+      '<button class="btn primary" id="c_ok">保存する</button></div>';
+    const list=document.getElementById("catList");
+    rows.forEach((r,i)=>{
+      const div=document.createElement("div");
+      div.className="catrow";
+      div.innerHTML='<button class="catdot" style="background:'+esc(r.c)+'"></button>'+
+        '<input type="text" value="'+esc(r.n)+'" placeholder="カテゴリ名">'+
+        '<button class="catdel">🗑</button>';
+      const dot=div.children[0], inp=div.children[1], del=div.children[2];
+      dot.onclick=()=>{r.c=CAT_COLORS[(CAT_COLORS.indexOf(r.c)+1)%CAT_COLORS.length];dot.style.background=r.c;};
+      inp.oninput=()=>{r.n=inp.value;};
+      del.onclick=()=>{
+        const cnt=r.orig?places.filter(p=>p.cat===r.orig).length:0;
+        if(cnt&&!confirm('「'+(r.n.trim()||r.orig)+'」を削除します。\nこのカテゴリの'+cnt+'件は「その他」に変わります。よろしいですか？'))return;
+        rows.splice(i,1); draw();
+      };
+      list.appendChild(div);
+    });
+    const oth=document.createElement("div");
+    oth.className="catrow";
+    oth.innerHTML='<span class="catdot" style="background:'+CAT_OTHER.c+';cursor:default"></span>'+
+      '<span style="flex:1;color:#6B7280">その他（固定）</span>';
+    list.appendChild(oth);
+    document.getElementById("c_add").onclick=()=>{
+      const used=rows.map(r=>r.c);
+      rows.push({orig:null,n:"",c:CAT_COLORS.find(x=>!used.includes(x))||CAT_COLORS[rows.length%CAT_COLORS.length]});
+      draw(); sheet.scrollTop=sheet.scrollHeight;
+    };
+    document.getElementById("c_cancel").onclick=closeSheet;
+    document.getElementById("c_ok").onclick=()=>{
+      const names=rows.map(r=>r.n.trim());
+      if(names.some(n=>!n)) return toast("名前が空のカテゴリがあります");
+      if(names.some(n=>n===CAT_OTHER.n)) return toast("「その他」という名前は固定分と重なるため使えません");
+      if(new Set(names).size!==names.length) return toast("同じ名前のカテゴリがあります");
+      /* 名前変更は場所にも反映・削除した分は「その他」へ */
+      const ren={}; rows.forEach(r=>{ const n=r.n.trim(); if(r.orig&&r.orig!==n) ren[r.orig]=n; });
+      const kept=new Set(rows.map(r=>r.orig).filter(Boolean));
+      const removed=CATS.filter(x=>x.n!==CAT_OTHER.n&&!kept.has(x.n)).map(x=>x.n);
+      places.forEach(p=>{
+        if(ren[p.cat]) p.cat=ren[p.cat];
+        else if(removed.includes(p.cat)) p.cat=CAT_OTHER.n;
+      });
+      if(ren[filterCat]) filterCat=ren[filterCat];
+      else if(removed.includes(filterCat)) filterCat="";
+      CATS=rows.map(r=>({n:r.n.trim(),c:r.c})).concat([CAT_OTHER]);
+      saveCats(); save(); closeSheet(); toast("カテゴリを保存しました");
+    };
+  }
+  draw();
 }
 
 /* ───── OCR: スクショから座標を読む ─────
@@ -1692,7 +1950,9 @@ document.getElementById("parkBtn").onclick=()=>{
 };
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
-  if(!confirm("駐車メモを解除しますか？\n（駐車位置と足あとが消えます）")) return;
+  const nPh=(parking&&parking.ph||[]).length;
+  if(!confirm("駐車メモを解除しますか？\n（駐車位置と足あと"+(nPh?"・写真"+nPh+"枚":"")+"が消えます）")) return;
+  if(parking) phPurgePlace(parking);   /* 一時保存の写真もIndexedDBから消す */
   parking=null; saveParking(); nvClose(); toast("駐車メモを解除しました");
 };
 document.getElementById("nvLayer").onclick=()=>{
