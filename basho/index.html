@@ -410,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.12";
+const VER = "0.6.13";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -565,7 +565,7 @@ function phCapture(fromGallery,cb){
 }
 function phShoot(p,fromGallery){
   phCapture(fromGallery,id=>{
-    p.ph=p.ph||[]; p.ph.unshift(id); p.updated=Date.now(); save();
+    p.ph=p.ph||[]; p.ph.push(id); p.updated=Date.now(); save();   /* 古い順=左端が一番最初の1枚 */
   });
 }
 function phDelete(p,id){
@@ -2107,6 +2107,12 @@ document.getElementById("nvPickOk").onclick=()=>{
 };
 Store.load().then(d=>{
   places=Array.isArray(d)?d:[];
+  /* 写真は登録の古い順（左端=一番最初）に統一。旧版は新しい順だったため、
+     写真id（"i"+登録時刻13桁+乱数3字）の時刻部分で並べ直す（毎回実行しても同じ結果） */
+  places.forEach(p=>{
+    if(p.ph&&p.ph.length>1)
+      p.ph.sort((a,b)=>parseInt(a.slice(1,14))-parseInt(b.slice(1,14)));
+  });
   /* 既存データの県を一括判定（初回のみ） */
   if(window.PREF_GEO){
     let ch=false;
