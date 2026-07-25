@@ -345,7 +345,7 @@
 <main class="wrap"><div class="list" id="list"></div></main>
 
 <button class="fab" id="addBtn">ここを登録<small>GPSで今の位置を記録</small></button>
-<button class="fab2" id="parkBtn">🚗 駐車メモ<small>車の位置を記録</small></button>
+<button class="fab2" id="parkBtn">🚩 足あと<small>戻りたい場所に旗を立てる</small></button>
 
 <div class="nvov" id="nvov">
   <div class="nv-top">
@@ -410,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.13";
+const VER = "0.6.14";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1189,7 +1189,7 @@ function form(d){
   };
 }
 
-/* ───── 駐車メモ（車の位置＋足あと） ───── */
+/* ───── 足あと（旗の位置＋足あと。旧称:駐車メモ＝駅・ホテル・集合場所など汎用に改名） ───── */
 let parking=null;
 try{const s=localStorage.getItem("basho_parking"); if(s)parking=JSON.parse(s);}catch(e){}
 function saveParking(){
@@ -1199,8 +1199,8 @@ function saveParking(){
 function fmtTime(t){const d=new Date(t),p=n=>String(n).padStart(2,"0");return p(d.getHours())+":"+p(d.getMinutes());}
 function parkBtnSync(){
   const b=document.getElementById("parkBtn");
-  if(parking){b.className="fab2 parked";b.innerHTML="🚗 車へ戻る<small>"+fmtTime(parking.t)+" に駐車</small>";}
-  else{b.className="fab2";b.innerHTML="🚗 駐車メモ<small>車の位置を記録</small>";}
+  if(parking){b.className="fab2 parked";b.innerHTML="🚩 旗へ戻る<small>"+fmtTime(parking.t)+" に記録</small>";}
+  else{b.className="fab2";b.innerHTML="🚩 足あと<small>戻りたい場所に旗を立てる</small>";}
 }
 /* 駐車写真: 3枠。空き枠＋はタップで撮影、写真はタップで拡大・✕で削除。解除で全部消える一時保存 */
 function nvPhotosRender(){
@@ -1279,8 +1279,8 @@ function nvSetDest(){
   if(!t) return;
   const car=NV.mode==="car";
   const ic=L.divIcon({className:"",iconSize:[0,0],html:
-    '<div class="cr"><div class="dest-pin">'+(car?"🚗":"📍")+'</div>'+
-    '<div class="dest-name">'+esc(car?"駐車位置":(NV.target.name||""))+'</div></div>'});
+    '<div class="cr"><div class="dest-pin">'+(car?"🚩":"📍")+'</div>'+
+    '<div class="dest-name">'+esc(car?"旗の位置":(NV.target.name||""))+'</div></div>'});
   NV.destMk=L.marker(t,{icon:ic,interactive:false}).addTo(NV.map);
   nvEdgeSync();
 }
@@ -1317,7 +1317,7 @@ function nvEdgeDo(){
   el.style.left=(W/2+dx*k)+"px"; el.style.top=(H/2+dy*k)+"px";
   const ang=Math.atan2(dy,dx)*180/Math.PI;
   nvEl("nvEdgeArr").style.transform="translate(-50%,-50%) rotate("+ang+"deg) translateX(34px)";
-  nvEl("nvEdgeIco").textContent = NV.mode==="car"?"🚗":"📍";
+  nvEl("nvEdgeIco").textContent = NV.mode==="car"?"🚩":"📍";
   const c=NV.map.getCenter();
   nvEl("nvEdgeDist").textContent=fmtDist(distM({lat:c.lat,lng:c.lng},{lat:t[0],lng:t[1]}));
   el.classList.add("on");
@@ -1433,9 +1433,9 @@ function nvOpen(mode,place){
   nvEl("nvov").classList.toggle("car",mode==="car");
   nvPhotosRender();
   nvEl("nvUnpark").style.display = mode==="car"?"":"none";
-  nvEl("nvName").textContent = mode==="car"?"駐車位置":place.name;
+  nvEl("nvName").textContent = mode==="car"?"旗の位置":place.name;
   nvEl("nvSub").textContent = mode==="car"
-    ? (parking?fmtTime(parking.t)+" に駐車"+(parking.acc!=null?" ±"+parking.acc+"m":""):"")
+    ? (parking?fmtTime(parking.t)+" に記録"+(parking.acc!=null?" ±"+parking.acc+"m":""):"")
     : (place.acc?"登録精度 ±"+place.acc+"m":"");
   nvEl("nvDist").textContent="—";
   nvEl("nvNote").innerHTML = mode==="car"
@@ -1474,7 +1474,7 @@ function nvOpen(mode,place){
       if(NV.mode==="car"&&parking&&(parking.lat==null||(Date.now()-parking.t<40000&&acc<parking.acc&&nearPark))){
         parking.lat=+me[0].toFixed(6); parking.lng=+me[1].toFixed(6); parking.acc=acc;
         saveParking(); nvSetDest();
-        nvEl("nvSub").textContent=fmtTime(parking.t)+" に駐車 ±"+parking.acc+"m";
+        nvEl("nvSub").textContent=fmtTime(parking.t)+" に記録 ±"+parking.acc+"m";
       }
       /* 足あと：駐車中は4m以上動くたびに記録（精度35m以内のみ）。
          上限3000点＝そこで記録終了。車へ戻る手がかりなので、一度付けた足あとは絶対に消さない
@@ -2057,13 +2057,13 @@ try{
     history.pushState({basho:"guard"},"");
   });
 }catch(e){}
-/* 周辺モード・駐車メモ */
+/* 周辺モード・足あと（旗） */
 parkBtnSync();
 document.getElementById("parkBtn").onclick=()=>{
   if(!parking){
     parking={lat:null,lng:null,acc:null,t:Date.now(),trail:[]};
     saveParking();
-    toast("車の位置を記録します");
+    toast("この場所に旗を立てます");
   }
   parkBtnSync();
   nvOpen("car");
@@ -2071,9 +2071,9 @@ document.getElementById("parkBtn").onclick=()=>{
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
-  if(!confirm("駐車メモを解除しますか？\n（駐車位置と足あと"+(nPh?"・写真"+nPh+"枚":"")+"が消えます）")) return;
+  if(!confirm("足あとを解除しますか？\n（旗の位置と足あと"+(nPh?"・写真"+nPh+"枚":"")+"が消えます）")) return;
   if(parking) phPurgePlace(parking);   /* 一時保存の写真もIndexedDBから消す */
-  parking=null; saveParking(); nvClose(); toast("駐車メモを解除しました");
+  parking=null; saveParking(); nvClose(); toast("足あとを解除しました");
 };
 document.getElementById("nvLayer").onclick=()=>{
   nvSetLayer(NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std"));
