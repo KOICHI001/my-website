@@ -59,7 +59,8 @@
   .list{display:flex;flex-direction:column;gap:10px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
     overflow:hidden;position:relative}
-  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--catcolor,#6B7280)}
+  .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
+  .card::after{content:"";position:absolute;right:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
   .card-main{padding:13px 44px 11px 18px;cursor:pointer;display:flex;align-items:center;gap:10px;
     width:100%;text-align:left;border:0;background:none;font-family:inherit;color:inherit}
   .card-main:active{background:rgba(11,110,95,.05)}
@@ -154,6 +155,18 @@
   .catdot{width:32px;height:32px;border-radius:50%;border:2px solid rgba(0,0,0,.15);
     flex:0 0 auto;cursor:pointer;padding:0}
   .catdel{background:none;border:0;font-size:19px;padding:6px 4px;cursor:pointer;flex:0 0 auto}
+  /* カラーパレット窓（Googleカレンダー風・色名付きリスト） */
+  .cpick{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.35);display:none;
+    align-items:center;justify-content:center}
+  .cpick.on{display:flex}
+  .cpick-win{background:var(--card);border-radius:18px;max-height:62vh;overflow-y:auto;
+    width:min(76vw,290px);padding:8px 4px;box-shadow:0 14px 44px rgba(0,0,0,.35);
+    overscroll-behavior:contain}
+  .cpick-row{display:flex;align-items:center;gap:16px;width:100%;padding:12px 20px;border:0;
+    background:none;font-family:var(--gothic);font-size:15px;color:var(--ink);cursor:pointer;text-align:left}
+  .cpick-row:active{background:rgba(11,110,95,.07)}
+  .cpick-ring{width:14px;height:14px;border-radius:50%;flex:0 0 auto;border:6px solid var(--c);background:#fff}
+  .cpick-ring.sel{background:var(--c)}
   .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:104px;z-index:60;background:var(--ink);
     color:#F8F9F5;padding:11px 18px;border-radius:999px;font-size:13.5px;opacity:0;pointer-events:none;
     transition:opacity .22s;max-width:88%;text-align:center}
@@ -359,6 +372,7 @@
 </div>
 
 <div class="veil" id="veil"><div class="sheet" id="sheet"></div></div>
+<div class="cpick" id="cpick"><div class="cpick-win" id="cpickWin"></div></div>
 <div class="toast" id="toast"></div>
 <div class="lb" id="lb"></div>
 
@@ -387,7 +401,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.8";
+const VER = "0.6.9";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -398,8 +412,17 @@ const DEFAULT_CATS=[
 /* カテゴリは自由に変更・新設できる（設定→カテゴリを編集）。
    「その他」だけは削除分の受け皿として常に最後に固定 */
 const CAT_OTHER={n:"その他",c:"#6B7280"};
-const CAT_COLORS=["#B4462F","#8A5FB0","#2F7DBF","#0B6E5F","#5A6B7A","#7B6A2E","#C07C00",
-  "#B03A5B","#3B8A5E","#4A5BB0","#8C6A4F","#C05050"];
+/* カラーパレット（色名付き・色相順。同じ色を複数カテゴリで使ってもよい） */
+const CAT_PALETTE=[
+  {n:"赤",c:"#C43A2F"},{n:"えんじ",c:"#8E2F3C"},{n:"ピンク",c:"#C9628B"},
+  {n:"オレンジ",c:"#D96C2E"},{n:"茶色",c:"#8C5A3A"},{n:"こげ茶",c:"#5D4032"},
+  {n:"山吹",c:"#C7920F"},{n:"からし",c:"#A8892B"},{n:"黄緑",c:"#7E9C2F"},
+  {n:"緑",c:"#3B8A5E"},{n:"深緑",c:"#1F5E40"},{n:"青緑",c:"#2E8A8A"},
+  {n:"水色",c:"#3E96C9"},{n:"青",c:"#2F6FBF"},{n:"紺",c:"#2C4370"},
+  {n:"藤色",c:"#8B7FC7"},{n:"紫",c:"#7A4FB0"},{n:"赤紫",c:"#A34E8C"},
+  {n:"グレー",c:"#6B7280"},{n:"墨",c:"#3A3F44"}
+];
+const CAT_COLORS=CAT_PALETTE.map(x=>x.c);
 let CATS;
 function loadCats(){
   let arr=null;
@@ -1613,6 +1636,25 @@ function menu(){
   };
 }
 
+/* カラーパレット窓: 色名付きリストから選ぶ（上下スクロール可・タップで確定） */
+function cpickOpen(cur,cb){
+  const w=document.getElementById("cpickWin");
+  w.innerHTML="";
+  CAT_PALETTE.forEach(p=>{
+    const b=document.createElement("button");
+    b.className="cpick-row";
+    b.innerHTML='<span class="cpick-ring'+(p.c===cur?" sel":"")+'" style="--c:'+p.c+'"></span>'+esc(p.n);
+    b.onclick=()=>{cpickClose();cb(p.c);};
+    w.appendChild(b);
+  });
+  document.getElementById("cpick").classList.add("on");
+  const sel=w.querySelector(".sel");
+  if(sel) sel.parentNode.scrollIntoView({block:"center"});
+  else w.scrollTop=0;
+}
+function cpickClose(){document.getElementById("cpick").classList.remove("on");}
+document.getElementById("cpick").onclick=e=>{ if(e.target.id==="cpick") cpickClose(); };
+
 /* ───── カテゴリ編集（名前変更・色変え・削除・新設。「その他」は受け皿として固定） ───── */
 function catEdit(){
   const rows=CATS.filter(x=>x.n!==CAT_OTHER.n).map(x=>({orig:x.n,n:x.n,c:x.c}));
@@ -1621,7 +1663,7 @@ function catEdit(){
       '<h2>カテゴリを編集</h2>'+
       '<div id="catList"></div>'+
       '<button class="subbtn" id="c_add">＋ カテゴリを追加</button>'+
-      '<div class="hint">●をタップすると色が変わります。名前を変えると、そのカテゴリの場所もまとめて変わります。'+
+      '<div class="hint">●をタップすると色を選べます。名前を変えると、そのカテゴリの場所もまとめて変わります。'+
       '「その他」は削除したカテゴリの受け皿として固定です。</div>'+
       '<div class="sheet-actions"><button class="btn" id="c_cancel">やめる</button>'+
       '<button class="btn primary" id="c_ok">保存する</button></div>';
@@ -1633,7 +1675,7 @@ function catEdit(){
         '<input type="text" value="'+esc(r.n)+'" placeholder="カテゴリ名">'+
         '<button class="catdel">🗑</button>';
       const dot=div.children[0], inp=div.children[1], del=div.children[2];
-      dot.onclick=()=>{r.c=CAT_COLORS[(CAT_COLORS.indexOf(r.c)+1)%CAT_COLORS.length];dot.style.background=r.c;};
+      dot.onclick=()=>cpickOpen(r.c,c=>{r.c=c;dot.style.background=c;});
       inp.oninput=()=>{r.n=inp.value;};
       del.onclick=()=>{
         const cnt=r.orig?places.filter(p=>p.cat===r.orig).length:0;
@@ -1924,7 +1966,8 @@ document.getElementById("viewBtn").onclick=e=>{
 };
 /* 開いている面を上から順に1つ閉じる（Escape・Android戻るボタン共通） */
 function closeTopOverlay(){
-  if(lb.classList.contains("on")) lbClose();
+  if(document.getElementById("cpick").classList.contains("on")) cpickClose();
+  else if(lb.classList.contains("on")) lbClose();
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
