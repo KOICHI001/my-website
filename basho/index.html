@@ -408,7 +408,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.10";
+const VER = "0.6.11";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1452,14 +1452,19 @@ function nvOpen(mode,place){
         saveParking(); nvSetDest();
         nvEl("nvSub").textContent=fmtTime(parking.t)+" に駐車 ±"+parking.acc+"m";
       }
-      /* 足あと：駐車中は4m以上動くたびに記録（精度35m以内のみ） */
+      /* 足あと：駐車中は4m以上動くたびに記録（精度35m以内のみ）。
+         上限3000点＝そこで記録終了。車へ戻る手がかりなので、一度付けた足あとは絶対に消さない
+         （旧: 古い方=車側から削除していた→車に着く直前の線が欠ける本末転倒だったため変更） */
       if(parking&&parking.lat!=null&&acc<=35){
         const tr=parking.trail=parking.trail||[];
-        const last=tr.length?tr[tr.length-1]:[parking.lat,parking.lng];
-        if(distM({lat:last[0],lng:last[1]},{lat:me[0],lng:me[1]})>=4){
-          tr.push([+me[0].toFixed(6),+me[1].toFixed(6)]);
-          if(tr.length>1500)tr.splice(0,tr.length-1500);
-          saveParking(); nvDrawTrail();
+        if(tr.length<3000){
+          const last=tr.length?tr[tr.length-1]:[parking.lat,parking.lng];
+          if(distM({lat:last[0],lng:last[1]},{lat:me[0],lng:me[1]})>=4){
+            tr.push([+me[0].toFixed(6),+me[1].toFixed(6)]);
+            saveParking(); nvDrawTrail();
+            if(tr.length===3000)
+              toast("足あとが上限に達したため、ここで記録を止めました（付けた線と車の位置はこのまま残ります）");
+          }
         }
       }
       nvMe(me,acc,hd);
