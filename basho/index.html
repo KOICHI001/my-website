@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.10";
+const VER = "0.7.11";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -614,6 +614,7 @@ const lb=document.getElementById("lb");
 let lbList=[], lbIdx=0;
 function lbClose(){ lb.classList.remove("on"); lb.innerHTML=""; }
 function lbShow(){
+  LZ.s=1; LZ.x=0; LZ.y=0; LZ.pinch=false;   /* 写真を切り替えたらズームは等倍から */
   const id=lbList[lbIdx];
   lb.innerHTML='<img alt="">'+
     (lbList.length>1
@@ -630,12 +631,59 @@ function lbShow(){
 }
 function lbOpen(p,id){ lbList=(p.ph||[]).slice(); lbIdx=Math.max(0,lbList.indexOf(id)); if(lbList.length)lbShow(); }
 /* 左右フリックで前後の画像へ（最後→先頭のループ。箱と同じ操作感） */
+/* ライトボックスの操作:
+   等倍時=左右フリックで前後の写真・タップで閉じる（従来どおり）
+   2本指ピンチ=写真の拡大縮小（v0.7.10でアプリ全体のページズームを禁止したため専用実装）
+   拡大中=1本指でパン・タップで等倍に戻す */
 let lbSwiped=false, lbTx=0, lbTy=0;
+const LZ={s:1,x:0,y:0,d0:0,s0:1,mx:0,my:0,x0:0,y0:0,pinch:false};
+function lbApply(){
+  const im=lb.querySelector("img");
+  if(im) im.style.transform="translate("+LZ.x+"px,"+LZ.y+"px) scale("+LZ.s+")";
+}
+function lbZoomReset(){ LZ.s=1; LZ.x=0; LZ.y=0; LZ.pinch=false; lbApply(); }
 lb.addEventListener("touchstart",e=>{
-  const t=e.touches[0]; lbTx=t.clientX; lbTy=t.clientY; lbSwiped=false;
+  if(e.touches.length===2){
+    const a=e.touches[0],b=e.touches[1];
+    LZ.pinch=true;
+    LZ.d0=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY)||1;
+    LZ.s0=LZ.s; LZ.x0=LZ.x; LZ.y0=LZ.y;
+    LZ.mx=(a.clientX+b.clientX)/2; LZ.my=(a.clientY+b.clientY)/2;
+  }else{
+    const t=e.touches[0]; lbTx=t.clientX; lbTy=t.clientY; lbSwiped=false;
+    LZ.x0=LZ.x; LZ.y0=LZ.y;
+  }
 },{passive:true});
+lb.addEventListener("touchmove",e=>{
+  if(e.touches.length===2){
+    if(e.cancelable) e.preventDefault();
+    const a=e.touches[0],b=e.touches[1];
+    const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    const mx=(a.clientX+b.clientX)/2, my=(a.clientY+b.clientY)/2;
+    LZ.s=Math.min(6,Math.max(1,LZ.s0*(d/LZ.d0)));
+    if(LZ.s===1){LZ.x=0;LZ.y=0;}
+    else{LZ.x=LZ.x0+(mx-LZ.mx); LZ.y=LZ.y0+(my-LZ.my);}
+    lbApply();
+  }else if(LZ.s>1){
+    if(e.cancelable) e.preventDefault();   /* パン中に後ろの画面をスクロールさせない */
+    const t=e.touches[0];
+    LZ.x=LZ.x0+(t.clientX-lbTx); LZ.y=LZ.y0+(t.clientY-lbTy);
+    lbApply();
+  }
+},{passive:false});
 lb.addEventListener("touchend",e=>{
+  /* ピンチ終了: 直後のclickで閉じない */
+  if(LZ.pinch){
+    if(e.touches.length===0){ LZ.pinch=false; lbSwiped=true; setTimeout(()=>{lbSwiped=false;},400); }
+    return;
+  }
   const t=e.changedTouches[0], dx=t.clientX-lbTx, dy=t.clientY-lbTy;
+  if(LZ.s>1){
+    /* 拡大中: ほぼ動いていないタップ=等倍に戻す。パン後も閉じない */
+    if(Math.hypot(dx,dy)<8) lbZoomReset();
+    lbSwiped=true; setTimeout(()=>{lbSwiped=false;},400);
+    return;
+  }
   if(Math.abs(dx)>50 && Math.abs(dx)>Math.abs(dy)*1.5 && lbList.length>1){
     lbSwiped=true;   /* 直後のclickで閉じないように（clickが来ない端末もあるため時間で自動解除） */
     setTimeout(()=>{lbSwiped=false;},400);
