@@ -76,13 +76,11 @@
   .bcover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
   .bdefault{position:absolute;inset:0;
     background-image:linear-gradient(155deg,rgba(255,255,255,.24),rgba(255,255,255,0) 45%,rgba(0,0,0,.2))}
-  /* 表紙のタイトル: 画像あり=黒帯にカテゴリ名 / 画像なし(デフォルト表紙)=帯なしで同じ位置に白文字 */
-  .btitle{position:absolute;left:50%;top:15%;transform:translateX(-50%);max-width:84%;
+  /* 表紙のタイトル: 黒帯にカテゴリ名。長い名前は折り返さずフォント縮小で1行に収める（帯は横に伸びてよい） */
+  .btitle{position:absolute;left:50%;top:15%;transform:translateX(-50%);max-width:95%;
     background:rgba(18,22,21,.85);color:#F8F9F5;font-family:var(--mincho);font-weight:600;
     font-size:16px;line-height:1.45;padding:7px 13px;border-radius:3px;letter-spacing:.1em;
-    text-align:center;z-index:3;word-break:break-all;box-sizing:border-box}
-  .btitle.bare{background:none;padding:7px 4px;font-size:19px;
-    color:rgba(255,255,255,.95);text-shadow:0 1px 5px rgba(0,0,0,.35)}
+    text-align:center;z-index:3;white-space:nowrap;overflow:hidden;box-sizing:border-box}
   .bcount{font-family:var(--mono);font-size:11px;color:var(--soft);margin-top:8px}
   .shelfhint{grid-column:1/-1;font-size:12px;color:var(--soft);text-align:center;padding:8px 0 0}
 
@@ -444,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.2";
+const VER = "0.7.3";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -657,6 +655,15 @@ let COVERS={};
 try{COVERS=JSON.parse(localStorage.getItem("basho_covers"))||{};}catch(e){}
 if(typeof COVERS!=="object"||Array.isArray(COVERS)||!COVERS)COVERS={};
 function saveCovers(){try{localStorage.setItem("basho_covers",JSON.stringify(COVERS));}catch(e){}}
+/* 色を白/黒側に寄せる（デフォルト表紙の二色構え用）。f=0..1で寄せる度合い */
+function mixHex(hex,tgt,f){
+  const h=String(hex||"#6B7280").replace("#",""),t=tgt.replace("#","");
+  if(h.length!==6) return hex;
+  return "#"+[0,2,4].map(i=>{
+    const v=Math.round(parseInt(h.substr(i,2),16)*(1-f)+parseInt(t.substr(i,2),16)*f);
+    return Math.max(0,Math.min(255,v)).toString(16).padStart(2,"0");
+  }).join("");
+}
 /* 表紙の値を正規化して返す: {id:画像id, t:1=カテゴリ名の帯を重ねる}。旧形式(文字列=idのみ)は帯あり扱い */
 function covOf(n){
   const v=COVERS[n]; if(!v) return null;
@@ -709,7 +716,24 @@ function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","
 function openUrl(u){const a=document.createElement("a");a.href=u;a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
 function hasSpot(p){return !!(p.url||(p.lat&&p.lng)||p.addr);}
 function q(p){ return (p.lat&&p.lng) ? p.lat+","+p.lng : encodeURIComponent(p.addr||p.name); }
-function openMap(p){ bump(p); if(p.url) return openUrl(p.url); openUrl("https://www.google.com/maps/search/?api=1&query="+q(p)); }
+function openMap(p){ bump(p);
+  if(p.url) return openUrl(p.url);
+  /* 名前+座標がある時はラベル付きピン＝マップの名称欄に登録名が出る
+     （query=座標だけだと座標文字列がそのまま名称になる）。
+     Android=geo:のラベル付きピン（マップアプリの定番機能）／それ以外=従来の検索URL */
+  if(p.lat&&p.lng&&p.name){
+    const label="("+encodeURIComponent(p.name)+")";
+    const web="https://maps.google.com/maps?q="+p.lat+","+p.lng+label;
+    /* Android: intent://でGoogleマップへ直行（geo:だとアプリ選択が出る端末がある）。
+       マップ未導入ならfallbackで通常URLへ */
+    if(/Android/i.test(navigator.userAgent))
+      return openUrl("intent://"+p.lat+","+p.lng+"?q="+p.lat+","+p.lng+label+
+        "#Intent;scheme=geo;package=com.google.android.apps.maps;S.browser_fallback_url="+
+        encodeURIComponent(web)+";end");
+    return openUrl(web);
+  }
+  openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
+}
 function openRoute(p){ bump(p);
   /* 旧式daddr形式＝経路画面が残っていても地図が経路全体に飛ぶ（api=1・@カメラ付きdirは既存の経路画面が残ると前回位置のまま＝実機検証済み） */
   openUrl("https://maps.google.com/maps?daddr="+q(p));
@@ -1066,13 +1090,15 @@ function renderShelf(list){
   cats.forEach(x=>{
     const b=document.createElement("button");
     b.className="book"; b.style.setProperty("--catcolor",x.c);
-    /* 表紙: 画像なし=カテゴリ色の表紙にカテゴリ名（帯なし・.bare）
+    /* 表紙: 画像なし=カテゴリ色の二色構え（上=明るく/下=濃く）+黒帯にカテゴリ名
              画像あり+帯ON=黒帯にカテゴリ名 / 画像あり+帯OFF=画像のみ */
     const cov=covOf(x.n);
+    const two="linear-gradient(155deg,rgba(255,255,255,.18),rgba(255,255,255,0) 45%,rgba(0,0,0,.12)),"+
+      "linear-gradient(180deg,"+mixHex(x.c,"#FFFFFF",.38)+" 0 46%,"+mixHex(x.c,"#000000",.22)+" 46% 100%)";
     b.innerHTML=
       '<div class="bcover">'+
-        '<div class="bdefault" style="background-color:'+esc(x.c)+'"></div>'+
-        (!cov||cov.t?'<div class="btitle'+(cov?'':' bare')+'">'+esc(x.n)+'</div>':'')+
+        '<div class="bdefault" style="background-image:'+two+'"></div>'+
+        (!cov||cov.t?'<div class="btitle">'+esc(x.n)+'</div>':'')+
       '</div>'+
       '<div class="bcount">'+(counts[x.n]||0)+'件</div>';
     if(cov) phGet(cov.id).then(du=>{
@@ -1080,6 +1106,12 @@ function renderShelf(list){
       const c=b.querySelector(".bcover"); if(!c)return;
       const im=document.createElement("img"); im.alt=""; im.src=du;
       c.insertBefore(im,c.querySelector(".btitle"));   /* 帯より下・スパインより下(z指定)に敷く */
+    });
+    /* 長いカテゴリ名は折り返さずフォントを縮めて1行に収める */
+    const tt=b.querySelector(".btitle");
+    if(tt) requestAnimationFrame(()=>{
+      let fs=16;
+      while(fs>9&&tt.scrollWidth>tt.clientWidth){fs--;tt.style.fontSize=fs+"px";}
     });
     b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; renderTop(); };
     bookLongPress(b,()=>coverMenu(x));
