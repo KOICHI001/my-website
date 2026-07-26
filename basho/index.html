@@ -410,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.14";
+const VER = "0.6.15";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -662,7 +662,11 @@ function openUrl(u){const a=document.createElement("a");a.href=u;a.target="_blan
 function hasSpot(p){return !!(p.url||(p.lat&&p.lng)||p.addr);}
 function q(p){ return (p.lat&&p.lng) ? p.lat+","+p.lng : encodeURIComponent(p.addr||p.name); }
 function openMap(p){ bump(p); if(p.url) return openUrl(p.url); openUrl("https://www.google.com/maps/search/?api=1&query="+q(p)); }
-function openRoute(p){ bump(p); openUrl("https://www.google.com/maps/dir/?api=1&destination="+q(p)); }
+function openRoute(p){ bump(p);
+  /* 座標がある時はパス形式＋@カメラ指定＝マップの表示中心も目的地へ強制移動（api=1形式はカメラ指定不可で前回位置が残る） */
+  if(p.lat&&p.lng) return openUrl("https://www.google.com/maps/dir//"+p.lat+","+p.lng+"/@"+p.lat+","+p.lng+",17z");
+  openUrl("https://www.google.com/maps/dir/?api=1&destination="+q(p));
+}
 function openByName(p){ bump(p); openUrl("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.name+" "+(p.addr||""))); }
 function bump(p){ p.count=(p.count||0)+1; p.used=Date.now(); save(); }
 function pickCoords(url){
