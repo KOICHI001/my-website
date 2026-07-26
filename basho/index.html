@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.12";
+const VER = "0.8.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1980,6 +1980,7 @@ function menu(){
     '<button class="menu-item" id="m_cats">カテゴリを編集する</button>'+
     '<button class="menu-item" id="m_exp">バックアップを書き出す</button>'+
     '<button class="menu-item" id="m_imp">バックアップを読み込む</button>'+
+    '<button class="menu-item" id="m_gmi">Googleマップのお気に入りを取り込む</button>'+
     '<div class="hint" style="margin-top:12px">データはこの端末の中だけに保存されます。'+
     '機種を替える前に書き出しておけば、そのまま引き継げます。<br>場所帳 v'+VER+'</div>'+
     '<div class="sheet-actions"><button class="btn" id="m_close">閉じる</button></div>';
@@ -1991,6 +1992,7 @@ function menu(){
     places.push(rec); Store.save(places); form(rec);
   };
   document.getElementById("m_cats").onclick=catEdit;
+  document.getElementById("m_gmi").onclick=gmImport;
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
@@ -2039,6 +2041,181 @@ function menu(){
     };
     inp.click();
   };
+}
+
+/* ───── Googleマップお気に入り取込（Takeout zip・全部端末内で処理） ─────
+   Takeoutの内部ID: Saved=save（お気に入り等リストのCSV）／マップ(マイプレイス)=local_actions（スター付きGeoJSON・座標入り）
+   ＝実機Takeout画面のDOMで確定（2026-07-27）。zip解凍はDecompressionStream(deflate-raw)で無依存 */
+const GM_TAKEOUT_URL="https://takeout.google.com/settings/takeout/custom/save,local_actions";
+function gmImport(){
+  sheet.innerHTML=
+    '<h2>Googleマップから取り込む</h2>'+
+    '<div class="hint">Googleマップの「お気に入り」「行きたい場所」「スター付き」などを、まとめて場所帳に追加します。今ある場所は消えません。</div>'+
+    '<button class="menu-item" id="gm_open">① Googleからデータをもらう</button>'+
+    '<div class="hint">開いた画面で「2/2 件を選択中」のまま「次のステップ」→ 設定は変えずに「エクスポートを作成」。'+
+    'しばらくするとGmailにダウンロードリンクが届くので、タップしてzipをスマホに保存してください。</div>'+
+    '<button class="menu-item" id="gm_pick">② 保存したzipを読み込む</button>'+
+    '<div class="hint">zipが読めない端末では、zipを解凍して中のCSVファイルを選んでも取り込めます（複数選択可）。</div>'+
+    '<input type="file" id="gm_file" accept=".zip,.csv,.json,application/zip,application/json,text/csv" multiple style="display:none">'+
+    '<div class="sheet-actions"><button class="btn" id="gm_close">閉じる</button></div>';
+  veil.classList.add("on");
+  document.getElementById("gm_close").onclick=closeSheet;
+  document.getElementById("gm_open").onclick=()=>openUrl(GM_TAKEOUT_URL);
+  const inp=document.getElementById("gm_file");
+  document.getElementById("gm_pick").onclick=()=>inp.click();
+  inp.onchange=async()=>{
+    if(!inp.files||!inp.files.length) return;
+    toast("読み込んでいます…");
+    try{
+      const items=await gmReadFiles([...inp.files]);
+      if(!items.length){ toast("場所のデータが見つかりませんでした"); return; }
+      gmPreview(items);
+    }catch(e){ toast(e&&e.gmMsg?e.gmMsg:"このファイルは読み込めませんでした"); }
+  };
+}
+function gmBase(n){ return String(n).split(/[\/\\]/).pop().replace(/\.[^.]+$/,""); }
+async function gmReadFiles(files){
+  const items=[];
+  for(const f of files){
+    const nm=f.name.toLowerCase();
+    if(nm.endsWith(".zip")){
+      const buf=await f.arrayBuffer();
+      const ents=gmUnzip(buf);
+      /* 座標入りのGeoJSON（スター付き）を先に＝同じ場所がリストにもある時は座標入りを優先 */
+      const je=ents.filter(e=>/\.json$/i.test(e.name)&&!/クチコミ|review/i.test(e.name));
+      const ce=ents.filter(e=>/\.csv$/i.test(e.name));
+      for(const e of je){ try{ gmFromGeo(JSON.parse(new TextDecoder().decode(await gmEntryData(buf,e))),items); }catch(_){} }
+      for(const e of ce){ try{ gmFromCsv(new TextDecoder().decode(await gmEntryData(buf,e)),gmBase(e.name),items); }catch(_){} }
+    }
+    else if(nm.endsWith(".json")){ try{ gmFromGeo(JSON.parse(await f.text()),items); }catch(_){} }
+    else if(nm.endsWith(".csv")){ try{ gmFromCsv(await f.text(),gmBase(f.name),items); }catch(_){} }
+  }
+  return items;
+}
+/* zip読み: 末尾のセントラルディレクトリを走査（データ記述子付きローカルヘッダに惑わされない） */
+function gmUnzip(buf){
+  const dv=new DataView(buf), u8=new Uint8Array(buf), td=new TextDecoder("utf-8");
+  let eo=-1;
+  for(let i=buf.byteLength-22;i>=Math.max(0,buf.byteLength-22-65557);i--){ if(dv.getUint32(i,true)===0x06054b50){eo=i;break;} }
+  if(eo<0){ const er=new Error("zip"); er.gmMsg="zipファイルとして読めませんでした"; throw er; }
+  const cnt=dv.getUint16(eo+10,true); let p=dv.getUint32(eo+16,true);
+  const out=[];
+  for(let k=0;k<cnt;k++){
+    if(p+46>buf.byteLength||dv.getUint32(p,true)!==0x02014b50) break;
+    const method=dv.getUint16(p+10,true), csize=dv.getUint32(p+20,true),
+      nlen=dv.getUint16(p+28,true), elen=dv.getUint16(p+30,true), clen=dv.getUint16(p+32,true),
+      lho=dv.getUint32(p+42,true);
+    const name=td.decode(u8.subarray(p+46,p+46+nlen));
+    if(csize!==0xFFFFFFFF&&lho!==0xFFFFFFFF) out.push({name,method,csize,lho});
+    p+=46+nlen+elen+clen;
+  }
+  return out;
+}
+async function gmEntryData(buf,ent){
+  const dv=new DataView(buf);
+  const nlen=dv.getUint16(ent.lho+26,true), elen=dv.getUint16(ent.lho+28,true);
+  const raw=new Uint8Array(buf,ent.lho+30+nlen+elen,ent.csize);
+  if(ent.method===0) return raw;
+  if(ent.method===8){
+    if(typeof DecompressionStream==="undefined"){ const er=new Error("ds"); er.gmMsg="この端末ではzipを直接読めません。解凍して中のCSVを選んでください"; throw er; }
+    return new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer());
+  }
+  throw new Error("method"+ent.method);
+}
+/* CSV: 引用符・カンマ・改行入りに対応した素直なパーサ */
+function gmCsv(text){
+  const rows=[]; let f="",row=[],q=false;
+  for(let i=0;i<text.length;i++){
+    const c=text[i];
+    if(q){ if(c==='"'){ if(text[i+1]==='"'){f+='"';i++;} else q=false; } else f+=c; }
+    else if(c==='"') q=true;
+    else if(c===","){ row.push(f); f=""; }
+    else if(c==="\n"){ row.push(f); f=""; if(row.some(x=>x!=="")) rows.push(row); row=[]; }
+    else if(c!=="\r") f+=c;
+  }
+  if(f!==""||row.length){ row.push(f); if(row.some(x=>x!=="")) rows.push(row); }
+  return rows;
+}
+/* Savedリスト（お気に入り.csv 等）: タイトル,メモ,URL,コメント（英語版ヘッダにも対応） */
+function gmFromCsv(text,listName,items){
+  const rows=gmCsv(text.charCodeAt(0)===0xFEFF?text.slice(1):text); if(rows.length<2) return;
+  const hdr=rows[0].map(s=>String(s).trim().toLowerCase());
+  const iT=hdr.findIndex(h=>h==="タイトル"||h==="title"), iU=hdr.findIndex(h=>h==="url");
+  if(iT<0||iU<0) return;
+  const iN=hdr.findIndex(h=>h==="メモ"||h==="note"), iC=hdr.findIndex(h=>h==="コメント"||h==="comment");
+  for(let r=1;r<rows.length;r++){
+    const row=rows[r], name=String(row[iT]||"").trim(); if(!name) continue;
+    const url=String(row[iU]||"").trim();
+    const memo=[iN>=0?row[iN]:"",iC>=0?row[iC]:""].map(s=>String(s||"").trim()).filter(Boolean).join(" / ");
+    const c=pickCoords(url)||gmSearchCoords(url);
+    items.push({name:name,url:url,memo:memo,addr:"",lat:c?c.lat:"",lng:c?c.lng:"",list:listName});
+  }
+}
+function gmSearchCoords(url){
+  const m=String(url||"").match(/\/maps\/search\/(-?\d+\.\d+)(?:,|%2C)\+?(-?\d+\.\d+)/);
+  return m?{lat:m[1],lng:m[2]}:null;
+}
+/* マイプレイスのGeoJSON（保存した場所.json）: 新旧2形式に対応・クチコミは除外 */
+function gmFromGeo(g,items){
+  if(!g||g.type!=="FeatureCollection"||!Array.isArray(g.features)) return;
+  for(const ft of g.features){
+    const pr=(ft&&ft.properties)||{};
+    if(pr.review||pr["Star Rating"]||pr["Review Comment"]) continue;
+    const name=String(pr.Title||(pr.location&&pr.location.name)||(pr.Location&&pr.Location["Business Name"])||"").trim();
+    const url=String(pr["Google Maps URL"]||pr.google_maps_url||"").trim();
+    const addr=String((pr.location&&pr.location.address)||(pr.Location&&pr.Location.Address)||"").trim();
+    let lat="",lng="";
+    if(ft.geometry&&ft.geometry.type==="Point"&&Array.isArray(ft.geometry.coordinates)){
+      lng=String(ft.geometry.coordinates[0]); lat=String(ft.geometry.coordinates[1]);
+    }else if(pr.Location&&pr.Location["Geo Coordinates"]){
+      lat=String(pr.Location["Geo Coordinates"].Latitude||""); lng=String(pr.Location["Geo Coordinates"].Longitude||"");
+    }
+    if(Math.abs(+lat)<0.01&&Math.abs(+lng)<0.01){ lat=""; lng=""; }   /* 0,0=未解決座標は捨てる */
+    if(!name&&!url&&!addr) continue;
+    items.push({name:name||addr||"名称不明",url:url,memo:"",addr:addr,lat:lat,lng:lng,list:"スター付き"});
+  }
+}
+/* プレビュー: 重複（URL一致・名前一致）はスキップして内訳を見せてから取り込む */
+function gmPreview(items){
+  const urls=new Set(places.map(x=>String(x.url||"").trim()).filter(Boolean));
+  const names=new Set(places.map(x=>norm(x.name)));
+  const bu=new Set(), bn=new Set(), fresh=[]; let dup=0;
+  for(const it of items){
+    const uk=String(it.url||"").trim(), nk=norm(it.name);
+    if((uk&&(urls.has(uk)||bu.has(uk)))||(nk&&(names.has(nk)||bn.has(nk)))){ dup++; continue; }
+    fresh.push(it); if(uk)bu.add(uk); if(nk)bn.add(nk);
+  }
+  if(!fresh.length){ toast("すべて登録済みでした（新しい場所はありません）"); return; }
+  const byList={}; fresh.forEach(it=>{ byList[it.list]=(byList[it.list]||0)+1; });
+  const nGeo=fresh.filter(it=>it.lat&&it.lng).length;
+  sheet.innerHTML=
+    '<h2>取り込む内容の確認</h2>'+
+    '<div class="hint">リストの名前がそのままカテゴリになります。</div>'+
+    Object.keys(byList).map(k=>'<div class="menu-item" style="pointer-events:none">'+esc(k)+'　'+byList[k]+'件</div>').join("")+
+    '<div class="hint">合計 '+fresh.length+'件（うち位置情報付き '+nGeo+'件）'+(dup?'／登録済みのため '+dup+'件はスキップ':'')+'</div>'+
+    '<div class="sheet-actions"><button class="btn" id="gm_no">やめる</button>'+
+    '<button class="btn primary" id="gm_go">'+fresh.length+'件を取り込む</button></div>';
+  document.getElementById("gm_no").onclick=closeSheet;
+  document.getElementById("gm_go").onclick=()=>gmApply(fresh);
+}
+function gmApply(fresh){
+  let catCh=false;
+  for(const ln of [...new Set(fresh.map(x=>x.list))]){
+    if(!CATS.some(c=>c.n===ln)){
+      const used=CATS.map(x=>x.c);
+      const col=CAT_COLORS.find(c=>!used.includes(c))||CAT_COLORS[CATS.length%CAT_COLORS.length];
+      CATS=CATS.filter(x=>x.n!==CAT_OTHER.n).concat([{n:ln,c:col}],[CAT_OTHER]); catCh=true;
+    }
+  }
+  if(catCh) saveCats();
+  const t0=Date.now();
+  fresh.forEach((it,i)=>{
+    const rec={id:"p"+t0+"_g"+i,name:it.name,kana:"",cat:it.list,memo:it.memo||"",lat:it.lat||"",lng:it.lng||"",acc:null,
+      addr:it.addr||"",url:it.url||"",tel:"",fav:false,count:0,created:t0,updated:t0};
+    if(rec.lat&&rec.lng) updatePref(rec);
+    places.push(rec);
+  });
+  save(); closeSheet(); toast(fresh.length+"件を取り込みました");
 }
 
 /* カラーパレット窓: 色名付きリストから選ぶ（上下スクロール可・タップで確定） */
