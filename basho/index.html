@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><!-- アプリ全体のピンチ拡縮禁止（地図のピンチはLeafletが自前処理なので影響なし・箱v2.9.33と同方式） -->
 <meta name="theme-color" content="#EDEFE8">
 <meta name="description" content="今いる場所をひと押しで登録。次からは名前を選ぶだけで地図が開きます。">
 <link rel="manifest" href="manifest.webmanifest">
@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.9";
+const VER = "0.7.10";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
