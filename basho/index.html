@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.5";
+const VER = "0.7.6";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1830,7 +1830,7 @@ function nvOpenPick(initLL,cb,autoQ){
   if(autoQ) nvSearchGo(true);   /* 名前で自動検索→最初の候補へジャンプ */
 }
 function nvSearchGo(autoJump){
-  const q=nvEl("nvSearch").value.trim(); if(!q) return;
+  const q0=nvEl("nvSearch").value.trim(); if(!q0) return;
   const list=nvEl("nvCands");
   list.innerHTML='<div class="nv-cand" style="color:var(--soft)">検索中…</div>';
   const show=(items,jumpOk)=>{
@@ -1847,7 +1847,7 @@ function nvSearchGo(autoJump){
     });
     if(autoJump&&jumpOk) NV.map.setView([items[0].lat,items[0].lng],items[0].z);
   };
-  /* 検索語との一致度で並べ替え（「明治神宮」で北海道の地名「明治」に飛ばないように）。
+  /* 検索語との一致度チェック（「明治神宮」で北海道の地名「明治」に飛ばないように）。
      住所は表記ゆれを正規化して比較（「3-1-4」⇄「三丁目１番４号」を同一視） */
   const anorm=s=>{
     s=String(s||"").normalize("NFKC");
@@ -1856,28 +1856,57 @@ function nvSearchGo(autoJump){
       .replace(/丁目|番地|番|号/g,"-").replace(/[ 　]/g,"")
       .replace(/-+$/,"").replace(/--+/g,"-");
   };
-  const nq=anorm(q);
-  const rank=t=>{const T=anorm(t);return T===nq?0:(T.startsWith(nq)?1:(T.includes(nq)?2:3));};
-  /* ①地理院（住所・地名に強い）→ ②OpenStreetMap（施設名に強い）の順で探す */
-  fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q))
-    .then(r=>r.json())
-    .then(a=>{
+  /* クエリの掃除: Googleマップのコピペ住所は「日本、〒330-0063 …」形式で
+     〒付き=地理院0件・「日本、」付き=別地名に誤ヒットを実測 → 前置きを剥がす */
+  const clean=q0.normalize("NFKC")
+    .replace(/^日本[、,]?\s*/,"")
+    .replace(/〒\s*\d{3}-?\d{4}\s*/,"").replace(/^\d{3}-\d{4}\s+/,"")
+    .replace(/[－ー―‐−‑]/g,"-").replace(/\s+/g," ").trim();   /* −(U+2212)=マップコピペのマイナス記号も統一 */
+  /* 段階クエリ: フル → 番地まで(後ろの建物名を落とす) → 枝番を1つずつ落とす → 町名まで。
+     深い段ほどザックリ表示になるが、日本全体のままより圧倒的にマシ */
+  const steps=[clean];
+  const m=clean.match(/^(.+?\d+(?:-\d+)*)/);
+  if(m){
+    if(m[1]!==clean) steps.push(m[1]);
+    let base=m[1];
+    while(/-\d+$/.test(base)){ base=base.replace(/-\d+$/,""); steps.push(base); }
+    const town=base.replace(/\d+$/,"").replace(/[-\s]+$/,"");
+    if(town&&town!==base) steps.push(town);
+  }
+  const uniq=[...new Set(steps)].filter(Boolean);
+  const gsiURL=s=>"https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(s);
+  let loose=[];   /* 1段目の緩い候補（全滅時に自動ジャンプなしで見せる用） */
+  const tryGsi=i=>{
+    if(i>=uniq.length) return tryNomi();
+    const s=uniq[i], ns=anorm(s);
+    const rank=t=>{const T=anorm(t);return T===ns?0:(T.startsWith(ns)?1:(T.includes(ns)?2:3));};
+    return fetch(gsiURL(s)).then(r=>r.json()).then(a=>{
+      const z=Math.max(14,16-i);
       const items=(Array.isArray(a)?a:[]).map(it=>({
         t:it.properties.title,
-        lat:it.geometry.coordinates[1], lng:it.geometry.coordinates[0], z:16}));
+        lat:it.geometry.coordinates[1], lng:it.geometry.coordinates[0], z:z}));
       items.sort((x,y)=>rank(x.t)-rank(y.t));
-      if(items.length&&(items[0].t.includes(q)||anorm(items[0].t).includes(nq))) return show(items,true);
-      return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q="+encodeURIComponent(q))
-        .then(r=>r.json())
-        .then(b=>{
-          const ni=(Array.isArray(b)?b:[]).map(it=>({
-            t:(it.display_name||"").split(",").slice(0,3).join("、"),
-            lat:+it.lat, lng:+it.lon, z:17}));
-          if(ni.length) return show(ni,true);
-          return show(items,false);   /* 緩い候補のみ＝一覧は出すが自動ジャンプしない */
-        });
+      if(items.length&&(items[0].t.includes(s)||anorm(items[0].t).includes(ns))){
+        if(autoJump&&i>0) toast("番地までは特定できず、近いところを表示しています。＋印で合わせてください");
+        return show(items,true);
+      }
+      if(i===0) loose=items;
+      return tryGsi(i+1);
+    }).catch(()=>tryGsi(i+1));
+  };
+  /* OpenStreetMap（施設名に強い）: 地理院が全段ダメだった時の最後の手 */
+  const tryNomi=()=>fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q="+encodeURIComponent(clean))
+    .then(r=>r.json())
+    .then(b=>{
+      const ni=(Array.isArray(b)?b:[]).map(it=>({
+        t:(it.display_name||"").split(",").slice(0,3).join("、"),
+        lat:+it.lat, lng:+it.lon, z:17}));
+      if(ni.length) return show(ni,true);
+      return show(loose,false);   /* 緩い候補のみ＝一覧は出すが自動ジャンプしない */
     })
-    .catch(()=>{list.innerHTML="";toast("検索できませんでした（通信を確認）");});
+    .catch(()=>{ if(loose.length) return show(loose,false);
+      list.innerHTML=""; toast("検索できませんでした（通信を確認）"); });
+  tryGsi(0);
 }
 
 /* ───── 設定 ───── */
