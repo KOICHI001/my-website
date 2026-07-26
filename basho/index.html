@@ -346,6 +346,17 @@
   .ocr-btns{display:flex;gap:8px;margin-top:8px}
   .ocr-btns .btn{padding:12px}
   .ocr-btns .btn:disabled{opacity:.4;cursor:default}
+  /* 本の中の小フォルダ: 左=先頭4件のミニカード2×2（フォルダの集合体だと一目で分かる）/ 右=フォルダ名と件数 */
+  .folders{grid-column:1/-1}
+  .folder{display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
+    background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    padding:10px 12px;margin:0 0 10px;font-family:var(--gothic);color:var(--ink)}
+  .fgrid{flex:0 0 104px;display:grid;grid-template-columns:1fr 1fr;gap:5px}
+  .fcell{height:46px;border-radius:7px;background:var(--paper);border:1px solid var(--line);
+    font-size:9px;line-height:1.3;padding:3px 4px;overflow:hidden;color:var(--soft);
+    background-size:cover;background-position:center;word-break:break-all}
+  .fname{font-size:16px;font-weight:700;letter-spacing:.02em}
+  .fcnt{font-family:var(--mono);font-size:11px;color:var(--soft);margin-top:3px}
   @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -442,7 +453,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.8.1";
+const VER = "0.9.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -698,6 +709,7 @@ let viewMode=localStorage.getItem("basho_view")==="tile"?"tile":"list";
 /* ホームタブ（一覧⇄本棚）と、開いている本（カテゴリ名） */
 let homeTab=localStorage.getItem("basho_home")==="shelf"?"shelf":"list";
 let shelfCat=null;
+let shelfSub=null;   /* 開いている小フォルダ（本の中の1段だけ。p.sf=フォルダ名） */
 /* 本の表紙画像: {カテゴリ名: 画像id}。画像本体は場所写真と同じIndexedDBへ */
 let COVERS={};
 try{COVERS=JSON.parse(localStorage.getItem("basho_covers"))||{};}catch(e){}
@@ -892,7 +904,9 @@ function renderTop(){
 /* 登録直後、本棚タブにいるなら登録先の本の中を開く＝どの本に入ったか迷わない */
 function showInBook(cat){
   if(homeTab!=="shelf") return;
-  shelfCat=CATS.some(x=>x.n===cat)?cat:CAT_OTHER.n;
+  const nc=CATS.some(x=>x.n===cat)?cat:CAT_OTHER.n;
+  if(shelfCat!==nc) shelfSub=null;   /* 別の本に移る時はフォルダ表示を解除 */
+  shelfCat=nc;
   renderTop();
 }
 function _renderBody(){
@@ -922,14 +936,15 @@ function _renderBody(){
     return b;
   }
   if(inBook){
-    /* 本の中: カテゴリチップの代わりに「← 本棚」と本のタイトル */
+    /* 本の中: カテゴリチップの代わりに「← 本棚」と本のタイトル。フォルダの中では「← 本」とフォルダ名 */
     const bk=document.createElement("button");
-    bk.className="chip"; bk.textContent="← 本棚";
-    bk.onclick=()=>{shelfCat=null;renderTop();};
+    bk.className="chip";
+    if(shelfSub){ bk.textContent="← "+shelfCat; bk.onclick=()=>{shelfSub=null;renderTop();}; }
+    else{ bk.textContent="← 本棚"; bk.onclick=()=>{shelfCat=null;shelfSub=null;renderTop();}; }
     lg.appendChild(bk);
     const tt=document.createElement("span");
     tt.className="chip on";
-    tt.innerHTML='<span class="dot" style="background:'+esc(catColor(shelfCat))+'"></span>'+esc(shelfCat);
+    tt.innerHTML='<span class="dot" style="background:'+esc(catColor(shelfCat))+'"></span>'+esc(shelfSub?"📁 "+shelfSub:shelfCat);
     lg.appendChild(tt);
     lg.appendChild(nearChip());
   }else if(places.length&&homeTab==="list"){
@@ -946,7 +961,7 @@ function _renderBody(){
   }
 
   /* エリア行: 2つ以上の県にまたがった時だけ出す（一覧と本の中。本の中は本の中身だけで数える） */
-  const scope=inBook?places.filter(p=>(p.cat||CAT_OTHER.n)===shelfCat):places;
+  const scope=inBook?places.filter(p=>(p.cat||CAT_OTHER.n)===shelfCat&&(!shelfSub||p.sf===shelfSub)):places;
   const ar=document.getElementById("areas"); ar.innerHTML="";
   const prefSet=[...new Set(scope.map(p=>p.pref).filter(Boolean))];
   const multiPref=prefSet.length>1&&!inShelfTop;
@@ -973,8 +988,16 @@ function _renderBody(){
   }
 
   const qr=norm(romaToHira(qi.value));
+  /* 本の中のフォルダたたみ表示: 検索・地域・2km等の絞り込み中はフォルダを畳まず全カードを平らに出す
+     （フォルダの中の場所が「絞ったのに出てこない」を防ぐ） */
+  const flatMode=!!(qn||filterPref||filterRegion||nearFilter);
+  const folderBrowse=inBook&&!shelfSub&&!flatMode;
   const rows=sorted().filter(p=>{
-    if(inBook){ if((p.cat||CAT_OTHER.n)!==shelfCat) return false; }   /* 本の中=そのカテゴリだけ */
+    if(inBook){
+      if((p.cat||CAT_OTHER.n)!==shelfCat) return false;   /* 本の中=そのカテゴリだけ */
+      if(shelfSub){ if(p.sf!==shelfSub) return false; }   /* フォルダの中=そのフォルダだけ */
+      else if(folderBrowse&&p.sf) return false;           /* 本の直下ではフォルダ入りは畳む */
+    }
     else{
       if(onlyFix && hasSpot(p) && !(p.acc&&p.acc>80)) return false;
       if(filterCat && p.cat!==filterCat) return false;
@@ -986,7 +1009,7 @@ function _renderBody(){
     if(!qn) return true;
     const pi=PREF_INFO[p.pref]||["",""];
     const rg=REGIONS.find(r=>r[0]===pi[1])||["",""];
-    const hay=norm([p.name,p.kana,p.cat,p.addr,p.memo,p.tel,p.pref||"",pi[0],pi[1],rg[1]].join(" "));
+    const hay=norm([p.name,p.kana,p.cat,p.sf||"",p.addr,p.memo,p.tel,p.pref||"",pi[0],pi[1],rg[1]].join(" "));
     return hay.includes(qn)||(qr&&qr!==qn&&hay.includes(qr));
   });
   document.getElementById("tally").textContent = places.length ? rows.length+" / "+places.length : "";
@@ -997,15 +1020,20 @@ function _renderBody(){
     renderShelf(list); return;
   }
   list.className=(viewMode==="tile"&&rows.length)?"tiles":"list";
+  /* 本の直下: 小フォルダのタイル（左=先頭4件ミニカード2×2 / 右=フォルダ名）を先頭に出す */
+  const nFolders=folderBrowse?renderFolders(list):0;
   if(!places.length){
     list.innerHTML='<div class="empty"><b>まだ空です</b>今いる場所で右下のボタンを押すと、その地点が記録されます。名前を入れるだけで登録は終わりです。</div>';
     return;
   }
   if(!rows.length){
+    if(nFolders) return;   /* フォルダだけの本＝空メッセージは出さない */
     if(nearFilter&&!lastPos)
       list.innerHTML='<div class="empty"><b>現在地を取得しています…</b>取得できると、2km以内の場所だけが表示されます。</div>';
     else if(nearFilter)
       list.innerHTML='<div class="empty"><b>2km以内には登録がありません</b>チップをもう一度押すと絞り込みを解除できます。</div>';
+    else if(inBook&&shelfSub&&!qn)
+      list.innerHTML='<div class="empty"><b>このフォルダは空になりました</b>「← '+esc(shelfCat)+'」で本に戻れます。</div>';
     else list.innerHTML = (inBook&&!qn)
       ? '<div class="empty"><b>この本はまだ空です</b>登録のときカテゴリで「'+esc(shelfCat)+'」を選ぶと、ここに入ります。</div>'
       : '<div class="empty"><b>見つかりません</b>別の言葉で探すか、この場所を新しく登録してください。</div>';
@@ -1116,6 +1144,77 @@ function areaChip(label,on,fn){
   return b;
 }
 
+/* ───── 本の中の小フォルダ（1段だけ。p.sf=フォルダ名） ─────
+   本の直下にタイルで並ぶ: 左=中の先頭4件のミニカード2×2 / 右=フォルダ名と件数。
+   タップ=そのフォルダだけ表示 / 長押し=名前変更・解除・削除 */
+function bookSubs(cat){
+  const m=new Map();
+  sorted().forEach(p=>{ if((p.cat||CAT_OTHER.n)===cat&&p.sf){ if(!m.has(p.sf))m.set(p.sf,[]); m.get(p.sf).push(p); } });
+  return m;
+}
+function renderFolders(list){
+  const m=bookSubs(shelfCat);
+  if(!m.size) return 0;
+  const box=document.createElement("div"); box.className="folders";
+  m.forEach((arr,name)=>{
+    const el=document.createElement("button"); el.className="folder";
+    let cells="";
+    for(let i=0;i<4;i++){
+      const p=arr[i];
+      cells+='<div class="fcell">'+(p?esc(p.name):"")+'</div>';
+    }
+    el.innerHTML='<div class="fgrid">'+cells+'</div>'+
+      '<div><div class="fname">📁 '+esc(name)+'</div><div class="fcnt">'+arr.length+'件</div></div>';
+    /* 写真がある場所はミニカードに写真を敷く（名前より画で分かる） */
+    arr.slice(0,4).forEach((p,i)=>{
+      if(p.ph&&p.ph[0]) phGet(p.ph[0]).then(du=>{
+        if(!du)return;
+        const c=el.querySelectorAll(".fcell")[i]; if(!c)return;
+        c.style.backgroundImage="url("+du+")"; c.textContent="";
+      });
+    });
+    el.onclick=()=>{ if(el.longFired){el.longFired=false;return;} shelfSub=name; renderTop(); };
+    bookLongPress(el,()=>folderMenu(name));
+    box.appendChild(el);
+  });
+  list.appendChild(box);
+  return m.size;
+}
+function folderMenu(sub){
+  const arr=places.filter(p=>(p.cat||CAT_OTHER.n)===shelfCat&&p.sf===sub);
+  const nPh=arr.reduce((s,p)=>s+((p.ph||[]).length),0);
+  sheet.innerHTML=
+    '<h2>📁「'+esc(sub)+'」</h2>'+
+    '<div class="hint">「'+esc(shelfCat)+'」の中のフォルダです（'+arr.length+'件）。</div>'+
+    '<button class="menu-item" id="fm_ren">名前を変更する</button>'+
+    '<button class="menu-item" id="fm_flat">フォルダを解除する（中の場所はバラに戻る）</button>'+
+    '<button class="menu-item" id="fm_del" style="color:#B4462F">🗑 中の場所 '+arr.length+'件'+(nPh?'（写真'+nPh+'枚）':'')+' ごと削除</button>'+
+    '<div class="sheet-actions"><button class="btn" id="fm_close">閉じる</button></div>';
+  veil.classList.add("on");
+  document.getElementById("fm_close").onclick=closeSheet;
+  document.getElementById("fm_ren").onclick=()=>{
+    const nv=(prompt("新しいフォルダ名",sub)||"").trim();
+    if(!nv||nv===sub) return;
+    arr.forEach(p=>{p.sf=nv;});
+    if(shelfSub===sub) shelfSub=nv;
+    Store.save(places); closeSheet(); renderTop(); toast("名前を変更しました");
+  };
+  document.getElementById("fm_flat").onclick=()=>{
+    if(!confirm('フォルダを解除して、中の場所 '+arr.length+'件 を「'+shelfCat+'」の直下に戻します。\n場所は消えません。よろしいですか？'))return;
+    arr.forEach(p=>{delete p.sf;});
+    if(shelfSub===sub) shelfSub=null;
+    Store.save(places); closeSheet(); renderTop(); toast("フォルダを解除しました");
+  };
+  document.getElementById("fm_del").onclick=()=>{
+    if(!confirm('「'+sub+'」の中の場所 '+arr.length+'件'+(nPh?'と写真'+nPh+'枚':'')+'を削除します。\n元に戻せません。よろしいですか？'))return;
+    arr.forEach(phPurgePlace);
+    const ids=new Set(arr.map(p=>p.id));
+    places=places.filter(p=>!ids.has(p.id));
+    if(shelfSub===sub) shelfSub=null;
+    Store.save(places); closeSheet(); renderTop(); toast("フォルダごと削除しました");
+  };
+}
+
 /* ───── 本棚（カテゴリ=本） ─────
    タップ=その本を開く / 長押し=表紙の画像を設定。
    表紙が無い本はカテゴリ色の表紙＋頭文字 */
@@ -1169,7 +1268,7 @@ function renderShelf(list){
       let fs=16;
       while(fs>9&&tt.scrollWidth>tt.clientWidth){fs--;tt.style.fontSize=fs+"px";}
     });
-    b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; renderTop(); };
+    b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; shelfSub=null; renderTop(); };
     bookLongPress(b,()=>coverMenu(x));
     list.appendChild(b);
   });
@@ -1246,7 +1345,7 @@ function bookRemove(cat,withPlaces){
     places.filter(p=>p.cat===cat.n).forEach(phPurgePlace);   /* 写真もIndexedDBから道連れパージ */
     places=places.filter(p=>p.cat!==cat.n);
   }else{
-    places.forEach(p=>{ if(p.cat===cat.n) p.cat=CAT_OTHER.n; });
+    places.forEach(p=>{ if(p.cat===cat.n){ p.cat=CAT_OTHER.n; delete p.sf; } });   /* フォルダは本の中の区分＝移動先では外す */
   }
   const c=covOf(cat.n); if(c){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);}
   delete COVERS[cat.n]; saveCovers();
@@ -1301,6 +1400,8 @@ function quickAdd(){
       lat:b?b.lat:"", lng:b?b.lng:"", acc:b?b.acc:null,
       addr:"", url:"", tel:"", fav:false, count:0, created:Date.now(), updated:Date.now()
     };
+    /* フォルダの中を開いた状態で登録→同じカテゴリならそのフォルダに入る */
+    if(homeTab==="shelf"&&shelfSub&&rec.cat===shelfCat) rec.sf=shelfSub;
     updatePref(rec);
     places.push(rec); save(); closeSheet();
     showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
@@ -1402,6 +1503,7 @@ function shareAdd(name,url,c,addr){
       url:document.getElementById("f_url").value.trim(), tel:"",
       fav:false, count:0, created:Date.now(), updated:Date.now()
     };
+    if(homeTab==="shelf"&&shelfSub&&rec.cat===shelfCat) rec.sf=shelfSub;
     updatePref(rec); places.push(rec); save(); closeSheet();
     showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
     if(rec.lat&&rec.lng){ toast("「"+nm+"」を登録しました"); return; }
@@ -1424,6 +1526,7 @@ function form(d){
       '<div><label>よみ（検索用・任意）</label><input type="text" id="f_kana" value="'+esc(d.kana)+'"></div>'+
       '<div><label>カテゴリ</label>'+catFieldHTML(d.cat)+'</div>'+
     '</div>'+
+    '<label>フォルダ（本の中の小分け・任意）</label>'+sfFieldHTML(d.sf||"")+
     '<label>位置</label>'+
     '<div class="gps'+((d.lat&&d.lng)?" ok":"")+'" id="gpsbox">'+
       ((d.lat&&d.lng)?'記録あり<span class="mono">'+d.lat+", "+d.lng+(d.acc?" ±"+d.acc+"m":"")+'</span>':'まだ入っていません')+
@@ -1450,7 +1553,7 @@ function form(d){
       '<button class="btn primary" id="ok">保存する</button>'+
     '</div>';
   veil.classList.add("on"); sheet.scrollTop=0;
-  catFieldWire();
+  catFieldWire(); sfFieldWire();
 
   const box=document.getElementById("gpsbox");
   /* accは保存を押すまでdに書き込まない（「やめる」で元に戻るように） */
@@ -1539,6 +1642,7 @@ function form(d){
     Object.assign(d,{name:v("f_name"),kana:v("f_kana"),cat:v("f_cat"),addr:v("f_addr"),
       url:v("f_url"),lat:la,lng:lo,tel:v("f_tel"),memo:v("f_memo"),
       acc:(la+","+lo===accFor)?accPend:null,updated:Date.now()});
+    const sfv=v("f_sf"); if(sfv)d.sf=sfv; else delete d.sf;
     updatePref(d);
     save(); closeSheet(); toast("保存しました");
   };
@@ -2315,6 +2419,47 @@ function catFieldWire(){
   });
 }
 
+/* 小フォルダ欄（編集シート用・任意）: 選んだカテゴリの中の既存フォルダ＋新規作成から選ぶ */
+function sfFieldHTML(cur){
+  return '<input type="hidden" id="f_sf" value="'+esc(cur||"")+'">'+
+    '<button type="button" class="catsel" id="f_sfBtn">'+
+    '<span id="f_sfLabel">'+(cur?"📁 "+esc(cur):"（なし）")+'</span><span class="catsel-arrow">▼</span></button>';
+}
+function sfFieldWire(){
+  const btn=document.getElementById("f_sfBtn");
+  if(!btn) return;
+  btn.onclick=()=>{
+    const cat=document.getElementById("f_cat").value;
+    const cur=document.getElementById("f_sf").value;
+    const w=document.getElementById("cpickWin");
+    w.innerHTML="";
+    const row=(label,val,sel)=>{
+      const b=document.createElement("button");
+      b.className="cpick-row"+(sel?" cat":"");
+      if(sel) b.style.background="#0B6E5F18";
+      b.textContent=label;
+      b.onclick=()=>{cpickClose();
+        document.getElementById("f_sf").value=val;
+        document.getElementById("f_sfLabel").textContent=val?"📁 "+val:"（なし）";};
+      w.appendChild(b);
+    };
+    row("（なし）","",!cur);
+    [...bookSubs(cat).keys()].forEach(n=>row("📁 "+n,n,n===cur));
+    const nb=document.createElement("button");
+    nb.className="cpick-row"; nb.textContent="＋ 新しいフォルダを作る";
+    nb.onclick=()=>{
+      const nv=(prompt("フォルダの名前（例: 軽井沢周辺）")||"").trim();
+      if(!nv) return;
+      cpickClose();
+      document.getElementById("f_sf").value=nv;
+      document.getElementById("f_sfLabel").textContent="📁 "+nv;
+    };
+    w.appendChild(nb);
+    document.getElementById("cpick").classList.add("on");
+    w.scrollTop=0;
+  };
+}
+
 /* ───── カテゴリ編集（名前変更・色変え・削除・新設。「その他」は受け皿として固定） ───── */
 function catEdit(){
   const rows=CATS.filter(x=>x.n!==CAT_OTHER.n).map(x=>({orig:x.n,n:x.n,c:x.c}));
@@ -2366,7 +2511,7 @@ function catEdit(){
       const removed=CATS.filter(x=>x.n!==CAT_OTHER.n&&!kept.has(x.n)).map(x=>x.n);
       places.forEach(p=>{
         if(ren[p.cat]) p.cat=ren[p.cat];
-        else if(removed.includes(p.cat)) p.cat=CAT_OTHER.n;
+        else if(removed.includes(p.cat)){ p.cat=CAT_OTHER.n; delete p.sf; }
       });
       if(ren[filterCat]) filterCat=ren[filterCat];
       else if(removed.includes(filterCat)) filterCat="";
@@ -2649,6 +2794,7 @@ function closeTopOverlay(){
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
+  else if(homeTab==="shelf"&&shelfCat&&shelfSub){ shelfSub=null; renderTop(); }   /* フォルダ→本へ */
   else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; renderTop(); }   /* 本の中→本棚へ */
 }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
