@@ -440,7 +440,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.0";
+const VER = "0.7.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -799,6 +799,12 @@ function render(){
   _renderBody();
   se.scrollTop=y;
 }
+/* 画面の切り替え（タブ・本の開閉）は別の画面になるので必ず先頭から表示
+   （renderのスクロール保持をそのまま使うと、前の画面のスクロール分だけ中身が上にめり込む） */
+function renderTop(){
+  _renderBody();
+  (document.scrollingElement||document.documentElement).scrollTop=0;
+}
 function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
@@ -817,7 +823,7 @@ function _renderBody(){
     /* 本の中: カテゴリチップの代わりに「← 本棚」と本のタイトル */
     const bk=document.createElement("button");
     bk.className="chip"; bk.textContent="← 本棚";
-    bk.onclick=()=>{shelfCat=null;render();};
+    bk.onclick=()=>{shelfCat=null;renderTop();};
     lg.appendChild(bk);
     const tt=document.createElement("span");
     tt.className="chip on";
@@ -1042,7 +1048,7 @@ function renderShelf(list){
       const im=document.createElement("img"); im.alt=""; im.src=du;
       c.appendChild(im);
     });
-    b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; render(); };
+    b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; renderTop(); };
     bookLongPress(b,()=>coverMenu(x));
     list.appendChild(b);
   });
@@ -2203,12 +2209,12 @@ document.getElementById("sortBtn").onclick=e=>{
 document.getElementById("tabList").onclick=()=>{
   homeTab="list"; shelfCat=null;
   try{localStorage.setItem("basho_home","list");}catch(e){}
-  render();
+  renderTop();
 };
 document.getElementById("tabShelf").onclick=()=>{
   homeTab="shelf"; shelfCat=null;
   try{localStorage.setItem("basho_home","shelf");}catch(e){}
-  render();
+  renderTop();
 };
 const viewLabel=()=>viewMode==="tile"?"一覧":"タイル";
 document.getElementById("viewBtn").textContent=viewLabel();
@@ -2225,7 +2231,7 @@ function closeTopOverlay(){
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
-  else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; render(); }   /* 本の中→本棚へ */
+  else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; renderTop(); }   /* 本の中→本棚へ */
 }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
 /* Android戻るボタン対応（番兵方式）: 戻る＝面を1つ閉じる。アプリ自体は終了させない */
