@@ -56,6 +56,32 @@
   .chip.fix{border-color:rgba(163,58,42,.45);color:var(--danger)}
   .chip.fix.on{background:var(--danger);color:#fff;border-color:var(--danger)}
 
+  /* ホームタブ（一覧⇄本棚） */
+  .hometabs{display:flex;gap:8px;padding:0 0 10px}
+  .hometabs button{flex:1;border:1px solid var(--line);background:var(--card);color:var(--soft);
+    border-radius:12px;padding:9px 0;font-size:14px;font-family:var(--mincho);letter-spacing:.12em;cursor:pointer}
+  .hometabs button.on{background:var(--ink);color:#F8F9F5;border-color:var(--ink);font-weight:600}
+  /* 本棚: カテゴリ=本。左角は直角・右角は丸（表紙のフォルム）・左端に背表紙の色ライン */
+  .shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:20px 16px}
+  .book{border:0;background:none;padding:0;cursor:pointer;font-family:inherit;color:inherit;
+    text-align:center;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+  .book:active .bcover{transform:translateY(1px)}
+  .bcover{position:relative;aspect-ratio:3/4;border-radius:4px 14px 14px 4px;overflow:hidden;
+    background:var(--card);border:1px solid var(--line);
+    box-shadow:2px 3px 9px rgba(27,36,34,.2)}
+  .bcover::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;
+    background:var(--catcolor,#6B7280);z-index:2}
+  .bcover::after{content:"";position:absolute;left:11px;top:0;bottom:0;width:2px;
+    background:rgba(27,36,34,.14);z-index:2}   /* 表紙の折り目 */
+  .bcover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;pointer-events:none}
+  .bdefault{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:var(--mincho);font-size:46px;font-weight:600;color:rgba(255,255,255,.94);
+    text-shadow:0 1px 4px rgba(0,0,0,.25);
+    background-image:linear-gradient(155deg,rgba(255,255,255,.24),rgba(255,255,255,0) 45%,rgba(0,0,0,.2))}
+  .bname{margin-top:9px;font-size:14px;color:var(--ink)}
+  .bcount{font-family:var(--mono);font-size:11px;color:var(--soft);margin-top:2px}
+  .shelfhint{grid-column:1/-1;font-size:12px;color:var(--soft);text-align:center;padding:8px 0 0}
+
   .list{display:flex;flex-direction:column;gap:10px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
     overflow:hidden;position:relative}
@@ -333,6 +359,10 @@
       <button class="iconbtn" id="sortBtn">よく行く順</button>
       <button class="iconbtn" id="menuBtn">⋯</button>
     </div>
+    <div class="hometabs">
+      <button id="tabList">一覧</button>
+      <button id="tabShelf">📚 本棚</button>
+    </div>
     <div class="searchrow">
       <input type="text" id="q" placeholder="名前・住所・メモ・電話などで検索" autocomplete="off">
       <button class="iconbtn" id="clearq">✕</button>
@@ -410,7 +440,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.18";
+const VER = "0.7.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -614,6 +644,14 @@ lb.onclick=()=>{ if(lbSwiped) return; lbClose(); };
 let sortMode=localStorage.getItem("basho_sort")||"use";
 if(sortMode!=="use"&&sortMode!=="kana"&&sortMode!=="near") sortMode="use";
 let viewMode=localStorage.getItem("basho_view")==="tile"?"tile":"list";
+/* ホームタブ（一覧⇄本棚）と、開いている本（カテゴリ名） */
+let homeTab=localStorage.getItem("basho_home")==="shelf"?"shelf":"list";
+let shelfCat=null;
+/* 本の表紙画像: {カテゴリ名: 画像id}。画像本体は場所写真と同じIndexedDBへ */
+let COVERS={};
+try{COVERS=JSON.parse(localStorage.getItem("basho_covers"))||{};}catch(e){}
+if(typeof COVERS!=="object"||Array.isArray(COVERS)||!COVERS)COVERS={};
+function saveCovers(){try{localStorage.setItem("basho_covers",JSON.stringify(COVERS));}catch(e){}}
 let lastPos=null;
 
 /* ───── GPS（押した瞬間から裏で走らせ、いちばん良い値を採る） ───── */
@@ -765,10 +803,27 @@ function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
 
+  /* ホームタブの状態と、本棚トップでは検索行を隠す（本の中では出す=本の中だけを検索） */
+  const inShelfTop=(homeTab==="shelf"&&!shelfCat);
+  const inBook=(homeTab==="shelf"&&!!shelfCat);
+  document.getElementById("tabList").classList.toggle("on",homeTab==="list");
+  document.getElementById("tabShelf").classList.toggle("on",homeTab==="shelf");
+  document.querySelector(".searchrow").style.display=inShelfTop?"none":"";
+
   const lg=document.getElementById("legend"); lg.innerHTML="";
   const cats=[...new Set(places.map(p=>p.cat).filter(Boolean))];
   const fixN=places.filter(p=>!hasSpot(p)||(p.acc&&p.acc>80)).length;
-  if(places.length){
+  if(inBook){
+    /* 本の中: カテゴリチップの代わりに「← 本棚」と本のタイトル */
+    const bk=document.createElement("button");
+    bk.className="chip"; bk.textContent="← 本棚";
+    bk.onclick=()=>{shelfCat=null;render();};
+    lg.appendChild(bk);
+    const tt=document.createElement("span");
+    tt.className="chip on";
+    tt.innerHTML='<span class="dot" style="background:'+esc(catColor(shelfCat))+'"></span>'+esc(shelfCat);
+    lg.appendChild(tt);
+  }else if(places.length&&homeTab==="list"){
     lg.appendChild(chip("すべて","",""));
     cats.forEach(c=>lg.appendChild(chip(c,c,catColor(c))));
     if(fixN){
@@ -780,11 +835,11 @@ function _renderBody(){
     }
   }
 
-  /* エリア行: 2つ以上の県にまたがった時だけ出す */
+  /* エリア行: 2つ以上の県にまたがった時だけ出す（一覧タブのみ） */
   const ar=document.getElementById("areas"); ar.innerHTML="";
   const prefSet=[...new Set(places.map(p=>p.pref).filter(Boolean))];
-  const multiPref=prefSet.length>1;
-  if(!multiPref){ filterRegion=""; filterPref=""; }
+  const multiPref=prefSet.length>1&&homeTab==="list";
+  if(!multiPref){ if(homeTab==="list"){filterRegion=""; filterPref="";} }
   else{
     ar.appendChild(areaChip("全国",!filterRegion&&!filterPref,()=>{filterRegion="";filterPref="";}));
     REGIONS.filter(r=>prefSet.some(pf=>prefRegion(pf)===r[0])).forEach(([rn])=>{
@@ -808,10 +863,13 @@ function _renderBody(){
 
   const qr=norm(romaToHira(qi.value));
   const rows=sorted().filter(p=>{
-    if(onlyFix && hasSpot(p) && !(p.acc&&p.acc>80)) return false;
-    if(filterCat && p.cat!==filterCat) return false;
-    if(filterPref){ if(p.pref!==filterPref) return false; }
-    else if(filterRegion){ if(prefRegion(p.pref||"")!==filterRegion) return false; }
+    if(inBook){ if((p.cat||CAT_OTHER.n)!==shelfCat) return false; }   /* 本の中=そのカテゴリだけ（他の絞り込みは効かせない） */
+    else{
+      if(onlyFix && hasSpot(p) && !(p.acc&&p.acc>80)) return false;
+      if(filterCat && p.cat!==filterCat) return false;
+      if(filterPref){ if(p.pref!==filterPref) return false; }
+      else if(filterRegion){ if(prefRegion(p.pref||"")!==filterRegion) return false; }
+    }
     if(!qn) return true;
     const pi=PREF_INFO[p.pref]||["",""];
     const rg=REGIONS.find(r=>r[0]===pi[1])||["",""];
@@ -821,13 +879,19 @@ function _renderBody(){
   document.getElementById("tally").textContent = places.length ? rows.length+" / "+places.length : "";
 
   const list=document.getElementById("list"); list.innerHTML="";
+  if(inShelfTop){
+    document.getElementById("tally").textContent=places.length?places.length+"件":"";
+    renderShelf(list); return;
+  }
   list.className=(viewMode==="tile"&&rows.length)?"tiles":"list";
   if(!places.length){
     list.innerHTML='<div class="empty"><b>まだ空です</b>今いる場所で右下のボタンを押すと、その地点が記録されます。名前を入れるだけで登録は終わりです。</div>';
     return;
   }
   if(!rows.length){
-    list.innerHTML='<div class="empty"><b>見つかりません</b>別の言葉で探すか、この場所を新しく登録してください。</div>';
+    list.innerHTML = (inBook&&!qn)
+      ? '<div class="empty"><b>この本はまだ空です</b>登録のときカテゴリで「'+esc(shelfCat)+'」を選ぶと、ここに入ります。</div>'
+      : '<div class="empty"><b>見つかりません</b>別の言葉で探すか、この場所を新しく登録してください。</div>';
     return;
   }
   if(viewMode==="tile"){
@@ -935,6 +999,85 @@ function areaChip(label,on,fn){
   return b;
 }
 
+/* ───── 本棚（カテゴリ=本） ─────
+   タップ=その本を開く / 長押し=表紙の画像を設定。
+   表紙が無い本はカテゴリ色の表紙＋頭文字 */
+function bookLongPress(el,onLong){
+  let t=null,x0=0,y0=0;
+  el.longFired=false;
+  el.addEventListener("pointerdown",e=>{
+    el.longFired=false; x0=e.clientX; y0=e.clientY;
+    t=setTimeout(()=>{el.longFired=true;onLong();},600);
+  });
+  el.addEventListener("pointermove",e=>{
+    if(t&&Math.hypot(e.clientX-x0,e.clientY-y0)>10){clearTimeout(t);t=null;}
+  });
+  ["pointerup","pointercancel","pointerleave"].forEach(ev=>
+    el.addEventListener(ev,()=>{if(t){clearTimeout(t);t=null;}}));
+  el.addEventListener("contextmenu",e=>e.preventDefault());
+}
+function renderShelf(list){
+  list.className="shelf";
+  if(!places.length&&CATS.length<=1){
+    list.className="list";
+    list.innerHTML='<div class="empty"><b>まだ空です</b>今いる場所で右下のボタンを押すと、その地点が記録されます。名前を入れるだけで登録は終わりです。</div>';
+    return;
+  }
+  const counts={};
+  places.forEach(p=>{const c=p.cat||CAT_OTHER.n;counts[c]=(counts[c]||0)+1;});
+  const cats=CATS.filter(x=>x.n!==CAT_OTHER.n||counts[x.n]);   /* その他は空なら出さない */
+  cats.forEach(x=>{
+    const b=document.createElement("button");
+    b.className="book"; b.style.setProperty("--catcolor",x.c);
+    b.innerHTML=
+      '<div class="bcover">'+
+        '<div class="bdefault" style="background-color:'+esc(x.c)+'">'+esc((x.n||"？").charAt(0))+'</div>'+
+      '</div>'+
+      '<div class="bname">'+esc(x.n)+'</div>'+
+      '<div class="bcount">'+(counts[x.n]||0)+'件</div>';
+    const cov=COVERS[x.n];
+    if(cov) phGet(cov).then(du=>{
+      if(!du)return;
+      const c=b.querySelector(".bcover"); if(!c)return;
+      const im=document.createElement("img"); im.alt=""; im.src=du;
+      c.appendChild(im);
+    });
+    b.onclick=()=>{ if(b.longFired){b.longFired=false;return;} shelfCat=x.n; render(); };
+    bookLongPress(b,()=>coverMenu(x));
+    list.appendChild(b);
+  });
+  const h=document.createElement("div");
+  h.className="shelfhint";
+  h.textContent="本をタップで開く／長押しで表紙の画像を選べます";
+  list.appendChild(h);
+}
+function coverMenu(cat){
+  sheet.innerHTML=
+    '<h2>「'+esc(cat.n)+'」の表紙</h2>'+
+    '<button class="menu-item" id="cv_pick">📁 表紙の画像を選ぶ</button>'+
+    (COVERS[cat.n]?'<button class="menu-item" id="cv_del">表紙の画像を外す</button>':'')+
+    '<div class="hint">表紙はこの端末に保存され、バックアップにも同梱されます。</div>'+
+    '<div class="sheet-actions"><button class="btn" id="cv_close">閉じる</button></div>';
+  veil.classList.add("on");
+  document.getElementById("cv_close").onclick=closeSheet;
+  document.getElementById("cv_pick").onclick=()=>{
+    phCapture(true,id=>{
+      const old=COVERS[cat.n];
+      if(old){IDB.del(old).catch(()=>{});phCache.delete(old);}
+      COVERS[cat.n]=id; saveCovers(); closeSheet(); render();
+      toast("表紙を設定しました");
+    });
+  };
+  const del=document.getElementById("cv_del");
+  if(del) del.onclick=()=>{
+    if(!confirm("表紙の画像を外します。よろしいですか？"))return;
+    const old=COVERS[cat.n];
+    if(old){IDB.del(old).catch(()=>{});phCache.delete(old);}
+    delete COVERS[cat.n]; saveCovers(); closeSheet(); render();
+    toast("表紙を外しました");
+  };
+}
+
 /* ───── シート ───── */
 const veil=document.getElementById("veil"), sheet=document.getElementById("sheet");
 function closeSheet(){ Gps.stop(); veil.classList.remove("on"); sheet.innerHTML=""; }
@@ -947,8 +1090,8 @@ function quickAdd(){
     '<div class="gps" id="gpsbox">位置を取得中…</div>'+
     '<label>名前</label>'+
     '<input type="text" id="f_name" placeholder="例：駅前の立体駐車場">'+
-    '<details><summary>カテゴリ・メモも入れる</summary>'+
-      '<label>カテゴリ</label>'+catFieldHTML("その他")+
+    '<details'+(homeTab==="shelf"&&shelfCat?" open":"")+'><summary>カテゴリ・メモも入れる</summary>'+
+      '<label>カテゴリ</label>'+catFieldHTML(homeTab==="shelf"&&shelfCat?shelfCat:"その他")+   /* 本の中からの登録はその本に入る */
       '<label>メモ</label><textarea id="f_memo" placeholder="3階が空いている／木曜定休 など"></textarea>'+
     '</details>'+
     '<div class="sheet-actions">'+
@@ -1644,9 +1787,10 @@ function menu(){
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
+    for(const cn in COVERS){ const du=await phGet(COVERS[cn]); if(du) images[COVERS[cn]]=du; }   /* 本棚の表紙も同梱 */
     const nImg=Object.keys(images).length;
     const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
-      cats:CATS.filter(x=>x.n!==CAT_OTHER.n)})],{type:"application/json"});
+      cats:CATS.filter(x=>x.n!==CAT_OTHER.n),covers:COVERS})],{type:"application/json"});
     const a=document.createElement("a"); const t=new Date(), p2=n=>String(n).padStart(2,"0");
     a.href=URL.createObjectURL(blob);
     a.download="basho_"+t.getFullYear()+p2(t.getMonth()+1)+p2(t.getDate())+".json";
@@ -1672,6 +1816,12 @@ function menu(){
             const add=data.cats.filter(x=>x&&x.n&&!have.has(String(x.n)))
               .map(x=>({n:String(x.n),c:x.c||CAT_COLORS[0]}));
             if(add.length){ CATS=CATS.filter(x=>x.n!==CAT_OTHER.n).concat(add,[CAT_OTHER]); saveCats(); }
+          }
+          /* 本棚の表紙も引き継ぐ（既に表紙がある本は既存を優先） */
+          if(data&&data.covers&&typeof data.covers==="object"){
+            let ch=false;
+            for(const cn in data.covers){ if(!COVERS[cn]&&data.covers[cn]){COVERS[cn]=data.covers[cn];ch=true;} }
+            if(ch) saveCovers();
           }
           const ids=new Set(places.map(x=>x.id)); let add=0;
           arr.forEach(x=>{ if(x&&x.name&&!ids.has(x.id)){ if(!x.pref)updatePref(x); places.push(x);add++;} });
@@ -1796,6 +1946,13 @@ function catEdit(){
       });
       if(ren[filterCat]) filterCat=ren[filterCat];
       else if(removed.includes(filterCat)) filterCat="";
+      /* 本棚の表紙と開いている本もカテゴリの改名・削除に追随 */
+      for(const o in ren){ if(COVERS[o]!=null){COVERS[ren[o]]=COVERS[o];delete COVERS[o];} }
+      removed.forEach(cn=>{ const id=COVERS[cn];
+        if(id){IDB.del(id).catch(()=>{});phCache.delete(id);delete COVERS[cn];} });
+      saveCovers();
+      if(ren[shelfCat]) shelfCat=ren[shelfCat];
+      else if(removed.includes(shelfCat)) shelfCat=null;
       CATS=rows.map(r=>({n:r.n.trim(),c:r.c})).concat([CAT_OTHER]);
       saveCats(); save(); closeSheet(); toast("カテゴリを保存しました");
     };
@@ -2042,6 +2199,17 @@ document.getElementById("sortBtn").onclick=e=>{
   if(sortMode==="near"){lastPos=null;ensurePos();}
   render();
 };
+/* ホームタブ（一覧⇄本棚）。前回開いていたタブを記憶。本棚タップは常に棚トップへ */
+document.getElementById("tabList").onclick=()=>{
+  homeTab="list"; shelfCat=null;
+  try{localStorage.setItem("basho_home","list");}catch(e){}
+  render();
+};
+document.getElementById("tabShelf").onclick=()=>{
+  homeTab="shelf"; shelfCat=null;
+  try{localStorage.setItem("basho_home","shelf");}catch(e){}
+  render();
+};
 const viewLabel=()=>viewMode==="tile"?"一覧":"タイル";
 document.getElementById("viewBtn").textContent=viewLabel();
 document.getElementById("viewBtn").onclick=e=>{
@@ -2057,6 +2225,7 @@ function closeTopOverlay(){
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
+  else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; render(); }   /* 本の中→本棚へ */
 }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
 /* Android戻るボタン対応（番兵方式）: 戻る＝面を1つ閉じる。アプリ自体は終了させない */
