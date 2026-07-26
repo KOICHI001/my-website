@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.4";
+const VER = "0.7.5";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1327,7 +1327,8 @@ function form(d){
     '</div>'+
     '<button class="subbtn" id="here">今いる場所で上書きする</button> '+
     '<button class="subbtn" id="pickmap">🗺 地図で位置を決める</button> '+
-    '<button class="subbtn" id="ocrBtn">🔢 スクショから座標を読む</button>'+
+    '<button class="subbtn" id="ocrBtn">🔢 スクショから座標を読む</button> '+
+    '<button class="subbtn" id="addr2geo">🏠 住所から座標を入れる</button>'+
     '<label>Googleマップのリンク（共有 → リンクをコピー）</label>'+
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
     '<div class="hint">「地図を開く」はこのリンクを優先して開きます。ただし短縮リンクには座標が入っていないため、'+
@@ -1375,6 +1376,20 @@ function form(d){
       box.innerHTML='地図で位置を設定しました<span class="mono">'+lat+", "+lng+'</span>';
       toast("位置を設定しました。「保存する」を忘れずに");
     });
+  };
+  /* 住所→座標: 住所欄の内容でピン置きを開く（GSI住所検索で自動ジャンプ→＋印で目視確認して確定） */
+  document.getElementById("addr2geo").onclick=()=>{
+    const ad=document.getElementById("f_addr").value.trim();
+    if(!ad) return toast("住所欄が空です。「住所・電話・メモ…」を開いて住所を入れてください");
+    nvOpenPick(null,(lat,lng)=>{
+      document.getElementById("f_lat").value=lat;
+      document.getElementById("f_lng").value=lng;
+      accPend=null; accFor=lat+","+lng;
+      box.className="gps ok";
+      box.innerHTML='住所から位置を設定しました<span class="mono">'+lat+", "+lng+'</span>';
+      toast("位置を設定しました。「保存する」を忘れずに");
+    },ad);
+    toast("住所のあたりを表示します。＋印を合わせて「この位置にする」");
   };
   document.getElementById("ocrBtn").onclick=()=>{
     ocrPick((lat,lng)=>{
@@ -1832,8 +1847,17 @@ function nvSearchGo(autoJump){
     });
     if(autoJump&&jumpOk) NV.map.setView([items[0].lat,items[0].lng],items[0].z);
   };
-  /* 検索語との一致度で並べ替え（「明治神宮」で北海道の地名「明治」に飛ばないように） */
-  const rank=t=>t===q?0:(t.startsWith(q)?1:(t.includes(q)?2:3));
+  /* 検索語との一致度で並べ替え（「明治神宮」で北海道の地名「明治」に飛ばないように）。
+     住所は表記ゆれを正規化して比較（「3-1-4」⇄「三丁目１番４号」を同一視） */
+  const anorm=s=>{
+    s=String(s||"").normalize("NFKC");
+    const K={"〇":"0","一":"1","二":"2","三":"3","四":"4","五":"5","六":"6","七":"7","八":"8","九":"9"};
+    return s.replace(/[〇一二三四五六七八九]/g,m=>K[m])
+      .replace(/丁目|番地|番|号/g,"-").replace(/[ 　]/g,"")
+      .replace(/-+$/,"").replace(/--+/g,"-");
+  };
+  const nq=anorm(q);
+  const rank=t=>{const T=anorm(t);return T===nq?0:(T.startsWith(nq)?1:(T.includes(nq)?2:3));};
   /* ①地理院（住所・地名に強い）→ ②OpenStreetMap（施設名に強い）の順で探す */
   fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q))
     .then(r=>r.json())
@@ -1842,7 +1866,7 @@ function nvSearchGo(autoJump){
         t:it.properties.title,
         lat:it.geometry.coordinates[1], lng:it.geometry.coordinates[0], z:16}));
       items.sort((x,y)=>rank(x.t)-rank(y.t));
-      if(items.length&&items[0].t.includes(q)) return show(items,true);
+      if(items.length&&(items[0].t.includes(q)||anorm(items[0].t).includes(nq))) return show(items,true);
       return fetch("https://nominatim.openstreetmap.org/search?format=jsonv2&countrycodes=jp&accept-language=ja&limit=6&q="+encodeURIComponent(q))
         .then(r=>r.json())
         .then(b=>{
