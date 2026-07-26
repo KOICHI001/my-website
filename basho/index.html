@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.11";
+const VER = "0.7.12";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1288,8 +1288,18 @@ function handleShare(){
   if(nm){ if(!c)c={lat:nm[1],lng:nm[2]}; name=""; }
   else if(dmsToDec(name)||/^(ドロップされたピン|dropped pin|指定した地点|plus\s?code)/i.test(name.trim())) name="";
   if(!name&&!url&&!c) return false;
-  shareAdd(name,url,c);
+  shareAdd(name,url,c,pickAddr(title+"\n"+text));
   return true;
+}
+/* 共有テキストから住所らしき行を拾う（都道府県名で始まり数字を含む部分。〒や「日本、」付きも可） */
+function pickAddr(t){
+  const re=new RegExp("(〒?\\s*\\d{3}[-−]?\\d{4}\\s*)?(日本[、,]?\\s*)?("+PREF_ORDER.join("|")+")[^\\n]+");
+  const lines=String(t||"").replace(/https?:\/\/\S+/g,"").split("\n").map(s=>s.trim()).filter(Boolean);
+  for(const L of lines){
+    const m=L.match(re);
+    if(m&&/\d|[０-９〇一二三四五六七八九]/.test(m[0])) return m[0].trim();
+  }
+  return "";
 }
 /* 度分秒（35°40'48.4"N 139°46'07.7"E）→ 10進。ピン長押し共有はこの形式で来ることがある */
 function dmsToDec(t){
@@ -1300,7 +1310,7 @@ function dmsToDec(t){
   if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180)return null;
   return {lat:la.toFixed(6),lng:lo.toFixed(6)};
 }
-function shareAdd(name,url,c){
+function shareAdd(name,url,c,addr){
   let cc=c?{lat:String(c.lat),lng:String(c.lng)}:null;   /* OCR・コピペで後から入ることがある */
   sheet.innerHTML=
     '<h2>共有から登録</h2>'+
@@ -1309,7 +1319,7 @@ function shareAdd(name,url,c){
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
     '<label>住所（任意）</label>'+
-    '<input type="text" id="f_addr" placeholder="コピペでOK（〒や建物名付きでも大丈夫）">'+
+    '<input type="text" id="f_addr" value="'+esc(addr||"")+'" placeholder="コピペでOK（〒や建物名付きでも大丈夫）">'+
     '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 住所・カテゴリは選び漏れ防止で最初から表に出す */
     '<details><summary>メモも入れる</summary>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
