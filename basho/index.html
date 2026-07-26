@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.8.0";
+const VER = "0.8.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1175,7 +1175,7 @@ function renderShelf(list){
   });
   const h=document.createElement("div");
   h.className="shelfhint";
-  h.textContent="本をタップで開く／長押しで表紙の画像を選べます";
+  h.textContent="本をタップで開く／長押しで表紙の設定・本の削除ができます";
   list.appendChild(h);
 }
 function coverMenu(cat){
@@ -1187,6 +1187,7 @@ function coverMenu(cat){
       '表紙にカテゴリ名を入れる</label>'+
     '<button class="menu-item" id="cv_pick">📁 表紙の画像を選ぶ</button>'+
     (cur?'<button class="menu-item" id="cv_del">表紙の画像を外す</button>':'')+
+    (cat.n!==CAT_OTHER.n?'<button class="menu-item" id="cv_delbook" style="color:#B4462F">🗑 この本を削除</button>':'')+
     '<div class="hint">画像の上にカテゴリ名の帯を重ねるかを選べます。'+
     '表紙はこの端末に保存され、バックアップにも同梱されます。</div>'+
     '<div class="sheet-actions"><button class="btn" id="cv_close">閉じる</button></div>';
@@ -1215,6 +1216,45 @@ function coverMenu(cat){
     delete COVERS[cat.n]; saveCovers(); closeSheet(); render();
     toast("表紙を外しました");
   };
+  const db=document.getElementById("cv_delbook");
+  if(db) db.onclick=()=>bookDelete(cat);
+}
+
+/* 本（カテゴリ）ごと削除: 中の場所をどうするか必ず選ばせる（ワンタップで消させない） */
+function bookDelete(cat){
+  const inPl=places.filter(p=>p.cat===cat.n);
+  const nPh=inPl.reduce((s,p)=>s+((p.ph||[]).length),0);
+  if(!inPl.length){
+    if(confirm('「'+cat.n+'」の本を削除します。よろしいですか？\n（中に場所はありません）')) bookRemove(cat,false);
+    return;
+  }
+  sheet.innerHTML=
+    '<h2>「'+esc(cat.n)+'」の本を削除</h2>'+
+    '<div class="hint">中に場所が '+inPl.length+'件 あります。どうするか選んでください。</div>'+
+    '<button class="menu-item" id="bd_keep">場所は「その他」へ移して、本だけ削除</button>'+
+    '<button class="menu-item" id="bd_all" style="color:#B4462F">場所 '+inPl.length+'件'+(nPh?'（写真'+nPh+'枚）':'')+' ごと削除</button>'+
+    '<div class="sheet-actions"><button class="btn" id="bd_close">やめる</button></div>';
+  document.getElementById("bd_close").onclick=closeSheet;
+  document.getElementById("bd_keep").onclick=()=>bookRemove(cat,false);
+  document.getElementById("bd_all").onclick=()=>{
+    if(!confirm('「'+cat.n+'」の中の場所 '+inPl.length+'件'+(nPh?'と写真'+nPh+'枚':'')+'を削除します。\n元に戻せません。よろしいですか？'))return;
+    bookRemove(cat,true);
+  };
+}
+function bookRemove(cat,withPlaces){
+  if(withPlaces){
+    places.filter(p=>p.cat===cat.n).forEach(phPurgePlace);   /* 写真もIndexedDBから道連れパージ */
+    places=places.filter(p=>p.cat!==cat.n);
+  }else{
+    places.forEach(p=>{ if(p.cat===cat.n) p.cat=CAT_OTHER.n; });
+  }
+  const c=covOf(cat.n); if(c){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);}
+  delete COVERS[cat.n]; saveCovers();
+  CATS=CATS.filter(x=>x.n!==cat.n); saveCats();
+  if(filterCat===cat.n) filterCat="";
+  if(shelfCat===cat.n) shelfCat=null;
+  save(); closeSheet();
+  toast(withPlaces?"本と中の場所を削除しました":"本を削除しました（場所は「その他」へ）");
 }
 
 /* ───── シート ───── */
