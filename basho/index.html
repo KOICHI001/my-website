@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.7";
+const VER = "0.7.8";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -739,7 +739,9 @@ function openRoute(p){ bump(p);
   openUrl("https://maps.google.com/maps?daddr="+q(p));
 }
 function openByName(p){ bump(p); openUrl("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.name+" "+(p.addr||""))); }
-function bump(p){ p.count=(p.count||0)+1; p.used=Date.now(); save(); }
+/* 使用回数は静かに保存だけ（ここでrenderすると「よく行く順」が即並び替わり、
+   周辺・地図から戻った時に見ていたカードが先頭へ移動して迷子になる。並び替えは次の再描画で反映） */
+function bump(p){ p.count=(p.count||0)+1; p.used=Date.now(); Store.save(places); }
 function pickCoords(url){
   if(!url) return null;
   const m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||url.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)
