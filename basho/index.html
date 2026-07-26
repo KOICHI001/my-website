@@ -368,7 +368,7 @@
     <div class="nv-cross">＋</div>
     <button class="nv-edge" id="nvEdge">
       <div class="nv-edge-arr" id="nvEdgeArr"></div>
-      <span class="ico" id="nvEdgeIco">📍</span><span class="d" id="nvEdgeDist"></span>
+      <span class="ico" id="nvEdgeIco">🏁</span><span class="d" id="nvEdgeDist"></span>
     </button>
     <div class="nv-okbar"><button id="nvPickOk">この位置にする</button></div>
   </div>
@@ -410,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.16";
+const VER = "0.6.17";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1282,7 +1282,7 @@ function nvSetDest(){
   if(!t) return;
   const car=NV.mode==="car";
   const ic=L.divIcon({className:"",iconSize:[0,0],html:
-    '<div class="cr"><div class="dest-pin">'+(car?"🚩":"📍")+'</div>'+
+    '<div class="cr"><div class="dest-pin">'+(car?"🚩":"🏁")+'</div>'+
     '<div class="dest-name">'+esc(car?"旗の位置":(NV.target.name||""))+'</div></div>'});
   NV.destMk=L.marker(t,{icon:ic,interactive:false}).addTo(NV.map);
   nvEdgeSync();
@@ -1320,7 +1320,7 @@ function nvEdgeDo(){
   el.style.left=(W/2+dx*k)+"px"; el.style.top=(H/2+dy*k)+"px";
   const ang=Math.atan2(dy,dx)*180/Math.PI;
   nvEl("nvEdgeArr").style.transform="translate(-50%,-50%) rotate("+ang+"deg) translateX(34px)";
-  nvEl("nvEdgeIco").textContent = NV.mode==="car"?"🚩":"📍";
+  nvEl("nvEdgeIco").textContent = NV.mode==="car"?"🚩":"🏁";
   const c=NV.map.getCenter();
   nvEl("nvEdgeDist").textContent=fmtDist(distM({lat:c.lat,lng:c.lng},{lat:t[0],lng:t[1]}));
   el.classList.add("on");
