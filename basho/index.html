@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.8";
+const VER = "0.7.9";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2449,7 +2449,10 @@ Store.load().then(d=>{
   render();
   if(sortMode==="near")ensurePos();
   handleShare();   /* Googleマップ「共有」経由で開かれた場合は登録シートを出す */
-  /* 番兵を1つ積む: 戻るボタンはこれを消費→popstateで面を閉じ、番兵を積み直す */
+  /* 番兵を1つ積む: 戻るボタンはこれを消費→popstateで面を閉じ、番兵を積み直す。
+     scrollRestoration=manual: 戻るボタンでブラウザが「積んだ時点のスクロール位置(先頭)」を
+     勝手に復元して見ていたカードを見失うのを防ぐ */
+  try{ history.scrollRestoration="manual"; }catch(e){}
   try{ history.replaceState({basho:"root"},""); history.pushState({basho:"guard"},""); }catch(e){}
 });
 if("serviceWorker" in navigator && location.protocol==="https:"){
