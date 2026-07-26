@@ -410,7 +410,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.6.17";
+const VER = "0.6.18";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1244,7 +1244,7 @@ function nvPhotosRender(){
 /* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
 const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
   watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null,
-  headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false};
+  headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false,gpsT:0};
 const nvEl=id=>document.getElementById(id);
 
 function nvInitMap(){
@@ -1429,7 +1429,7 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 function nvOpen(mode,place){
-  NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null;
+  NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null; NV.gpsT=0;
   NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
   document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on"); nvEl("nvov").classList.remove("pick");
@@ -1495,8 +1495,11 @@ function nvOpen(mode,place){
         }
       }
       nvMe(me,acc,hd);
-      /* コンパス非対応端末: 歩いている間だけGPSの進行方向で地図を回す */
-      if(hd!=null&&!NV.hasCompass){NV.curHd=hd;nvApplyRot();}
+      /* 走行中（7km/h以上）はGPSの進行方向で地図を回す＝車内で狂うコンパスに握らせない
+         （本物のナビと同じ方式。降りて歩けば20秒でコンパスに戻る） */
+      if(hd!=null&&c.speed!=null&&c.speed>=2){NV.gpsT=Date.now();NV.curHd=hd;nvApplyRot();}
+      /* コンパス非対応端末: 歩いている間もGPSの進行方向で地図を回す */
+      else if(hd!=null&&!NV.hasCompass){NV.curHd=hd;nvApplyRot();}
       const tg=nvTargetLL();
       if(tg){
         const d=distM({lat:me[0],lng:me[1]},{lat:tg[0],lng:tg[1]});
@@ -1523,7 +1526,10 @@ function nvOpen(mode,place){
     if(e.webkitCompassHeading!=null) h=e.webkitCompassHeading;
     else if(e.absolute&&e.alpha!=null) h=360-e.alpha;
     if(h==null) return;
-    NV.hasCompass=true; NV.curHd=h;
+    NV.hasCompass=true;
+    /* 走行中はGPSの進行方向が地図を握っている＝コンパスは黙る（車内の磁気で狂うため） */
+    if(Date.now()-NV.gpsT<20000) return;
+    NV.curHd=h;
     /* コンパスは高頻度で来るため200msに間引いて扇と地図回転を更新 */
     const now=Date.now();
     if(now-NV.rotT>200){ NV.rotT=now; nvCone(h); nvApplyRot(); }

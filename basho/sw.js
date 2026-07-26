@@ -1,5 +1,5 @@
 /* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.6.17";
+const CACHE = "basho-v0.6.18";
 /* OCRエンジン（ocr/ 約10MB・内容不変）は別キャッシュ＋cache first ＝ 毎回の再DLも版上げ時の再DLもしない */
 const OCR_CACHE = "basho-ocr-v1";
 const ASSETS = ["./", "./index.html", "./pref_data.js", "./leaflet.js", "./leaflet.css", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
