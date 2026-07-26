@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.3";
+const VER = "0.7.4";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -839,6 +839,12 @@ function renderTop(){
   _renderBody();
   (document.scrollingElement||document.documentElement).scrollTop=0;
 }
+/* 登録直後、本棚タブにいるなら登録先の本の中を開く＝どの本に入ったか迷わない */
+function showInBook(cat){
+  if(homeTab!=="shelf") return;
+  shelfCat=CATS.some(x=>x.n===cat)?cat:CAT_OTHER.n;
+  renderTop();
+}
 function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
@@ -1207,6 +1213,7 @@ function quickAdd(){
     };
     updatePref(rec);
     places.push(rec); save(); closeSheet();
+    showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
     toast(b ? "「"+name+"」を登録しました" : "「"+name+"」を登録（位置はあとで）",
       "取り消す",()=>{ places=places.filter(x=>x.id!==rec.id); save(); toast("取り消しました"); });
   };
@@ -1251,8 +1258,8 @@ function shareAdd(name,url,c){
     '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'"'+(name?'':' placeholder="この場所の名前を入力"')+'>'+
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
-    '<details><summary>カテゴリ・メモも入れる</summary>'+
-      '<label>カテゴリ</label>'+catFieldHTML("その他")+
+    '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 選び漏れ防止で最初から表に出す */
+    '<details><summary>メモも入れる</summary>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
     (c?'':'<div class="hint">共有には座標が入っていませんでした。座標が写ったスクショがあれば「🔢 スクショから座標を読む」で。'+
@@ -1293,6 +1300,7 @@ function shareAdd(name,url,c){
       fav:false, count:0, created:Date.now(), updated:Date.now()
     };
     updatePref(rec); places.push(rec); save(); closeSheet();
+    showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
     if(rec.lat&&rec.lng){ toast("「"+nm+"」を登録しました"); return; }
     /* 座標なし → そのままピン置きへ（名前で自動検索し、見つかればその辺りへジャンプ） */
     nvOpenPick(null,(lat,lng)=>{
