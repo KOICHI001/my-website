@@ -442,7 +442,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.7.6";
+const VER = "0.7.7";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1258,7 +1258,9 @@ function shareAdd(name,url,c){
     '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'"'+(name?'':' placeholder="この場所の名前を入力"')+'>'+
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
-    '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 選び漏れ防止で最初から表に出す */
+    '<label>住所（任意）</label>'+
+    '<input type="text" id="f_addr" placeholder="コピペでOK（〒や建物名付きでも大丈夫）">'+
+    '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 住所・カテゴリは選び漏れ防止で最初から表に出す */
     '<details><summary>メモも入れる</summary>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
@@ -1296,18 +1298,19 @@ function shareAdd(name,url,c){
       name:nm, kana:"", cat:document.getElementById("f_cat").value,
       memo:document.getElementById("f_memo").value.trim(),
       lat:cc?cc.lat:"", lng:cc?cc.lng:"", acc:null,
-      addr:"", url:document.getElementById("f_url").value.trim(), tel:"",
+      addr:document.getElementById("f_addr").value.trim(),
+      url:document.getElementById("f_url").value.trim(), tel:"",
       fav:false, count:0, created:Date.now(), updated:Date.now()
     };
     updatePref(rec); places.push(rec); save(); closeSheet();
     showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
     if(rec.lat&&rec.lng){ toast("「"+nm+"」を登録しました"); return; }
-    /* 座標なし → そのままピン置きへ（名前で自動検索し、見つかればその辺りへジャンプ） */
+    /* 座標なし → そのままピン置きへ（住所があれば住所で・なければ名前で自動検索してジャンプ） */
     nvOpenPick(null,(lat,lng)=>{
       rec.lat=String(lat); rec.lng=String(lng); rec.acc=null;
       updatePref(rec); save();
       toast("「"+nm+"」の位置も設定しました");
-    },nm);
+    },rec.addr||nm);
     toast("＋印を合わせて「この位置にする」（あとで入れるなら戻る）");
   };
 }
