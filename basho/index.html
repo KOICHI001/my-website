@@ -484,7 +484,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.12.2";
+const VER = "0.12.3";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2946,11 +2946,17 @@ function closeTopOverlay(){
 }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
 /* Android戻るボタン対応（番兵方式）: 戻る＝面を1つ閉じる。アプリ自体は終了させない */
+/* ★番兵の補充は「画面タッチ中」に行う。
+   Chromeはユーザー操作なしで積まれた履歴を戻るボタンでスキップする（バックトラップ防止）ため、
+   popstate内で積み直した番兵は無効＝2段戻り・連打でアプリごと閉じる原因だった。
+   タッチのたびに5枚まで補充しておけば、戻るを何回押しても直前のタッチ分の番兵で受け止められる */
+let guardN=1;   /* 起動時にload内で1枚積む */
+function guardTopUp(){ while(guardN<5){ try{history.pushState({basho:"guard"},"");}catch(e){break;} guardN++; } }
 try{
+  document.addEventListener("pointerdown",guardTopUp,true);
   window.addEventListener("popstate",()=>{
-    /* ★先に番兵を積み直す（同期）＝連打で番兵が尽きてアプリごと閉じるのを防ぐ。
-       画面を閉じる処理（再描画で重いことがある）はその後 */
-    try{ history.pushState({basho:"guard"},""); }catch(e){}
+    guardN=Math.max(0,guardN-1);
+    if(!guardN){ try{history.pushState({basho:"guard"},""); guardN=1;}catch(e){} }   /* 最後の保険 */
     closeTopOverlay();
   });
 }catch(e){}
@@ -3023,9 +3029,7 @@ Store.load().then(d=>{
      scrollRestoration=manual: 戻るボタンでブラウザが「積んだ時点のスクロール位置(先頭)」を
      勝手に復元して見ていたカードを見失うのを防ぐ */
   try{ history.scrollRestoration="manual"; }catch(e){}
-  /* 番兵は3枚積む＝連打で処理が追いつかなくても、尽きる前に積み直しが間に合う緩衝 */
-  try{ history.replaceState({basho:"root"},"");
-    history.pushState({basho:"guard"},""); history.pushState({basho:"guard"},""); history.pushState({basho:"guard"},""); }catch(e){}
+  try{ history.replaceState({basho:"root"},""); history.pushState({basho:"guard"},""); }catch(e){}
 });
 if("serviceWorker" in navigator && location.protocol==="https:"){
   navigator.serviceWorker.register("sw.js").catch(()=>{});
