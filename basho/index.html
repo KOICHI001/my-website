@@ -118,6 +118,24 @@
     color:#fff;font-size:44px;font-weight:700;line-height:1;padding:22px 16px;border-radius:14px;cursor:pointer;
     text-shadow:0 0 4px #000,0 2px 6px rgba(0,0,0,.9);box-shadow:0 2px 10px rgba(0,0,0,.4)}
   .lbnav:active{background:rgba(0,0,0,.55)}
+  /* 写真の縦閲覧: カードの写真を縦に連ねてスクロール（ループなし・一番下で止まる）。
+     背景=そのカードのカテゴリ色のパステル。ヘッダー固定=どれだけ下がっても左上の←で戻れる */
+  .pv{position:fixed;inset:0;z-index:58;display:none;overflow-y:auto;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;--pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
+  .pv.on{display:block}
+  html.pvon,html.pvon body{overflow:hidden}   /* 背面の一覧をスクロールさせない */
+  .pv-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:6px;
+    padding:calc(8px + env(safe-area-inset-top)) 10px 8px;background:var(--pvh);
+    border-bottom:1px solid rgba(27,36,34,.12)}
+  .pv-back{border:0;background:transparent;font-size:25px;line-height:1;padding:6px 12px;
+    cursor:pointer;color:var(--ink);font-family:var(--gothic)}
+  .pv-title{font-size:16px;font-weight:700;color:var(--ink);white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis}
+  .pv-cnt{font-family:var(--mono);font-size:11px;color:rgba(27,36,34,.55);margin-left:auto;
+    padding-right:6px;flex:0 0 auto}
+  .pv-body{padding:14px 12px calc(34px + env(safe-area-inset-bottom));max-width:760px;margin:0 auto}
+  .pv-body img{display:block;width:100%;border-radius:10px;margin:0 0 14px;cursor:pointer;
+    background:rgba(255,255,255,.45)}
   .lbc{position:fixed;left:0;right:0;bottom:calc(18px + env(safe-area-inset-bottom));text-align:center;
     color:#F8F9F5;font-family:var(--mono);font-size:12px;letter-spacing:.1em}
   .cat{font-size:11px;letter-spacing:.1em;color:var(--catcolor,#6B7280);font-weight:700}
@@ -427,6 +445,14 @@
 <div class="cpick" id="cpick"><div class="cpick-win" id="cpickWin"></div></div>
 <div class="toast" id="toast"></div>
 <div class="lb" id="lb"></div>
+<div class="pv" id="pv">
+  <div class="pv-head">
+    <button class="pv-back" id="pvBack" aria-label="戻る">←</button>
+    <div class="pv-title" id="pvTitle"></div>
+    <div class="pv-cnt" id="pvCnt"></div>
+  </div>
+  <div class="pv-body" id="pvBody"></div>
+</div>
 
 <div class="ocrov" id="ocrov">
   <div class="ocr-top">
@@ -453,7 +479,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.9.0";
+const VER = "0.10.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -703,6 +729,45 @@ lb.addEventListener("touchend",e=>{
   }
 },{passive:true});
 lb.onclick=()=>{ if(lbSwiped) return; lbClose(); };
+
+/* ───── 写真の縦閲覧 ─────
+   カードの写真タップで開く。縦に連ねてフリックでスクロール（ループなし・一番下で止まる）＝
+   スマホの縦長画面で次の写真も視界に入る見え方。背景はそのカードのカテゴリ色のパステル。
+   各写真タップ=単発ライトボックス（左右送りなし。ピンチ拡大は従来どおり） */
+const pv=document.getElementById("pv");
+function pvOpen(p,id){
+  const ids=(p.ph||[]).slice(); if(!ids.length) return;
+  const c=catColor(p.cat);
+  pv.style.setProperty("--pvc",mixHex(c,"#FFFFFF",.78));
+  pv.style.setProperty("--pvh",mixHex(c,"#FFFFFF",.60));
+  document.getElementById("pvTitle").textContent=p.name||"写真";
+  document.getElementById("pvCnt").textContent=ids.length+"枚";
+  const body=document.getElementById("pvBody"); body.innerHTML="";
+  const imgs=ids.map(pid=>{
+    const im=document.createElement("img"); im.alt=""; im.dataset.id=pid;
+    im.onclick=()=>{ lbList=[pid]; lbIdx=0; lbShow(); };
+    body.appendChild(im);
+    return im;
+  });
+  pv.classList.add("on"); pv.scrollTop=0;
+  document.documentElement.classList.add("pvon");
+  /* 全枚の高さが確定してから、タップした写真の位置へ（途中の読み込みでズレない） */
+  Promise.all(ids.map(pid=>phGet(pid).catch(()=>null))).then(dus=>{
+    dus.forEach((du,i)=>{ if(du) imgs[i].src=du; });
+    return Promise.all(imgs.filter(im=>im.src).map(im=>im.decode().catch(()=>{})));
+  }).then(()=>{
+    const t=imgs.find(im=>im.dataset.id===id);
+    /* 固定ヘッダーの高さぶん引く（stickyは重なるので、そのままだと先頭が隠れる） */
+    const hh=pv.querySelector(".pv-head").offsetHeight;
+    if(t&&t!==imgs[0]) pv.scrollTop=t.offsetTop-hh-8;
+  });
+}
+function pvClose(){
+  pv.classList.remove("on");
+  document.getElementById("pvBody").innerHTML="";
+  document.documentElement.classList.remove("pvon");
+}
+document.getElementById("pvBack").onclick=pvClose;
 let sortMode=localStorage.getItem("basho_sort")||"use";
 if(sortMode!=="use"&&sortMode!=="kana"&&sortMode!=="near") sortMode="use";
 let viewMode=localStorage.getItem("basho_view")==="tile"?"tile":"list";
@@ -1106,7 +1171,7 @@ function _renderBody(){
         lpT=setTimeout(()=>{lpT=null;lpFired=true;phDelete(p,id);},600);};
       im.onpointermove=e=>{if(Math.abs(e.clientX-sx)+Math.abs(e.clientY-sy)>8)cancel();};
       im.onpointerup=cancel; im.onpointerleave=cancel; im.onpointercancel=cancel;
-      im.onclick=e=>{e.stopPropagation(); if(lpFired){lpFired=false;return;} lbOpen(p,id);};
+      im.onclick=e=>{e.stopPropagation(); if(lpFired){lpFired=false;return;} pvOpen(p,id);};
       strip.appendChild(im);
     });
     el.querySelector(".star").onclick=()=>{p.fav=!p.fav;save();};
@@ -1684,7 +1749,7 @@ function nvPhotosRender(){
         saveParking(); nvPhotosRender();
       };
       b.appendChild(x);
-      b.onclick=()=>lbOpen(parking,id);
+      b.onclick=()=>pvOpen(parking,id);   /* 足あと写真も同じ縦閲覧（catなし=グレーのパステル） */
     }else{
       b.textContent="＋";
       b.onclick=()=>phCapture(false,nid=>{
@@ -2791,6 +2856,7 @@ document.getElementById("viewBtn").onclick=e=>{
 function closeTopOverlay(){
   if(document.getElementById("cpick").classList.contains("on")) cpickClose();
   else if(lb.classList.contains("on")) lbClose();
+  else if(pv.classList.contains("on")) pvClose();   /* ライトボックス→縦閲覧→一覧 の順で1段ずつ */
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(veil.classList.contains("on")) closeSheet();
