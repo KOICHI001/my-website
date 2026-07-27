@@ -479,7 +479,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.10.0";
+const VER = "0.10.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -711,6 +711,12 @@ lb.addEventListener("touchmove",e=>{
 lb.addEventListener("touchend",e=>{
   /* ピンチ終了: 直後のclickで閉じない */
   if(LZ.pinch){
+    if(e.touches.length===1){
+      /* ピンチ中に片指だけ離した: 残った指を新しい基準に取り直す
+         （古い基準のままだと、指を少し動かしただけで基準との差分ぶん画像が大きく飛ぶ） */
+      const t=e.touches[0];
+      lbTx=t.clientX; lbTy=t.clientY; LZ.x0=LZ.x; LZ.y0=LZ.y;
+    }
     if(e.touches.length===0){ LZ.pinch=false; lbSwiped=true; setTimeout(()=>{lbSwiped=false;},400); }
     return;
   }
