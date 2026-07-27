@@ -484,7 +484,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.11.0";
+const VER = "0.12.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -615,13 +615,9 @@ function phGet(id){
   if(phCache.has(id)) return Promise.resolve(phCache.get(id));
   return IDB.get(id).then(v=>{if(v)phCache.set(id,v);return v;}).catch(()=>null);
 }
-/* 撮影/選択→縮小→IndexedDBへ保存し、新しい画像idをcbに渡す（場所の写真・駐車写真の共通部品） */
-function phCapture(fromGallery,cb){
-  const inp=document.createElement("input");
-  inp.type="file"; inp.accept="image/*";
-  if(!fromGallery) inp.capture="environment";
-  inp.onchange=()=>{
-    const f=inp.files&&inp.files[0]; if(!f) return;
+/* 1ファイル→縮小→IndexedDBへ保存して画像idを返す（写真取込の共通処理。失敗はnull） */
+function phProcessFile(f){
+  return new Promise(res=>{
     const img=new Image();
     img.onload=()=>{
       const MAX=1400, sc=Math.min(1,MAX/Math.max(img.width,img.height));
@@ -631,17 +627,51 @@ function phCapture(fromGallery,cb){
       const du=cv.toDataURL("image/jpeg",.82);
       URL.revokeObjectURL(img.src);
       const id="i"+Date.now()+Math.random().toString(36).slice(2,5);
-      IDB.set(id,du).then(()=>{ phCache.set(id,du); cb(id); })
-        .catch(()=>toast("写真を保存できませんでした（空き容量を確認）"));
+      IDB.set(id,du).then(()=>{ phCache.set(id,du); res(id); }).catch(()=>res(null));
     };
-    img.onerror=()=>toast("この画像は読み込めません");
+    img.onerror=()=>{ URL.revokeObjectURL(img.src); res(null); };
     img.src=URL.createObjectURL(f);
+  });
+}
+/* 撮影/選択（1枚）→新しい画像idをcbに渡す（カメラ撮影・表紙・駐車写真用） */
+function phCapture(fromGallery,cb){
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept="image/*";
+  if(!fromGallery) inp.capture="environment";
+  inp.onchange=()=>{
+    const f=inp.files&&inp.files[0]; if(!f) return;
+    phProcessFile(f).then(id=>{
+      if(id) cb(id);
+      else toast("写真を保存できませんでした（画像形式か空き容量を確認）");
+    });
+  };
+  inp.click();
+}
+/* ギャラリーから複数選択でまとめて取り込む→ids配列をcbへ（選んだ順のまま） */
+function phCaptureMulti(cb){
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept="image/*"; inp.multiple=true;
+  inp.onchange=async()=>{
+    const fs=[...(inp.files||[])]; if(!fs.length) return;
+    if(fs.length>1) toast(fs.length+"枚を取り込んでいます…");
+    const ids=[]; let bad=0;
+    for(const f of fs){ const id=await phProcessFile(f); if(id)ids.push(id); else bad++; }
+    cb(ids,bad);
   };
   inp.click();
 }
 function phShoot(p,fromGallery){
-  phCapture(fromGallery,id=>{
-    p.ph=p.ph||[]; p.ph.push(id); p.updated=Date.now(); save();   /* 古い順=左端が一番最初の1枚 */
+  if(fromGallery){
+    /* 📁保存画像=複数選択OK。いろんな所から貯めた画像を一気に登録できる */
+    phCaptureMulti((ids,bad)=>{
+      if(!ids.length){ toast("画像を読み込めませんでした"); return; }
+      p.ph=(p.ph||[]).concat(ids); p.updated=Date.now(); save();   /* 古い順=左端が一番最初の1枚 */
+      if(ids.length>1||bad) toast(ids.length+"枚を追加しました"+(bad?"（"+bad+"枚は読み込めず）":""));
+    });
+    return;
+  }
+  phCapture(false,id=>{
+    p.ph=p.ph||[]; p.ph.push(id); p.updated=Date.now(); save();
   });
 }
 function phDelete(p,id){
