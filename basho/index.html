@@ -368,7 +368,11 @@
   .folders{grid-column:1/-1}
   .folder{display:flex;align-items:center;gap:14px;width:100%;text-align:left;cursor:pointer;
     background:var(--card);border:1px solid var(--line);border-radius:var(--r);
-    padding:10px 12px;margin:0 0 10px;font-family:var(--gothic);color:var(--ink)}
+    padding:10px 19px;margin:0 0 10px;font-family:var(--gothic);color:var(--ink);
+    position:relative;overflow:hidden}
+  /* フォルダもカードと同じ左右のカテゴリ色バー（本＝カテゴリの一員だと分かる） */
+  .folder::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
+  .folder::after{content:"";position:absolute;right:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
   .fgrid{flex:0 0 104px;display:grid;grid-template-columns:1fr 1fr;gap:5px}
   .fcell{height:46px;border-radius:7px;background:var(--paper);border:1px solid var(--line);
     font-size:9px;line-height:1.3;padding:3px 4px;overflow:hidden;color:var(--soft);
@@ -399,6 +403,7 @@
       <button class="iconbtn" id="clearq">✕</button>
     </div>
     <div class="legend" id="legend"></div>
+    <div class="legend" id="subs"></div>
     <div class="legend" id="areas"></div>
   </div>
 </header>
@@ -479,7 +484,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.10.1";
+const VER = "0.11.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -585,6 +590,7 @@ function updatePref(p){
 }
 
 let places=[], filterCat="", onlyFix=false, filterRegion="", filterPref="";
+let filterSub="";   /* 一覧タブのサブフォルダ絞り込み（カテゴリ横断で同名フォルダを集める） */
 let nearFilter=false;   /* 📍現在地から2km以内だけ表示（一覧・本の中共通） */
 
 /* ───── 写真（IndexedDB・端末内のみ。ギャラリーには保存しない仕様） ───── */
@@ -1031,6 +1037,23 @@ function _renderBody(){
     }
   }
 
+  /* サブフォルダ行（一覧タブのみ・カテゴリの下/地域の上）:
+     カテゴリ横断で同名フォルダを集める＝「飲食/軽井沢周辺」と「レジャー/軽井沢周辺」をまとめて見られる */
+  const sb=document.getElementById("subs"); sb.innerHTML="";
+  if(homeTab==="list"&&places.length){
+    const scopeC=filterCat?places.filter(p=>p.cat===filterCat):places;
+    const subMap=new Map();
+    scopeC.forEach(p=>{ if(p.sf) subMap.set(p.sf,(subMap.get(p.sf)||0)+1); });
+    if(filterSub&&!subMap.has(filterSub)) filterSub="";
+    subMap.forEach((n,name)=>{
+      const b=document.createElement("button");
+      b.className="chip"+(filterSub===name?" on":"");
+      b.textContent="📁 "+name+" "+n;
+      b.onclick=()=>{ filterSub=(filterSub===name?"":name); render(); };
+      sb.appendChild(b);
+    });
+  }else filterSub="";
+
   /* エリア行: 2つ以上の県にまたがった時だけ出す（一覧と本の中。本の中は本の中身だけで数える） */
   const scope=inBook?places.filter(p=>(p.cat||CAT_OTHER.n)===shelfCat&&(!shelfSub||p.sf===shelfSub)):places;
   const ar=document.getElementById("areas"); ar.innerHTML="";
@@ -1072,6 +1095,7 @@ function _renderBody(){
     else{
       if(onlyFix && hasSpot(p) && !(p.acc&&p.acc>80)) return false;
       if(filterCat && p.cat!==filterCat) return false;
+      if(filterSub && p.sf!==filterSub) return false;   /* サブフォルダ絞り込み（カテゴリ横断） */
     }
     /* 地域と📍2km以内は一覧・本の中の両方で効く */
     if(filterPref){ if(p.pref!==filterPref) return false; }
@@ -1229,6 +1253,7 @@ function renderFolders(list){
   const box=document.createElement("div"); box.className="folders";
   m.forEach((arr,name)=>{
     const el=document.createElement("button"); el.className="folder";
+    el.style.setProperty("--catcolor",catColor(shelfCat));
     let cells="";
     for(let i=0;i<4;i++){
       const p=arr[i];
