@@ -484,7 +484,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.12.0";
+const VER = "0.12.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1826,7 +1826,8 @@ function nvPhotosRender(){
 /* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
 const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
   watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null,
-  headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false,gpsT:0};
+  headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false,gpsT:0,
+  gpsOn:false,walkN:0,gline:null};
 const nvEl=id=>document.getElementById(id);
 
 function nvInitMap(){
@@ -1857,6 +1858,15 @@ function nvSetLayer(k){
 function nvTargetLL(){
   if(NV.mode==="car") return (parking&&parking.lat!=null)?[parking.lat,parking.lng]:null;
   return NV.target?[NV.target.lat,NV.target.lng]:null;
+}
+/* 自分→目的地の赤い点線ガイド（細め・目立たない程度）: どちらへ向かえばよいかの目印。
+   画面外バッジ(🏁方向)と対になって、線をたどれば目的地に着く */
+function nvGuide(me,tg){
+  if(!NV.map) return;
+  if(!tg){ if(NV.gline){NV.map.removeLayer(NV.gline);NV.gline=null;} return; }
+  if(!NV.gline)
+    NV.gline=L.polyline([me,tg],{color:"#C43A2F",weight:2,opacity:.6,dashArray:"3 7",interactive:false}).addTo(NV.map);
+  else NV.gline.setLatLngs([me,tg]);
 }
 function nvSetDest(){
   const t=nvTargetLL();
@@ -2011,7 +2021,7 @@ document.addEventListener("visibilitychange",()=>{
 });
 
 function nvOpen(mode,place){
-  NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null; NV.gpsT=0;
+  NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null; NV.gpsT=0; NV.gpsOn=false; NV.walkN=0;
   NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
   document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on"); nvEl("nvov").classList.remove("pick");
@@ -2077,12 +2087,20 @@ function nvOpen(mode,place){
         }
       }
       nvMe(me,acc,hd);
-      /* 走行中（7km/h以上）はGPSの進行方向で地図を回す＝車内で狂うコンパスに握らせない
-         （本物のナビと同じ方式。降りて歩けば20秒でコンパスに戻る） */
-      if(hd!=null&&c.speed!=null&&c.speed>=2){NV.gpsT=Date.now();NV.curHd=hd;nvApplyRot();}
+      /* 走行中（7km/h以上）はGPSの進行方向で地図を回す＝車内で狂うコンパスに握らせない。
+         ★一度GPSが握ったら「停止」では手放さない（信号待ちでコンパスに切り替わると挙動が乱れる）。
+         手放すのは人間の歩く速度（0.4〜1.8m/s）が3回続いた時＝車を降りて歩き出した時だけ */
+      const sp=(c.speed!=null&&!isNaN(c.speed))?c.speed:null;
+      if(hd!=null&&sp!=null&&sp>=2){NV.gpsOn=true;NV.walkN=0;NV.gpsT=Date.now();NV.curHd=hd;nvApplyRot();}
+      else if(NV.gpsOn){
+        if(sp!=null&&sp>=0.4&&sp<1.8){ if(++NV.walkN>=3){NV.gpsOn=false;NV.walkN=0;} }
+        else NV.walkN=0;   /* 停止（≒0）や速度不明では解除しない＝向きは最後のGPS進行方向のまま */
+        if(NV.gpsOn&&hd!=null){NV.curHd=hd;nvApplyRot();}   /* ノロノロ走行中も向きは更新 */
+      }
       /* コンパス非対応端末: 歩いている間もGPSの進行方向で地図を回す */
       else if(hd!=null&&!NV.hasCompass){NV.curHd=hd;nvApplyRot();}
       const tg=nvTargetLL();
+      nvGuide(me,tg);   /* 自分→目的地の赤点線を常に引き直す */
       if(tg){
         const d=distM({lat:me[0],lng:me[1]},{lat:tg[0],lng:tg[1]});
         nvEl("nvDist").innerHTML="あと "+fmtDist(d)+" <small>±"+acc+"m</small>";
@@ -2109,8 +2127,9 @@ function nvOpen(mode,place){
     else if(e.absolute&&e.alpha!=null) h=360-e.alpha;
     if(h==null) return;
     NV.hasCompass=true;
-    /* 走行中はGPSの進行方向が地図を握っている＝コンパスは黙る（車内の磁気で狂うため） */
-    if(Date.now()-NV.gpsT<20000) return;
+    /* GPSモード中はGPSの進行方向が地図を握っている＝コンパスは黙る（車内の磁気で狂うため）。
+       停止しても解除しない。解除は歩く速度が続いた時だけ（watchPosition側で判定） */
+    if(NV.gpsOn) return;
     NV.curHd=h;
     /* コンパスは高頻度で来るため200msに間引いて扇と地図回転を更新 */
     const now=Date.now();
@@ -2134,6 +2153,7 @@ function nvClose(){
   if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
   if(NV.hdgFn){window.removeEventListener("deviceorientationabsolute",NV.hdgFn,true);NV.hdgFn=null;}
   if(NV.wl){NV.wl.release&&NV.wl.release().catch(()=>{});NV.wl=null;}
+  if(NV.gline&&NV.map){NV.map.removeLayer(NV.gline);NV.gline=null;}   /* 赤点線は次回開く時に引き直す */
   parkBtnSync();
 }
 
@@ -2152,7 +2172,7 @@ function nvOpenPick(initLL,cb,autoQ){
   nvSetHead(false);                 /* ピン置きは常に北が上（＋印を正確に合わせるため） */
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
-  ["destMk","trailLn","meMk","accC"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
+  ["destMk","trailLn","meMk","accC","gline"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
   /* 開始位置: 既存座標 → 前回のピン置き地図 → 現在地 → 日本全体 */
   let pv=null;
   try{pv=JSON.parse(localStorage.getItem("basho_pickview"));}catch(e){}
