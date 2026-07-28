@@ -109,6 +109,23 @@
     cursor:pointer;white-space:nowrap}
   .phbtns button:active{background:rgba(11,110,95,.07)}
 
+  /* 添付カード（URL・PDF）: リンクを貼るとサイト名・説明入りのカードで並ぶ */
+  .attbox{display:flex;flex-direction:column;gap:7px;padding:0 16px 11px}
+  .attcard{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;
+    background:var(--card);padding:8px 10px;cursor:pointer;text-align:left;
+    font-family:inherit;color:inherit;width:100%;box-sizing:border-box}
+  .attcard:active{background:rgba(11,110,95,.05)}
+  .atticon{flex:0 0 auto;width:46px;height:46px;border-radius:9px;border:1px solid var(--line);
+    background:#F2F4EE center/cover no-repeat;display:flex;align-items:center;justify-content:center;
+    font-size:22px;overflow:hidden}
+  .atttxt{flex:1;min-width:0}
+  .attt{font-size:13px;font-weight:700;line-height:1.35;overflow:hidden;display:-webkit-box;
+    -webkit-line-clamp:1;-webkit-box-orient:vertical;word-break:break-all}
+  .attd{font-size:11.5px;color:var(--soft);line-height:1.4;overflow:hidden;display:-webkit-box;
+    -webkit-line-clamp:2;-webkit-box-orient:vertical;word-break:break-all}
+  .atth{font-family:var(--mono);font-size:10.5px;color:var(--soft);opacity:.85;margin-top:1px;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
   /* ライトボックス */
   .lb{position:fixed;inset:0;background:rgba(10,14,13,.93);z-index:70;display:none;
     align-items:center;justify-content:center}
@@ -484,7 +501,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.12.3";
+const VER = "0.13.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -680,7 +697,197 @@ function phDelete(p,id){
   IDB.del(id).catch(()=>{}); phCache.delete(id);
   save(); toast("写真を削除しました");
 }
-function phPurgePlace(p){ (p.ph||[]).forEach(id=>{IDB.del(id).catch(()=>{});phCache.delete(id);}); }
+function phPurgePlace(p){
+  (p.ph||[]).forEach(id=>{IDB.del(id).catch(()=>{});phCache.delete(id);});
+  /* 添付（URLカードのアイコン・PDF本体）もIndexedDBから道連れパージ */
+  (p.att||[]).forEach(a=>["ic","ref"].forEach(k=>{
+    if(a[k]){IDB.del(a[k]).catch(()=>{});phCache.delete(a[k]);}}));
+}
+
+/* ───── 添付（URLカード・PDF） ─────
+   p.att=[{t:"url",url,host,title,desc,ic} | {t:"pdf",ref,name,sz}]
+   ic/ref は basho_img(IndexedDB) のキー（"a"+時刻+乱数）。
+   URLはサイト名・説明・ロゴを自動取得してGoogleマップ風のカードにする。
+   取得はまず直接fetch→CORSで弾かれたら公開プロキシ(allorigins/corsproxy)経由。
+   ※送るのは貼り付けたURLだけ。位置情報・座標は一切送らない（従来方針のまま） */
+function attId(){ return "a"+Date.now()+Math.random().toString(36).slice(2,5); }
+function attFmtSize(n){ return n>=1048576?(n/1048576).toFixed(1)+"MB":Math.max(1,Math.round(n/1024))+"KB"; }
+async function attFetch(u,asBlob,ms){
+  const tryOne=async url=>{
+    const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),ms||10000);
+    try{
+      const r=await fetch(url,{signal:ac.signal});
+      if(!r.ok) throw 0;
+      if(asBlob) return await r.blob();
+      /* 文字化け対策: 一旦UTF-8で読み、meta charsetがShift_JIS等なら読み直す */
+      const buf=await r.arrayBuffer();
+      let txt=new TextDecoder("utf-8").decode(buf);
+      const m=txt.slice(0,3000).match(/charset=["']?\s*([\w-]+)/i);
+      if(m&&!/^utf-?8$/i.test(m[1])){ try{ txt=new TextDecoder(m[1].toLowerCase()).decode(buf); }catch(e){} }
+      return txt;
+    }finally{ clearTimeout(t); }
+  };
+  try{ return await tryOne(u); }catch(e){}
+  try{ return await tryOne("https://api.allorigins.win/raw?url="+encodeURIComponent(u)); }catch(e){}
+  try{ return await tryOne("https://corsproxy.io/?url="+encodeURIComponent(u)); }catch(e){}
+  return null;
+}
+/* アイコン画像→縮小してIndexedDBへ。失敗はnull（カードは🌐表示になるだけ） */
+function attSaveIcon(blob){
+  return new Promise(res=>{
+    if(!blob||!blob.size||(blob.type&&!/^image\//.test(blob.type))) return res(null);
+    const img=new Image();
+    img.onload=()=>{
+      const MAX=160, sc=Math.min(1,MAX/Math.max(img.width,img.height));
+      const cv=document.createElement("canvas");
+      cv.width=Math.max(1,Math.round(img.width*sc)); cv.height=Math.max(1,Math.round(img.height*sc));
+      const cx=cv.getContext("2d");
+      const alpha=/png|svg|gif|webp|icon/.test(blob.type||"");
+      if(!alpha){ cx.fillStyle="#fff"; cx.fillRect(0,0,cv.width,cv.height); }
+      cx.drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(img.src);
+      let du; try{ du=cv.toDataURL(alpha?"image/png":"image/jpeg",.85); }catch(e){ return res(null); }
+      const id=attId();
+      IDB.set(id,du).then(()=>{ phCache.set(id,du); res(id); }).catch(()=>res(null));
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(img.src); res(null); };
+    img.src=URL.createObjectURL(blob);
+  });
+}
+/* URL→メタ情報（サイト名・説明・ロゴ）を取得してattレコードを作る */
+async function attBuildUrl(url){
+  let host=""; try{ host=new URL(url).hostname.replace(/^www\./,""); }catch(e){ return null; }
+  const a={t:"url",url:url,host:host,title:"",desc:"",ic:null};
+  const html=await attFetch(url,false,8000);
+  let icCands=[];
+  if(html){
+    const doc=new DOMParser().parseFromString(html,"text/html");
+    const og=n=>{const m=doc.querySelector('meta[property="'+n+'"],meta[name="'+n+'"]');return (m&&m.content||"").trim();};
+    a.title=og("og:title")||og("twitter:title")||(doc.querySelector("title")||{textContent:""}).textContent.trim();
+    a.desc=og("og:description")||og("description")||og("twitter:description");
+    if(a.desc.length>120) a.desc=a.desc.slice(0,120)+"…";
+    const abs=h=>{ try{ return new URL(h,url).href; }catch(e){ return null; } };
+    /* ロゴ優先順: apple-touch-icon（角形ロゴ）→ og:image → 大きめicon */
+    doc.querySelectorAll('link[rel~="apple-touch-icon"]').forEach(l=>{const h=abs(l.getAttribute("href"));if(h)icCands.push(h);});
+    const ogi=og("og:image")||og("twitter:image"); if(ogi){const h=abs(ogi);if(h)icCands.push(h);}
+    doc.querySelectorAll('link[rel~="icon"]').forEach(l=>{const h=abs(l.getAttribute("href"));if(h)icCands.push(h);});
+  }
+  /* 最後の砦: Googleのfaviconサービス（ドメイン名だけ送る） */
+  icCands.push("https://www.google.com/s2/favicons?domain="+encodeURIComponent(host)+"&sz=128");
+  a.title=a.title||host;
+  for(const c of icCands.slice(0,4)){
+    const b=await attFetch(c,true,8000);
+    const id=await attSaveIcon(b);
+    if(id){ a.ic=id; break; }
+  }
+  return a;
+}
+/* 追加シート: URL貼り付け or PDF選択 */
+function attSheet(p){
+  sheet.innerHTML=
+    '<h2>リンク・PDFを貼る</h2>'+
+    '<div class="hint">お店のホームページなどのURLを貼り付けると、サイトの名前・説明・ロゴが入ったカードになります。カードをタップするとそのページが開きます。</div>'+
+    '<input type="text" id="att_url" placeholder="https://…（URLをここに貼り付け）" inputmode="url" autocapitalize="off">'+
+    '<div class="sheet-actions" style="margin-top:10px"><button class="btn primary" id="att_go">🔗 このURLを貼る</button></div>'+
+    '<button class="menu-item" id="att_pdf" style="margin-top:14px">📄 PDFファイルを貼る</button>'+
+    '<div class="hint">メニュー表や案内のPDFをカードにして、タップで開けます（25MBまで）。<br>'+
+    '※サイト名の自動取得のため貼り付けたURLだけを取得サービスに送ります。位置情報は送りません。</div>'+
+    '<div class="sheet-actions"><button class="btn" id="att_close">閉じる</button></div>';
+  veil.classList.add("on");
+  document.getElementById("att_close").onclick=closeSheet;
+  document.getElementById("att_go").onclick=async()=>{
+    let v=(document.getElementById("att_url").value||"").trim();
+    const m=v.match(/https?:\/\/[^\s"'<>]+/);
+    v=m?m[0]:(v&&!/^https?:\/\//.test(v)?"https://"+v:v);
+    let ok=false; try{ ok=/^https?:$/.test(new URL(v).protocol); }catch(e){}
+    if(!ok){ toast("URLの形になっていません（https://… を貼り付けてください）"); return; }
+    const btn=document.getElementById("att_go");
+    btn.disabled=true; btn.textContent="サイト情報を取得しています…";
+    const a=await attBuildUrl(v);
+    if(!a){ btn.disabled=false; btn.textContent="🔗 このURLを貼る"; toast("追加できませんでした"); return; }
+    p.att=(p.att||[]); p.att.push(a); p.updated=Date.now();
+    closeSheet(); save();
+    toast(a.ic||a.desc?"リンクカードを追加しました":"追加しました（サイト情報は取得できず。名前は長押しで変更できます）");
+  };
+  document.getElementById("att_pdf").onclick=()=>{
+    const inp=document.createElement("input");
+    inp.type="file"; inp.accept="application/pdf,.pdf";
+    inp.onchange=()=>{
+      const f=inp.files&&inp.files[0]; if(!f) return;
+      if(f.size>25*1048576){ toast("25MBを超えるPDFは貼れません（"+attFmtSize(f.size)+"）"); return; }
+      const r=new FileReader();
+      r.onload=()=>{
+        const id=attId();
+        IDB.set(id,r.result).then(()=>{
+          phCache.set(id,r.result);
+          p.att=(p.att||[]); p.att.push({t:"pdf",ref:id,name:f.name.replace(/\.pdf$/i,""),sz:f.size});
+          p.updated=Date.now(); closeSheet(); save(); toast("PDFを貼りました");
+        }).catch(()=>toast("保存できませんでした（空き容量を確認）"));
+      };
+      r.onerror=()=>toast("読み込めませんでした");
+      r.readAsDataURL(f);
+    };
+    inp.click();
+  };
+}
+/* 1枚の添付カードDOM */
+function attCard(p,a){
+  const el=document.createElement("button");
+  el.type="button"; el.className="attcard";
+  const isPdf=a.t==="pdf";
+  el.innerHTML=
+    '<div class="atticon">'+(isPdf?"📄":"🌐")+'</div>'+
+    '<div class="atttxt">'+
+      '<div class="attt">'+esc(isPdf?(a.name||"PDF"):(a.title||a.host||"リンク"))+'</div>'+
+      (a.desc?'<div class="attd">'+esc(a.desc)+'</div>':"")+
+      '<div class="atth">'+esc(isPdf?("PDF"+(a.sz?"・"+attFmtSize(a.sz):"")):(a.host||""))+'</div>'+
+    '</div>';
+  if(a.ic) phGet(a.ic).then(du=>{
+    if(!du) return;
+    const ic=el.querySelector(".atticon");
+    ic.textContent=""; ic.style.backgroundImage="url("+du+")";
+  });
+  bookLongPress(el,()=>attMenu(p,a));
+  el.onclick=e=>{e.stopPropagation(); if(el.longFired){el.longFired=false;return;} attOpen(a);};
+  return el;
+}
+function attOpen(a){
+  if(a.t==="url"){ openUrl(a.url); return; }
+  phGet(a.ref).then(du=>{
+    if(!du){ toast("PDFを読み込めませんでした"); return; }
+    fetch(du).then(r=>r.blob()).then(b=>{
+      const u=URL.createObjectURL(b.type==="application/pdf"?b:new Blob([b],{type:"application/pdf"}));
+      openUrl(u); setTimeout(()=>URL.revokeObjectURL(u),60000);
+    }).catch(()=>toast("PDFを開けませんでした"));
+  });
+}
+/* 長押しメニュー: 開く / 名前を変更 / 削除 */
+function attMenu(p,a){
+  const isPdf=a.t==="pdf";
+  sheet.innerHTML=
+    '<h2>'+(isPdf?"📄 ":"🔗 ")+esc(isPdf?(a.name||"PDF"):(a.title||a.host||"リンク"))+'</h2>'+
+    (isPdf?"":'<div class="hint" style="word-break:break-all">'+esc(a.url)+'</div>')+
+    '<button class="menu-item" id="am_open">開く</button>'+
+    '<button class="menu-item" id="am_ren">名前を変更する</button>'+
+    '<button class="menu-item" id="am_del" style="color:#B4462F">🗑 このカードを削除する</button>'+
+    '<div class="sheet-actions"><button class="btn" id="am_close">閉じる</button></div>';
+  veil.classList.add("on");
+  document.getElementById("am_close").onclick=closeSheet;
+  document.getElementById("am_open").onclick=()=>{ closeSheet(); attOpen(a); };
+  document.getElementById("am_ren").onclick=()=>{
+    const cur=isPdf?(a.name||""):(a.title||"");
+    const nv=(prompt("新しい名前",cur)||"").trim();
+    if(!nv||nv===cur) return;
+    if(isPdf) a.name=nv; else a.title=nv;
+    p.updated=Date.now(); closeSheet(); save(); toast("名前を変更しました");
+  };
+  document.getElementById("am_del").onclick=()=>{
+    if(!confirm("このカードを削除します。よろしいですか？"+(isPdf?"\nPDFの中身もアプリから消えます（元に戻せません）。":""))) return;
+    p.att=(p.att||[]).filter(x=>x!==a);
+    ["ic","ref"].forEach(k=>{ if(a[k]){IDB.del(a[k]).catch(()=>{});phCache.delete(a[k]);} });
+    p.updated=Date.now(); closeSheet(); save(); toast("削除しました");
+  };
+}
 
 /* ライトボックス */
 const lb=document.getElementById("lb");
@@ -1202,8 +1409,10 @@ function _renderBody(){
             '<button data-ph="cam">📷写真</button>'+
             '<button data-ph="pick">📁保存画像</button>'+
           '</div>'+
+          '<div class="phbtns"><button data-ph="att">🔗リンク・PDF</button></div>'+
         '</div>'+
       '</div>'+
+      '<div class="attbox"></div>'+
       '<button class="star'+(p.fav?" on":"")+'" aria-label="よく行く">'+(p.fav?"★":"☆")+'</button>'+
       '<div class="actions">'+
         '<button data-a="map">地図を開く</button>'+
@@ -1217,8 +1426,14 @@ function _renderBody(){
     const strip=el.querySelector(".phstrip");
     if(!(p.ph&&p.ph.length)) strip.style.display="none";
     el.querySelectorAll(".phbtns button").forEach(b=>{
-      b.onclick=e=>{e.stopPropagation();phShoot(p,b.dataset.ph==="pick");};
+      b.onclick=e=>{e.stopPropagation();
+        if(b.dataset.ph==="att") attSheet(p);
+        else phShoot(p,b.dataset.ph==="pick");};
     });
+    /* 添付カード（URL・PDF）: タップ=開く / 長押し=メニュー */
+    const abox=el.querySelector(".attbox");
+    if(!(p.att&&p.att.length)) abox.style.display="none";
+    (p.att||[]).forEach(a=>abox.appendChild(attCard(p,a)));
     (p.ph||[]).forEach(id=>{
       const im=document.createElement("img");
       im.className="ph"; im.alt="";
@@ -2286,6 +2501,9 @@ function menu(){
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
+    /* 添付（URLカードのアイコン・PDF本体）も同梱=機種変更で丸ごと引き継げる */
+    for(const p of places) for(const a of (p.att||[])) for(const k of ["ic","ref"]){
+      if(a[k]){ const du=await phGet(a[k]); if(du) images[a[k]]=du; } }
     for(const cn in COVERS){ const c=covOf(cn); if(!c)continue; const du=await phGet(c.id); if(du) images[c.id]=du; }   /* 本棚の表紙も同梱 */
     const nImg=Object.keys(images).length;
     const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
