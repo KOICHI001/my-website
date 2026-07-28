@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>場所帳 プライバシーポリシー</title>
+<style>
+  :root{color-scheme:light dark;}
+  body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.8;
+       max-width:720px;margin:0 auto;padding:24px 20px 60px;
+       background:#f7f8fa;color:#1a2233;}
+  @media (prefers-color-scheme:dark){body{background:#14181f;color:#dde3ec;}}
+  h1{font-size:1.5em;border-bottom:3px solid #2b6cb0;padding-bottom:8px;}
+  h2{font-size:1.15em;margin-top:2em;border-left:5px solid #2b6cb0;padding-left:10px;}
+  .lead{background:rgba(43,108,176,.10);border-radius:10px;padding:14px 16px;font-weight:600;}
+  table{border-collapse:collapse;width:100%;margin:1em 0;font-size:.95em;}
+  th,td{border:1px solid rgba(128,128,128,.4);padding:8px 10px;text-align:left;vertical-align:top;}
+  th{background:rgba(43,108,176,.12);white-space:nowrap;}
+  .foot{margin-top:3em;font-size:.9em;opacity:.75;}
+  ul{padding-left:1.4em;}
+  li{margin:.4em 0;}
+</style>
+</head>
+<body>
+<h1>「場所帳」プライバシーポリシー</h1>
+
+<p class="lead">
+場所帳は、あなたの場所の記録（位置情報・写真・メモなど）を<b>すべて端末の中だけに保存</b>するアプリです。
+開発者のサーバーは存在せず、記録した内容が開発者や第三者に送信されることはありません。
+アカウント登録も不要で、広告・アクセス解析・第三者への提供も一切ありません。
+</p>
+
+<h2>1. 収集しない情報</h2>
+<ul>
+  <li>アカウント情報（登録機能自体がありません）</li>
+  <li>広告識別子・利用状況の解析データ（広告・解析ツールを搭載していません）</li>
+  <li>開発者への自動送信データ（開発者のサーバーはありません）</li>
+</ul>
+
+<h2>2. アプリが端末内で扱う情報</h2>
+<p>以下の情報は、機能の実現のために<b>端末内にのみ</b>保存されます。外部には送信されません。</p>
+<table>
+  <tr><th>情報</th><th>用途</th></tr>
+  <tr><td>位置情報（GPS）</td><td>場所のワンタッチ登録、周辺モードの現在地表示、駐車メモ・足あとの記録</td></tr>
+  <tr><td>写真</td><td>場所カードへの添付（カメラ・ギャラリーから取り込んだもの）</td></tr>
+  <tr><td>PDFファイル</td><td>場所カードへの添付</td></tr>
+  <tr><td>スクリーンショット画像</td><td>「スクショから座標を読む」機能。文字の読み取り（OCR）は<b>端末内で完結</b>し、画像が外部へ送られることはありません</td></tr>
+  <tr><td>名前・メモ・カテゴリ等の入力内容</td><td>場所カードの表示・整理</td></tr>
+</table>
+
+<h2>3. 外部との通信が発生する場面</h2>
+<p>次の場面では、機能上必要な最小限の通信が発生します。<b>いずれの場合も、登録した場所の座標・写真・メモが送られることはありません。</b></p>
+<table>
+  <tr><th>場面</th><th>通信先と内容</th></tr>
+  <tr><td>地図の表示</td><td>国土地理院の地図タイル配信サーバーから地図画像を取得します（表示中の地図範囲に対応するタイル座標がリクエストとして送られます）</td></tr>
+  <tr><td>住所検索</td><td>「地図で位置を決める」の住所検索で、入力した検索文字列が国土地理院の検索APIへ送られます</td></tr>
+  <tr><td>リンクカード</td><td>URLを貼った時、そのページの題名などを取得するため、<b>貼ったURLのみ</b>が対象サイトおよび取得代行サービス（allorigins.win / corsproxy.io）へ送られます</td></tr>
+  <tr><td>Googleマップを開く・経路</td><td>ボタン操作で外部の地図アプリ／サイトへ移動します。移動先での取り扱いは各サービスのプライバシーポリシーに従います</td></tr>
+</table>
+
+<h2>4. バックアップ</h2>
+<p>バックアップはご自身の操作でファイルとして書き出し、ご自身で保管する方式です。開発者がバックアップデータを受け取ることはありません。</p>
+
+<h2>5. データの削除</h2>
+<p>記録した内容はアプリ内の削除操作でいつでも削除できます。アプリをアンインストールすると、端末内のすべてのデータが消去されます（開発者側には元々何も保存されていません）。</p>
+
+<h2>6. 権限について</h2>
+<p>アプリが求める位置情報の権限は、上記2の機能のためだけに使用します。権限を許可しなくても、位置以外の機能（手入力での登録・写真・メモ等）は利用できます。</p>
+
+<h2>7. 子どものプライバシー</h2>
+<p>本アプリは特に子どもを対象としたものではなく、年齢を問わず個人情報を収集しません。</p>
+
+<h2>8. 改定について</h2>
+<p>本ポリシーを変更する場合は、このページで告知します。</p>
+
+<h2>9. お問い合わせ</h2>
+<p>本アプリおよび本ポリシーに関するお問い合わせ：<br>
+開発者：YGGDRA<br>
+メール：kyoji0011212@gmail.com</p>
+
+<p class="foot">制定日：2026年7月28日<br>「場所帳」開発者 YGGDRA</p>
+</body>
+</html>
