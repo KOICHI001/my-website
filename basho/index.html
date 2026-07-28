@@ -438,6 +438,9 @@
   transition:opacity .45s ease}
 #bootsplash .bs-in{display:flex;flex-direction:column;align-items:center;gap:26px;
   padding-top:31vh;padding-top:31svh;animation:bsIn .4s ease-out}
+/* スタート画面中はスクロール封印=裏の本文描画でスクロールバーが右端で暴れる(揺れて見える)のを防ぐ */
+html.bs-lock,html.bs-lock body{overflow:hidden!important}
+html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:none!important}
 </style>
 <div id="bootsplash">
   <div class="bs-in">
@@ -452,8 +455,11 @@
 (function(){
   var b=document.getElementById("bootsplash");
   if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()){
+    document.documentElement.classList.add("bs-lock");
     b.style.display="block";
-    setTimeout(function(){ b.style.opacity="0"; setTimeout(function(){ b.remove(); },500); },2200);
+    setTimeout(function(){ b.style.opacity="0"; setTimeout(function(){
+      b.remove(); document.documentElement.classList.remove("bs-lock");
+    },500); },2200);
   }else{ b.remove(); }
 })();
 </script>
@@ -566,7 +572,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.7";
+const VER = "0.16.8";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
