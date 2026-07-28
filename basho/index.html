@@ -506,7 +506,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.14.0";
+const VER = "0.14.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2144,6 +2144,7 @@ function nvPhotosRender(){
 const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
   watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null,
   headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false,gpsT:0,
+  cmpFix:0,rawHd:null,rawHdT:0,fixBuf:[],cmpTold:false,   /* コンパス自動補正（GPS照合） */
   gpsOn:false,walkN:0,gline:null};
 const nvEl=id=>document.getElementById(id);
 
@@ -2275,6 +2276,7 @@ function nvFollow(v){
   }else NV.map.panTo(me);
 }
 /* ───── 北上⇄向き上（自分の向きを上に固定して地図を回す） ───── */
+function angNorm(d){ return ((d%360)+540)%360-180; }   /* 角度差を -180〜180 に */
 function nvApplyRot(){
   const m=document.getElementById("nvMap");
   const tgt=(NV.headUp&&NV.curHd!=null)?-NV.curHd:0;
@@ -2339,6 +2341,7 @@ document.addEventListener("visibilitychange",()=>{
 
 function nvOpen(mode,place){
   NV.mode=mode; NV.fitted=false; NV.fitT=0; NV.lastFix=null; NV.gpsT=0; NV.gpsOn=false; NV.walkN=0;
+  NV.fixBuf=[];   /* 補正値cmpFix自体は持ち越す（磁気狂いは開き直しでは直らないため） */
   NV.target = mode==="place" ? {lat:+place.lat,lng:+place.lng,name:place.name} : null;
   document.documentElement.classList.add("nvon");
   nvEl("nvov").classList.add("on"); nvEl("nvov").classList.remove("pick");
@@ -2416,6 +2419,31 @@ function nvOpen(mode,place){
       }
       /* コンパス非対応端末: 歩いている間もGPSの進行方向で地図を回す */
       else if(hd!=null&&!NV.hasCompass){NV.curHd=hd;nvApplyRot();}
+      /* ★コンパス自動補正（GPS×方位のフュージョン）:
+         歩行中のGPS進行方向とコンパスの生値を照合し、同じ方向の大きなズレが
+         3回続いたらその差を補正値(cmpFix)としてコンパスに適用する。
+         磁気で狂ったコンパス（地図の上下あべこべ）を再起動なしで自動的に立て直す。
+         GPSの進行方向が「正」・コンパスは相対的な向きの変化担当 */
+      if(hd!=null&&!NV.gpsOn&&NV.hasCompass&&Date.now()-NV.rawHdT<3000){
+        NV.fixBuf.push(angNorm(hd-NV.rawHd));
+        if(NV.fixBuf.length>5) NV.fixBuf.shift();
+        if(NV.fixBuf.length>=3){
+          const r=Math.PI/180;
+          const mean=Math.atan2(
+            NV.fixBuf.reduce((s,a)=>s+Math.sin(a*r),0),
+            NV.fixBuf.reduce((s,a)=>s+Math.cos(a*r),0))/r;
+          /* 全サンプルが同じ方向にズレている時だけ動かす（歩行GPSのノイズで暴れない）。
+             25°未満の小ズレは触らない＝通常時はコンパスの応答性そのまま */
+          if(NV.fixBuf.every(a=>Math.abs(angNorm(a-mean))<=30)
+             &&Math.abs(angNorm(mean-NV.cmpFix))>25){
+            NV.cmpFix=Math.round(angNorm(mean)); NV.fixBuf=[];
+            NV.curHd=(NV.rawHd+NV.cmpFix+3600)%360;
+            nvCone(NV.curHd); nvApplyRot();
+            if(!NV.cmpTold){NV.cmpTold=true;
+              toast("コンパスのズレを検知し、GPSの進行方向で自動補正しました");}
+          }
+        }
+      }
       const tg=nvTargetLL();
       nvGuide(me,tg);   /* 自分→目的地の赤点線を常に引き直す */
       if(tg){
@@ -2444,9 +2472,11 @@ function nvOpen(mode,place){
     else if(e.absolute&&e.alpha!=null) h=360-e.alpha;
     if(h==null) return;
     NV.hasCompass=true;
+    NV.rawHd=h; NV.rawHdT=Date.now();   /* 生値はGPS照合（自動補正）用に保存 */
     /* GPSモード中はGPSの進行方向が地図を握っている＝コンパスは黙る（車内の磁気で狂うため）。
        停止しても解除しない。解除は歩く速度が続いた時だけ（watchPosition側で判定） */
     if(NV.gpsOn) return;
+    h=(h+NV.cmpFix+3600)%360;   /* GPS照合で得た自動補正を適用 */
     NV.curHd=h;
     /* コンパスは高頻度で来るため200msに間引いて扇と地図回転を更新 */
     const now=Date.now();
