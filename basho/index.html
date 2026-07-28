@@ -506,7 +506,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.14.1";
+const VER = "0.14.2";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -730,81 +730,47 @@ function ordSync(p){
   p.ord=ord; return ord;
 }
 function attFmtSize(n){ return n>=1048576?(n/1048576).toFixed(1)+"MB":Math.max(1,Math.round(n/1024))+"KB"; }
-async function attFetch(u,asBlob,ms){
+/* URL→HTML本文（最速優先）: 直接・プロキシ2系統を**同時に**投げ、最初に返った正常な本文を採用。
+   旧: 順番に試す=最悪24秒 → 新: 最速の1本=通常1〜3秒。各経路は8秒で打ち切り。
+   送るのは貼り付けたURLだけ（座標不送信は従来どおり） */
+function attFetchHtml(u){
   const tryOne=async url=>{
-    const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),ms||10000);
+    const ac=new AbortController(); const t=setTimeout(()=>ac.abort(),8000);
     try{
       const r=await fetch(url,{signal:ac.signal});
       if(!r.ok) throw 0;
-      if(asBlob) return await r.blob();
       /* 文字化け対策: 一旦UTF-8で読み、meta charsetがShift_JIS等なら読み直す */
       const buf=await r.arrayBuffer();
       let txt=new TextDecoder("utf-8").decode(buf);
       const m=txt.slice(0,3000).match(/charset=["']?\s*([\w-]+)/i);
       if(m&&!/^utf-?8$/i.test(m[1])){ try{ txt=new TextDecoder(m[1].toLowerCase()).decode(buf); }catch(e){} }
       /* 旧sw.jsのオフライン保険が外部サイトの失敗に場所帳自身のindex.htmlを
-         返してくることがある→自分の画面を掴んだら失敗扱いにして次の経路へ */
+         返してくることがある→自分の画面を掴んだら失敗扱い */
       if(txt.includes('id="menuBtn"')&&txt.includes("場所帳")) throw 0;
       return txt;
     }finally{ clearTimeout(t); }
   };
-  try{ return await tryOne(u); }catch(e){}
-  try{ return await tryOne("https://api.allorigins.win/raw?url="+encodeURIComponent(u)); }catch(e){}
-  try{ return await tryOne("https://corsproxy.io/?url="+encodeURIComponent(u)); }catch(e){}
-  return null;
+  return Promise.any([
+    tryOne(u),
+    tryOne("https://api.allorigins.win/raw?url="+encodeURIComponent(u)),
+    tryOne("https://corsproxy.io/?url="+encodeURIComponent(u))
+  ]).catch(()=>null);
 }
-/* アイコン画像→縮小してIndexedDBへ。失敗はnull（カードは🌐表示になるだけ） */
-function attSaveIcon(blob){
-  return new Promise(res=>{
-    if(!blob||!blob.size||(blob.type&&!/^image\//.test(blob.type))) return res(null);
-    const img=new Image();
-    img.onload=()=>{
-      const MAX=160, sc=Math.min(1,MAX/Math.max(img.width,img.height));
-      const cv=document.createElement("canvas");
-      cv.width=Math.max(1,Math.round(img.width*sc)); cv.height=Math.max(1,Math.round(img.height*sc));
-      const cx=cv.getContext("2d");
-      const alpha=/png|svg|gif|webp|icon/.test(blob.type||"");
-      if(!alpha){ cx.fillStyle="#fff"; cx.fillRect(0,0,cv.width,cv.height); }
-      cx.drawImage(img,0,0,cv.width,cv.height);
-      URL.revokeObjectURL(img.src);
-      let du; try{ du=cv.toDataURL(alpha?"image/png":"image/jpeg",.85); }catch(e){ return res(null); }
-      const id=attId();
-      IDB.set(id,du).then(()=>{ phCache.set(id,du); res(id); }).catch(()=>res(null));
-    };
-    img.onerror=()=>{ URL.revokeObjectURL(img.src); res(null); };
-    img.src=URL.createObjectURL(blob);
-  });
-}
-/* URL→メタ情報（サイト名・説明・ロゴ）を取得してattレコードを作る */
+/* URL→サイト名・説明を取得してattレコードを作る。
+   ★ロゴ・画像は取りに行かない（v0.14.2で廃止=最大数十秒かかっていた真犯人）。
+   カードの左は🌐マーク固定＝取得はHTML1本だけで即終わる */
 async function attBuildUrl(url){
   let host=""; try{ host=new URL(url).hostname.replace(/^www\./,""); }catch(e){ return null; }
   const a={t:"url",url:url,host:host,title:"",desc:"",ic:null};
-  const html=await attFetch(url,false,8000);
-  let icCands=[];
+  const html=await attFetchHtml(url);
   if(html){
     const doc=new DOMParser().parseFromString(html,"text/html");
     const og=n=>{const m=doc.querySelector('meta[property="'+n+'"],meta[name="'+n+'"]');return (m&&m.content||"").trim();};
     a.title=og("og:title")||og("twitter:title")||(doc.querySelector("title")||{textContent:""}).textContent.trim();
     a.desc=og("og:description")||og("description")||og("twitter:description");
     if(a.desc.length>120) a.desc=a.desc.slice(0,120)+"…";
-    const abs=h=>{ try{ return new URL(h,url).href; }catch(e){ return null; } };
-    /* ロゴ優先順: apple-touch-icon（角形ロゴ）→ og:image → 大きめicon */
-    doc.querySelectorAll('link[rel~="apple-touch-icon"]').forEach(l=>{const h=abs(l.getAttribute("href"));if(h)icCands.push(h);});
-    const ogi=og("og:image")||og("twitter:image"); if(ogi){const h=abs(ogi);if(h)icCands.push(h);}
-    doc.querySelectorAll('link[rel~="icon"]').forEach(l=>{const h=abs(l.getAttribute("href"));if(h)icCands.push(h);});
   }
-  /* 最後の砦: サイト直下のfavicon.ico → 各社faviconサービス（ドメイン名だけ送る）。
-     どれかが画像を返した時点で終了（非画像はattSaveIconが弾いて次へ） */
-  try{ icCands.push(new URL(url).origin+"/favicon.ico"); }catch(e){}
-  icCands.push("https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url="+encodeURIComponent("https://"+host)+"&size=128");
-  icCands.push("https://icons.duckduckgo.com/ip3/"+host+".ico");
-  icCands.push("https://www.google.com/s2/favicons?domain="+encodeURIComponent(host)+"&sz=128");
   a.title=a.title||host;
-  for(const c of icCands.slice(0,7)){
-    const b=await attFetch(c,true,4000);
-    const id=await attSaveIcon(b);
-    if(id){ a.ic=id; break; }
-  }
   return a;
 }
 /* 追加シート: URL貼り付け or PDF選択 */
@@ -832,7 +798,7 @@ function attSheet(p){
     if(!a){ btn.disabled=false; btn.textContent="🔗 このURLを貼る"; toast("追加できませんでした"); return; }
     p.att=(p.att||[]); p.att.push(a); p.updated=Date.now();
     closeSheet(); save();
-    toast(a.ic||a.desc?"リンクカードを追加しました":"追加しました（サイト情報は取得できず。名前は長押しで変更できます）");
+    toast(a.title&&a.title!==a.host?"リンクカードを追加しました":"追加しました（サイト名は取得できず。名前は長押しで変更できます）");
   };
   document.getElementById("att_pdf").onclick=()=>{
     const inp=document.createElement("input");
@@ -1517,9 +1483,11 @@ function _renderBody(){
         else phShoot(p,b.dataset.ph==="pick");};
     });
     /* サムネ列は p.ord の順（写真と添付ミニタイルが混ざって並ぶ）。
-       写真: タップ=縦閲覧 / 長押し=削除。添付: タップ=縦閲覧のその位置へ / 長押し=メニュー */
+       写真: タップ=縦閲覧 / 長押し=削除。添付: タップ=縦閲覧のその位置へ / 長押し=メニュー
+       ★ordSync（添付ID採番）を先に呼んでからatMapを作ること（逆だと追加直後の添付が写真扱いになる） */
+    const toks=ordSync(p);
     const atMap=new Map((p.att||[]).map(a=>[a.id,a]));
-    ordSync(p).forEach(tok=>{
+    toks.forEach(tok=>{
       const a=atMap.get(tok);
       if(a){
         const tl=document.createElement("div");
