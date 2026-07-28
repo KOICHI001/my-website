@@ -511,7 +511,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.0";
+const VER = "0.16.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1535,11 +1535,18 @@ function _renderBody(){
       if(a==="map") hasSpot(p)?openMap(p):(toast("位置がまだ入っていません"),form(p));
       else if(a==="route"){
         if(!hasSpot(p)){toast("位置がまだ入っていません");form(p);}
-        else{
-          /* 赤ボタン（ピン未確定）で開く時は、ずれる可能性と直し方をひと言だけ添える */
-          if(!goodPin(p)) toast("ピンが未確定のため案内がずれることがあります。編集→「🗺 地図で位置を決める」で確定できます");
-          openRoute(p);
+        else if(!goodPin(p)){
+          /* 赤ボタン=素通しにしない。理由を明示した確認を挟み、OKで初めてマップへ
+             （赤なのに普通に開くと、ユーザーが赤の意味を学べないため） */
+          const why=(p.lat&&p.lng)
+            ? "登録位置の精度が粗いです（おおよそ±"+p.acc+"m）。"
+            : (p.addr
+              ? "正確なピンが未設定です。住所だけを頼りに経路を開きます。"
+              : "正確なピンも住所も未記入です。Googleマップのリンクと名前だけを頼りに経路を開きます。");
+          if(confirm(why+"\n本来の場所とズレることがありますのでご注意ください。\n（編集→「🗺 地図で位置を決める」で確定できます）\n\nこのまま経路を開きますか？"))
+            openRoute(p);
         }
+        else openRoute(p);
       }
       else if(a==="tel") location.href="tel:"+p.tel.replace(/[^\d+]/g,"");
       else if(a==="nav"){
@@ -1549,10 +1556,11 @@ function _renderBody(){
           if(c){p.lat=c.lat;p.lng=c.lng;p.acc=null;updatePref(p);save();}
         }
         if(p.lat&&p.lng){
-          if(!goodPin(p)) toast("ピンが未確定のため位置がずれることがあります。編集→「🗺 地図で位置を決める」で確定できます");
+          /* 赤（精度が粗い）は理由つき確認を挟む。OKするまで消えない＝読める */
+          if(!goodPin(p)&&!confirm("登録位置の精度が粗いです（おおよそ±"+p.acc+"m）。\nピンが本来の場所とズレていることがあります。\n（編集→「🗺 地図で位置を決める」で確定できます）\n\nこのまま周辺モードを開きますか？")) return;
           bump(p);nvOpen("place",p);
         }
-        else toast("位置が入っていません。編集の「🗺 地図で位置を決める」でピンを置いてください");
+        else alert("位置が入っていません。\n編集の「🗺 地図で位置を決める」でピンを置いてください。");
       }
       else form(p);
     });
