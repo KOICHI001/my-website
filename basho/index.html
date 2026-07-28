@@ -382,6 +382,41 @@
   .fab2 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
   .fab2.parked{background:#274A73;border-color:#274A73;color:#fff}
   .fab2.parked small{color:rgba(255,255,255,.8)}
+  /* 📍近くFAB（足あとの上・同デザイン） */
+  .fab3{position:fixed;left:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:30;
+    background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:999px;
+    padding:13px 18px;font-size:14px;font-family:var(--gothic);font-weight:700;
+    box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
+  .fab3 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
+  /* ───── 📍近くビュー（上=カード列 / 下=地図・連動フォーカス） ───── */
+  .nearov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
+  .nearov.on{display:flex}
+  body.nearon .fab,body.nearon .fab2,body.nearon .fab3{display:none}   /* 表示中はFAB全部隠す */
+  .near-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+    padding:calc(8px + env(safe-area-inset-top)) 12px 8px;border-bottom:1.5px solid var(--line)}
+  .near-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em}
+  .near-r{display:flex;gap:5px;margin-left:auto}
+  .near-r button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:6px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer}
+  .near-r button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .near-cards{flex:0 0 42%;position:relative;overflow-y:auto;padding:0 12px;scrollbar-width:none;overscroll-behavior:contain}
+  .near-cards::-webkit-scrollbar{display:none}
+  .near-empty{color:var(--soft);font-size:13px;text-align:center;padding:26px 14px;line-height:1.8}
+  .nearrow{display:flex;align-items:center;gap:10px;background:var(--card);
+    border:1.5px solid var(--line);border-left:7px solid var(--nrc,#6B7280);
+    border-radius:12px;padding:10px 12px;margin:8px 0;cursor:pointer;
+    transition:border-color .15s,box-shadow .15s}
+  .nearrow .nr-t{flex:1;min-width:0}
+  .nearrow .nr-c{font-size:11px;font-weight:700;color:var(--nrc,#6B7280);letter-spacing:.04em}
+  .nearrow .nr-n{font-family:var(--mincho);font-size:15px;font-weight:600;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .nearrow .nr-d{font-size:14px;font-weight:700;color:var(--route);white-space:nowrap}
+  .nearrow .nr-b{display:flex;gap:6px}
+  .nearrow .nr-b button{border:1.5px solid var(--line);background:var(--paper);color:var(--ink);
+    border-radius:9px;padding:7px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer;white-space:nowrap}
+  .nearrow.focus{border-color:#C5372C;box-shadow:0 0 0 2px rgba(197,55,44,.22)}
+  .nearrow.focus .nr-d{color:#C5372C}
+  .near-map{flex:1;position:relative;background:#DDE2D8}
   /* ───── OCR（スクショから座標を読む） ───── */
   .ocrov{position:fixed;inset:0;z-index:55;background:rgba(10,14,13,.96);display:none;
     flex-direction:column;touch-action:none}
@@ -492,6 +527,20 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 
 <button class="fab" id="addBtn">ここを登録<small>GPSで今の位置を記録</small></button>
 <button class="fab2" id="parkBtn">🚩 足あと<small>戻りたい場所に旗を立てる</small></button>
+<button class="fab3" id="nearBtn">📍 近く<small>登録済みの場所を地図で</small></button>
+
+<!-- 📍近くビュー: 現在地からの距離で絞った場所を「カード列+地図」で同時に見る -->
+<div class="nearov" id="nearov">
+  <div class="near-top">
+    <button class="nv-back" id="nearBack">← 戻る</button>
+    <div class="near-tt">📍 近くの場所</div>
+    <div class="near-r" id="nearRads">
+      <button data-r="500">500m</button><button data-r="1000">1km</button><button data-r="2000" class="on">2km</button><button data-r="5000">5km</button>
+    </div>
+  </div>
+  <div class="near-cards" id="nearCards"></div>
+  <div class="near-map" id="nearMap"></div>
+</div>
 
 <div class="nvov" id="nvov">
   <div class="nv-top">
@@ -572,7 +621,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.16.8";
+const VER = "0.17.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2599,7 +2648,9 @@ function nvClose(){
   }
   nvEl("nvov").classList.remove("on","pick","car");
   nvEl("nvEdge").classList.remove("on");
-  document.documentElement.classList.remove("nvon");
+  /* 📍近くビューから開いた周辺なら、戻った先でも引っ張って更新の封じを維持 */
+  if(!document.getElementById("nearov").classList.contains("on"))
+    document.documentElement.classList.remove("nvon");
   nvEl("nvCands").innerHTML=""; NV.pickCb=null;
   if(NV.watch!=null){navigator.geolocation.clearWatch(NV.watch);NV.watch=null;}
   if(NV.hdgFn){window.removeEventListener("deviceorientationabsolute",NV.hdgFn,true);NV.hdgFn=null;}
@@ -3411,6 +3462,7 @@ function closeTopOverlay(){
   else if(pv.classList.contains("on")) pvClose();   /* ライトボックス→縦閲覧→一覧 の順で1段ずつ */
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
+  else if(document.getElementById("nearov").classList.contains("on")) nearClose();
   else if(veil.classList.contains("on")) closeSheet();
   else if(homeTab==="shelf"&&shelfCat&&shelfSub){ shelfSub=null; renderTop(); }   /* フォルダ→本へ */
   else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; renderTop(); }   /* 本の中→本棚へ */
@@ -3451,6 +3503,144 @@ document.getElementById("parkBtn").onclick=()=>{
   parkBtnSync();
   nvOpen("car");
 };
+
+/* ───── 📍近くビュー: 現在地から一定距離の登録場所を「カード列+地図」で連動表示 ─────
+   上=距離順カード(真ん中のカードにフォーカス) / 下=自分中心の地図(フォーカス中の点が赤)。
+   カードのスクロール⇄地図の点タップ、双方向で連動する */
+const NEAR={map:null,osm:null,meMk:null,circle:null,dots:{},items:[],r:2000,center:null,focusId:null,raf:0};
+function nearInitMap(){
+  if(NEAR.map) return;
+  /* 名前入り地図(OSM)=店・施設の名称が見えるのでこの用途に最適 */
+  NEAR.osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
+  NEAR.map=L.map("nearMap",{zoomControl:false});
+  NEAR.map.attributionControl.setPosition("topright");
+  NEAR.osm.addTo(NEAR.map);
+}
+function nearOpen(){
+  document.getElementById("nearov").classList.add("on");
+  document.body.classList.add("nearon");                    /* FAB(足あと・ここを登録)を隠す */
+  document.documentElement.classList.add("nvon");           /* 引っ張って更新の封じを流用 */
+  NEAR.focusId=null;
+  nearLocate();
+}
+function nearClose(){
+  document.getElementById("nearov").classList.remove("on");
+  document.body.classList.remove("nearon");
+  if(!document.getElementById("nvov").classList.contains("on"))
+    document.documentElement.classList.remove("nvon");
+}
+function nearLocate(){
+  const cards=document.getElementById("nearCards");
+  cards.style.paddingTop=cards.style.paddingBottom="";
+  cards.innerHTML='<div class="near-empty">現在地を取得しています…</div>';
+  const use=pos=>{NEAR.center=pos; nearRender();};
+  if(!navigator.geolocation){
+    if(lastPos) use(lastPos);
+    else{ toast("この端末では位置情報が使えません"); nearClose(); }
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    p=>{ lastPos={lat:p.coords.latitude,lng:p.coords.longitude}; use(lastPos); },
+    ()=>{
+      if(lastPos){ use(lastPos); toast("少し前の現在地を使っています"); }
+      else cards.innerHTML='<div class="near-empty">現在地が取れませんでした。<br>電波の良い場所でもう一度お試しください</div>';
+    },
+    {enableHighAccuracy:false,timeout:8000,maximumAge:30000});
+}
+function nearRender(){
+  nearInitMap();
+  const c=NEAR.center, r=NEAR.r, cards=document.getElementById("nearCards");
+  NEAR.items=places.filter(p=>p.lat&&p.lng)
+    .map(p=>({p,d:distM(c,{lat:+p.lat,lng:+p.lng})}))
+    .filter(x=>x.d<=r).sort((a,b)=>a.d-b.d);
+  /* 地図: 先にビューを確定(未設定だとレイヤー追加でエラー)→掃除→自分+円+点 */
+  NEAR.map.invalidateSize();
+  NEAR.map.setView([c.lat,c.lng],14);
+  Object.values(NEAR.dots).forEach(m=>NEAR.map.removeLayer(m)); NEAR.dots={};
+  if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
+  if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
+  NEAR.circle=L.circle([c.lat,c.lng],{radius:r,color:"#0B6E5F",weight:1.5,dashArray:"4 6",fill:false}).addTo(NEAR.map);
+  NEAR.meMk=L.circleMarker([c.lat,c.lng],{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
+  NEAR.items.forEach(x=>{
+    const mk=L.circleMarker([+x.p.lat,+x.p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(x.p.cat),fillOpacity:1});
+    mk.on("click",()=>nearJump(x.p.id));
+    mk.addTo(NEAR.map); NEAR.dots[x.p.id]=mk;
+  });
+  NEAR.map.invalidateSize();
+  NEAR.map.fitBounds(NEAR.circle.getBounds(),{padding:[14,14]});
+  /* カード列（距離順） */
+  NEAR.focusId=null;
+  if(!NEAR.items.length){
+    cards.style.paddingTop=cards.style.paddingBottom="";
+    cards.innerHTML='<div class="near-empty">この距離には登録した場所がありません。<br>上のボタンでもっと広い距離も試せます</div>';
+    return;
+  }
+  cards.innerHTML="";
+  NEAR.items.forEach(x=>{
+    const el=document.createElement("div");
+    el.className="nearrow"; el.dataset.id=x.p.id;
+    el.style.setProperty("--nrc",catColor(x.p.cat));
+    el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(x.p.cat)+'</div>'+
+      '<div class="nr-n">'+esc(x.p.name)+'</div></div>'+
+      '<div class="nr-d">'+fmtDist(x.d)+'</div>'+
+      '<div class="nr-b"><button data-a="route">経路</button><button data-a="nav">周辺</button></div>';
+    el.onclick=()=>nearJump(x.p.id);
+    el.querySelector('[data-a="route"]').onclick=e=>{e.stopPropagation(); openRoute(x.p);};
+    el.querySelector('[data-a="nav"]').onclick=e=>{e.stopPropagation(); nvOpen("place",x.p);};
+    cards.appendChild(el);
+  });
+  /* 最初/最後のカードも「真ん中」に来られるよう上下に余白 */
+  const row=cards.querySelector(".nearrow");
+  const pad=Math.max(0,(cards.clientHeight-(row?row.offsetHeight:72))/2);
+  cards.style.paddingTop=pad+"px"; cards.style.paddingBottom=pad+"px";
+  cards.scrollTop=0;
+  nearSyncFocus();
+}
+/* スクロール位置の真ん中に一番近いカードへフォーカス＝地図の点を赤に */
+function nearSyncFocus(){
+  const cards=document.getElementById("nearCards");
+  const mid=cards.scrollTop+cards.clientHeight/2;
+  let best=null,bd=Infinity;
+  cards.querySelectorAll(".nearrow").forEach(el=>{
+    const d=Math.abs(el.offsetTop+el.offsetHeight/2-mid);
+    if(d<bd){bd=d;best=el;}
+  });
+  const id=best?best.dataset.id:null;
+  if(id===NEAR.focusId) return;
+  const prev=cards.querySelector(".nearrow.focus"); if(prev)prev.classList.remove("focus");
+  if(best)best.classList.add("focus");
+  if(NEAR.focusId&&NEAR.dots[NEAR.focusId]){
+    const old=NEAR.items.find(x=>x.p.id===NEAR.focusId);
+    NEAR.dots[NEAR.focusId].setStyle({fillColor:old?catColor(old.p.cat):"#6B7280"});
+    NEAR.dots[NEAR.focusId].setRadius(8);
+  }
+  NEAR.focusId=id;
+  if(id&&NEAR.dots[id]){
+    NEAR.dots[id].setStyle({fillColor:"#E03131"});
+    NEAR.dots[id].setRadius(11);
+    NEAR.dots[id].bringToFront();
+  }
+}
+/* 地図の点タップ or カードタップ→そのカードを真ん中へ（スクロールがフォーカスを連動させる） */
+function nearJump(id){
+  const cards=document.getElementById("nearCards");
+  const el=cards.querySelector('.nearrow[data-id="'+id+'"]'); if(!el)return;
+  cards.scrollTo({top:el.offsetTop-(cards.clientHeight-el.offsetHeight)/2,behavior:"smooth"});
+}
+document.getElementById("nearBtn").onclick=nearOpen;
+document.getElementById("nearBack").onclick=nearClose;
+document.getElementById("nearCards").addEventListener("scroll",()=>{
+  if(NEAR.raf) return;
+  NEAR.raf=requestAnimationFrame(()=>{NEAR.raf=0;nearSyncFocus();});
+},{passive:true});
+document.querySelectorAll("#nearRads button").forEach(b=>{
+  b.onclick=()=>{
+    document.querySelectorAll("#nearRads button").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on"); NEAR.r=+b.dataset.r;
+    if(NEAR.center) nearRender();
+  };
+});
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
