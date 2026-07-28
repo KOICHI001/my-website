@@ -195,11 +195,13 @@
   .empty b{display:block;font-family:var(--mincho);font-size:19px;color:var(--ink);
     margin-bottom:8px;font-weight:600}
 
+  /* 下段FAB三点配置: 左=足あと / 真ん中=📍近く(正円) / 右=ここを登録。左右は同じ大きさ・同じ形 */
   .fab{position:fixed;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
-    background:var(--route);color:#fff;border:0;border-radius:999px;padding:17px 26px;
-    font-size:17px;font-family:var(--gothic);font-weight:700;
+    width:calc(50vw - 56px);max-width:180px;height:64px;padding:0 6px;
+    background:var(--route);color:#fff;border:0;border-radius:999px;
+    font-size:15px;font-family:var(--gothic);font-weight:700;
     box-shadow:0 6px 20px rgba(11,110,95,.34);cursor:pointer}
-  .fab small{display:block;font-size:11px;font-weight:400;opacity:.85;letter-spacing:.05em}
+  .fab small{display:block;font-size:10px;font-weight:400;opacity:.85;letter-spacing:.02em;white-space:nowrap}
 
   .veil.abovepv{z-index:62}   /* 縦閲覧(pv z58)の上で開く添付メニュー用 */
   .veil{position:fixed;inset:0;background:rgba(27,36,34,.42);z-index:40;display:none;
@@ -376,18 +378,21 @@
   .nvov.pick #nvFollow{display:none}
   /* 駐車FAB（左下） */
   .fab2{position:fixed;left:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
+    width:calc(50vw - 56px);max-width:180px;height:64px;padding:0 6px;
     background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:999px;
-    padding:13px 18px;font-size:14px;font-family:var(--gothic);font-weight:700;
+    font-size:15px;font-family:var(--gothic);font-weight:700;
     box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
-  .fab2 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
+  .fab2 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.02em;white-space:nowrap}
   .fab2.parked{background:#274A73;border-color:#274A73;color:#fff}
   .fab2.parked small{color:rgba(255,255,255,.8)}
-  /* 📍近くFAB（足あとの上・同デザイン） */
-  .fab3{position:fixed;left:16px;bottom:calc(96px + env(safe-area-inset-bottom));z-index:30;
-    background:var(--card);color:var(--ink);border:1.5px solid var(--line);border-radius:999px;
-    padding:13px 18px;font-size:14px;font-family:var(--gothic);font-weight:700;
+  /* 📍近くFAB（下段中央・正円） */
+  .fab3{position:fixed;left:50%;transform:translateX(-50%);
+    bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
+    width:64px;height:64px;padding:0;border-radius:50%;
+    background:var(--card);color:var(--ink);border:1.5px solid var(--line);
+    font-size:19px;line-height:1.1;font-family:var(--gothic);font-weight:700;
     box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
-  .fab3 small{display:block;font-size:10px;font-weight:400;color:var(--soft);letter-spacing:.05em}
+  .fab3 span{display:block;font-size:11px;letter-spacing:.04em}
   /* ───── 📍近くビュー（上=カード列 / 下=地図・連動フォーカス） ───── */
   .nearov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
   .nearov.on{display:flex}
@@ -528,7 +533,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 
 <button class="fab" id="addBtn">ここを登録<small>GPSで今の位置を記録</small></button>
 <button class="fab2" id="parkBtn">🚩 足あと<small>戻りたい場所に旗を立てる</small></button>
-<button class="fab3" id="nearBtn">📍 近く<small>登録済みの場所を地図で</small></button>
+<button class="fab3" id="nearBtn">📍<span>近く</span></button>
 
 <!-- 📍近くビュー: 現在地からの距離で絞った場所を「カード列+地図」で同時に見る -->
 <div class="nearov" id="nearov">
@@ -622,7 +627,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.17.1";
+const VER = "0.17.2";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
