@@ -225,6 +225,9 @@
   .catdot{width:32px;height:32px;border-radius:50%;border:2px solid rgba(0,0,0,.15);
     flex:0 0 auto;cursor:pointer;padding:0}
   .catdel{background:none;border:0;font-size:19px;padding:6px 4px;cursor:pointer;flex:0 0 auto}
+  .catmv{flex:0 0 auto;width:38px;height:36px;border:1px solid var(--line);border-radius:8px;
+    background:var(--card);font-size:15px;cursor:pointer;padding:0}
+  .catmv:disabled{opacity:.25}
   /* カラーパレット窓（Googleカレンダー風・色名付きリスト） */
   .cpick{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.35);display:none;
     align-items:center;justify-content:center}
@@ -506,7 +509,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.14.2";
+const VER = "0.15.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2933,7 +2936,7 @@ function catEdit(){
       '<div id="catList"></div>'+
       '<button class="subbtn" id="c_add">＋ カテゴリを追加</button>'+
       '<div class="hint">●をタップすると色を選べます。名前を変えると、そのカテゴリの場所もまとめて変わります。'+
-      '「その他」は削除したカテゴリの受け皿として固定です。</div>'+
+      '▲▼の順番がそのまま本棚の並びになります。「その他」は削除したカテゴリの受け皿として最後尾に固定です。</div>'+
       '<div class="sheet-actions"><button class="btn" id="c_cancel">やめる</button>'+
       '<button class="btn primary" id="c_ok">保存する</button></div>';
     const list=document.getElementById("catList");
@@ -2942,10 +2945,15 @@ function catEdit(){
       div.className="catrow";
       div.innerHTML='<button class="catdot" style="background:'+esc(r.c)+'"></button>'+
         '<input type="text" value="'+esc(r.n)+'" placeholder="カテゴリ名">'+
+        '<button class="catmv" '+(i===0?"disabled":"")+'>▲</button>'+
+        '<button class="catmv" '+(i===rows.length-1?"disabled":"")+'>▼</button>'+
         '<button class="catdel">🗑</button>';
-      const dot=div.children[0], inp=div.children[1], del=div.children[2];
+      const dot=div.children[0], inp=div.children[1], up=div.children[2], dn=div.children[3], del=div.children[4];
       dot.onclick=()=>cpickOpen(r.c,c=>{r.c=c;dot.style.background=c;});
       inp.oninput=()=>{r.n=inp.value;};
+      /* ▲▼で並び替え＝保存時この順がそのまま本棚・チップ・カテゴリ選択の順になる */
+      up.onclick=()=>{ if(i>0){[rows[i-1],rows[i]]=[rows[i],rows[i-1]];draw();} };
+      dn.onclick=()=>{ if(i<rows.length-1){[rows[i],rows[i+1]]=[rows[i+1],rows[i]];draw();} };
       del.onclick=()=>{
         const cnt=r.orig?places.filter(p=>p.cat===r.orig).length:0;
         if(cnt&&!confirm('「'+(r.n.trim()||r.orig)+'」を削除します。\nこのカテゴリの'+cnt+'件は「その他」に変わります。よろしいですか？'))return;
