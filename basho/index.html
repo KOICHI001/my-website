@@ -532,7 +532,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.2";
+const VER = "0.16.3";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1203,11 +1203,15 @@ function openMap(p){ bump(p);
     const label="("+encodeURIComponent(p.name)+")";
     const web="https://maps.google.com/maps?q="+p.lat+","+p.lng+label;
     /* Android: intent://でGoogleマップへ直行（geo:だとアプリ選択が出る端末がある）。
-       マップ未導入ならfallbackで通常URLへ */
-    if(/Android/i.test(navigator.userAgent))
+       マップ未導入ならfallbackで通常URLへ。
+       ★APK版(Capacitor)のWebViewはintent://を解釈しない→https形式（経路ボタンと同じ・実機実証済み） */
+    if(/Android/i.test(navigator.userAgent)){
+      if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())
+        return openUrl(web);
       return openUrl("intent://"+p.lat+","+p.lng+"?q="+p.lat+","+p.lng+label+
         "#Intent;scheme=geo;package=com.google.android.apps.maps;S.browser_fallback_url="+
         encodeURIComponent(web)+";end");
+    }
     return openUrl(web);
   }
   openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
@@ -3364,6 +3368,15 @@ try{
     if(!guardN){ try{history.pushState({basho:"guard"},""); guardN=1;}catch(e){} }   /* 最後の保険 */
     closeTopOverlay();
   });
+}catch(e){}
+/* ★APK版(Capacitor): 戻るボタンはネイティブイベントで受ける。
+   WebViewの履歴（番兵）頼みだと最後まで抜けてアプリが終了してしまうため。
+   面を1つずつ閉じ、最初の画面では何もしない＝PWAと同じ「誤終了ゼロ」挙動 */
+try{
+  if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()
+     &&window.Capacitor.Plugins&&window.Capacitor.Plugins.App){
+    window.Capacitor.Plugins.App.addListener("backButton",()=>closeTopOverlay());
+  }
 }catch(e){}
 /* 周辺モード・足あと（旗） */
 parkBtnSync();
