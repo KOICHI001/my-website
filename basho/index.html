@@ -424,6 +424,32 @@
 </head>
 <body>
 
+<!-- ★APK版(Capacitor)のスタート画面: OSのスプラッシュ機構はHyperOS等が独自加工して
+     フル画像を出せない(実機実証)→アプリ自身のHTMLで描く=全端末で確実に同じ絵。
+     PWAでは直後のスクリプトで即removeされ一切表示されない -->
+<div id="bootsplash" style="display:none;position:fixed;inset:0;z-index:99999;
+  background:#0B6E5F;background-image:
+    linear-gradient(rgba(255,255,255,.16) 2px,transparent 2px),
+    linear-gradient(90deg,rgba(255,255,255,.16) 2px,transparent 2px);
+  background-size:56px 56px;background-position:-1px -1px;
+  flex-direction:column;align-items:center;justify-content:center;gap:26px;
+  transition:opacity .45s ease">
+  <svg style="width:110px;height:141px" viewBox="0 0 100 128" xmlns="http://www.w3.org/2000/svg">
+    <path d="M50 4 C24 4 6 24 6 48 C6 80 50 124 50 124 C50 124 94 80 94 48 C94 24 76 4 50 4 Z" fill="#F7F5EE"/>
+    <circle cx="50" cy="46" r="18" fill="#0B6E5F"/></svg>
+  <div style="font-family:'Hiragino Mincho ProN','Yu Mincho',serif;font-weight:700;
+    font-size:34px;letter-spacing:.14em;color:#F7F5EE">場所帳</div>
+</div>
+<script>
+(function(){
+  var b=document.getElementById("bootsplash");
+  if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()){
+    b.style.display="flex";
+    setTimeout(function(){ b.style.opacity="0"; setTimeout(function(){ b.remove(); },500); },1400);
+  }else{ b.remove(); }
+})();
+</script>
+
 <header>
   <div class="wrap">
     <div class="head-in">
@@ -532,7 +558,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.5";
+const VER = "0.16.6";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
