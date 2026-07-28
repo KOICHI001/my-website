@@ -532,7 +532,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.4";
+const VER = "0.16.5";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -872,6 +872,18 @@ function attOpen(a){
   if(a.t==="url"){ openUrl(a.url); return; }
   phGet(a.ref).then(du=>{
     if(!du){ toast("PDFを読み込めませんでした"); return; }
+    /* ★APK版(Capacitor): WebViewはPDFビューア非搭載でblob URLを開いても無反応。
+       Filesystemでキャッシュに書き出し→FileOpenerで端末のPDFアプリに渡す（PWAは従来どおりblob） */
+    const CP=window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()
+      &&window.Capacitor.Plugins;
+    if(CP&&CP.Filesystem&&CP.FileOpener){
+      const b64=du.slice(du.indexOf(",")+1);
+      const fn="att_"+String(a.ref||"pdf").replace(/[^A-Za-z0-9_-]/g,"")+".pdf";
+      CP.Filesystem.writeFile({path:fn,data:b64,directory:"CACHE"})
+        .then(r=>CP.FileOpener.open({filePath:r.uri,contentType:"application/pdf"}))
+        .catch(()=>toast("PDFを開けませんでした。PDFを見るアプリが端末に入っているかご確認ください"));
+      return;
+    }
     fetch(du).then(r=>r.blob()).then(b=>{
       const u=URL.createObjectURL(b.type==="application/pdf"?b:new Blob([b],{type:"application/pdf"}));
       openUrl(u); setTimeout(()=>URL.revokeObjectURL(u),60000);
