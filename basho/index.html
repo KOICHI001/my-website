@@ -509,7 +509,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.15.0";
+const VER = "0.15.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1659,8 +1659,8 @@ function renderShelf(list){
   cats.forEach(x=>{
     const b=document.createElement("button");
     b.className="book"; b.style.setProperty("--catcolor",x.c);
-    /* 表紙: 画像なし=カテゴリ色の二色構え（上=明るく/下=濃く）+黒帯にカテゴリ名
-             画像あり+帯ON=黒帯にカテゴリ名 / 画像あり+帯OFF=画像のみ */
+    /* 表紙: 画像なし=カテゴリ色の二色構え（上=明るく/下=濃く）。帯（黒帯カテゴリ名）は
+       cov.t で ON/OFF（表紙情報なし=帯あり）。画像あり+帯OFF=画像のみ／画像なし+帯OFF=色だけ */
     const cov=covOf(x.n);
     const two="linear-gradient(155deg,rgba(255,255,255,.18),rgba(255,255,255,0) 45%,rgba(0,0,0,.12)),"+
       "linear-gradient(180deg,"+mixHex(x.c,"#FFFFFF",.38)+" 0 46%,"+mixHex(x.c,"#000000",.22)+" 46% 100%)";
@@ -1670,7 +1670,7 @@ function renderShelf(list){
         (!cov||cov.t?'<div class="btitle">'+esc(x.n)+'</div>':'')+
       '</div>'+
       '<div class="bcount">'+(counts[x.n]||0)+'件</div>';
-    if(cov) phGet(cov.id).then(du=>{
+    if(cov&&cov.id) phGet(cov.id).then(du=>{
       if(!du)return;
       const c=b.querySelector(".bcover"); if(!c)return;
       const im=document.createElement("img"); im.alt=""; im.src=du;
@@ -1699,7 +1699,7 @@ function coverMenu(cat){
       '<input type="checkbox" id="cv_label" style="width:20px;height:20px"'+(!cur||cur.t?" checked":"")+'>'+
       '表紙にカテゴリ名を入れる</label>'+
     '<button class="menu-item" id="cv_pick">📁 表紙の画像を選ぶ</button>'+
-    (cur?'<button class="menu-item" id="cv_del">表紙の画像を外す</button>':'')+
+    (cur&&cur.id?'<button class="menu-item" id="cv_del">表紙の画像を外す</button>':'')+
     (cat.n!==CAT_OTHER.n?'<button class="menu-item" id="cv_delbook" style="color:#B4462F">🗑 この本を削除</button>':'')+
     '<div class="hint">画像の上にカテゴリ名の帯を重ねるかを選べます。'+
     '表紙はこの端末に保存され、バックアップにも同梱されます。</div>'+
@@ -1707,15 +1707,17 @@ function coverMenu(cat){
   veil.classList.add("on");
   document.getElementById("cv_close").onclick=closeSheet;
   const chk=document.getElementById("cv_label");
-  /* 既に表紙がある本は、チェック切替だけで帯のON/OFFが即反映される */
+  /* チェック切替だけで帯のON/OFFが即反映される。
+     ★画像なしの本でも記憶する（id:nullで帯フラグだけ保存）＝デフォルト表紙の文字も消せる */
   chk.onchange=()=>{
     const c=covOf(cat.n);
-    if(c){ COVERS[cat.n]={id:c.id,t:chk.checked?1:0}; saveCovers(); render(); }
+    COVERS[cat.n]={id:c?c.id:null,t:chk.checked?1:0};
+    saveCovers(); render();
   };
   document.getElementById("cv_pick").onclick=()=>{
     phCapture(true,id=>{
       const old=covOf(cat.n);
-      if(old){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
+      if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
       COVERS[cat.n]={id:id,t:chk.checked?1:0};
       saveCovers(); closeSheet(); render();
       toast("表紙を設定しました");
@@ -1725,8 +1727,9 @@ function coverMenu(cat){
   if(del) del.onclick=()=>{
     if(!confirm("表紙の画像を外します。よろしいですか？"))return;
     const old=covOf(cat.n);
-    if(old){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
-    delete COVERS[cat.n]; saveCovers(); closeSheet(); render();
+    if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
+    /* 画像だけ外して帯フラグは残す（チェックOFFの本が外した途端に帯復活しないように） */
+    COVERS[cat.n]={id:null,t:old&&old.t?1:0}; saveCovers(); closeSheet(); render();
     toast("表紙を外しました");
   };
   const db=document.getElementById("cv_delbook");
@@ -1761,7 +1764,7 @@ function bookRemove(cat,withPlaces){
   }else{
     places.forEach(p=>{ if(p.cat===cat.n){ p.cat=CAT_OTHER.n; delete p.sf; } });   /* フォルダは本の中の区分＝移動先では外す */
   }
-  const c=covOf(cat.n); if(c){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);}
+  const c=covOf(cat.n); if(c&&c.id){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);}
   delete COVERS[cat.n]; saveCovers();
   CATS=CATS.filter(x=>x.n!==cat.n); saveCats();
   if(filterCat===cat.n) filterCat="";
@@ -2607,7 +2610,7 @@ function menu(){
     /* 添付（URLカードのアイコン・PDF本体）も同梱=機種変更で丸ごと引き継げる */
     for(const p of places) for(const a of (p.att||[])) for(const k of ["ic","ref"]){
       if(a[k]){ const du=await phGet(a[k]); if(du) images[a[k]]=du; } }
-    for(const cn in COVERS){ const c=covOf(cn); if(!c)continue; const du=await phGet(c.id); if(du) images[c.id]=du; }   /* 本棚の表紙も同梱 */
+    for(const cn in COVERS){ const c=covOf(cn); if(!c||!c.id)continue; const du=await phGet(c.id); if(du) images[c.id]=du; }   /* 本棚の表紙も同梱 */
     const nImg=Object.keys(images).length;
     const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
       cats:CATS.filter(x=>x.n!==CAT_OTHER.n),covers:COVERS})],{type:"application/json"});
@@ -2990,7 +2993,7 @@ function catEdit(){
       /* 本棚の表紙と開いている本もカテゴリの改名・削除に追随 */
       for(const o in ren){ if(COVERS[o]!=null){COVERS[ren[o]]=COVERS[o];delete COVERS[o];} }
       removed.forEach(cn=>{ const c=covOf(cn);
-        if(c){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);delete COVERS[cn];} });
+        if(c){ if(c.id){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);} delete COVERS[cn]; } });
       saveCovers();
       if(ren[shelfCat]) shelfCat=ren[shelfCat];
       else if(removed.includes(shelfCat)) shelfCat=null;
