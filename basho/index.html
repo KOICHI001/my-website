@@ -414,8 +414,9 @@
   .nearrow .nr-b{display:flex;gap:6px}
   .nearrow .nr-b button{border:1.5px solid var(--line);background:var(--paper);color:var(--ink);
     border-radius:9px;padding:7px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer;white-space:nowrap}
-  .nearrow.focus{border-color:#C5372C;box-shadow:0 0 0 2px rgba(197,55,44,.22)}
-  .nearrow.focus .nr-d{color:#C5372C}
+  /* フォーカス=そのカードのカテゴリ色で太くぐるっと囲む（赤固定だと赤カテゴリと紛らわしい） */
+  .nearrow.focus{border-color:var(--nrc,#6B7280);box-shadow:0 0 0 2.5px var(--nrc,#6B7280)}
+  .nearrow.focus .nr-d{color:var(--nrc,#6B7280)}
   .near-map{flex:1;position:relative;background:#DDE2D8}
   /* ───── OCR（スクショから座標を読む） ───── */
   .ocrov{position:fixed;inset:0;z-index:55;background:rgba(10,14,13,.96);display:none;
@@ -621,7 +622,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.17.0";
+const VER = "0.17.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3610,15 +3611,15 @@ function nearSyncFocus(){
   if(id===NEAR.focusId) return;
   const prev=cards.querySelector(".nearrow.focus"); if(prev)prev.classList.remove("focus");
   if(best)best.classList.add("focus");
+  /* 地図の点: 色はカテゴリ色のまま、フォーカス中だけ大きく(白縁も太く) */
   if(NEAR.focusId&&NEAR.dots[NEAR.focusId]){
-    const old=NEAR.items.find(x=>x.p.id===NEAR.focusId);
-    NEAR.dots[NEAR.focusId].setStyle({fillColor:old?catColor(old.p.cat):"#6B7280"});
     NEAR.dots[NEAR.focusId].setRadius(8);
+    NEAR.dots[NEAR.focusId].setStyle({weight:2});
   }
   NEAR.focusId=id;
   if(id&&NEAR.dots[id]){
-    NEAR.dots[id].setStyle({fillColor:"#E03131"});
-    NEAR.dots[id].setRadius(11);
+    NEAR.dots[id].setRadius(13);
+    NEAR.dots[id].setStyle({weight:3});
     NEAR.dots[id].bringToFront();
   }
 }
