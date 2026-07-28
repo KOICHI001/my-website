@@ -532,7 +532,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.16.3";
+const VER = "0.16.4";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3108,9 +3108,19 @@ function ocrWorker(){
       await ocrLib();
       const b=ocrBase();
       /* cacheMethod:none = Tesseract内蔵のIndexedDBキャッシュを使わない
-         （環境により読み込みが固まる不具合を実測。オフライン持続はsw.jsのbasho-ocrキャッシュが担う） */
+         （環境により読み込みが固まる不具合を実測。オフライン持続はsw.jsのbasho-ocrキャッシュが担う）
+         ★APK版(Capacitor): AndroidのAAPTがassets内の.gzを自動解凍して拡張子を剥がすため
+         eng.traineddata.gzは404、実体は拡張子なしのeng.traineddata。
+         createWorkerは404でもrejectせずworker内でUncaughtになり永遠に固まる（実測）ので、
+         先に.gzの存在をfetchで確かめてからgzip設定を決める。workerはgzipマジックバイトを
+         自動判定するので中身はどちらでも動く。PWAではこの判定は走らない（従来どおり.gz固定） */
+      const native=window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform();
+      let gz=true;
+      if(native){
+        try{gz=(await fetch(b+"/eng.traineddata.gz",{cache:"no-store"})).ok;}catch(e){gz=false;}
+      }
       const wk=await Tesseract.createWorker("eng",1,{
-        workerPath:b+"/worker.min.js",corePath:b,langPath:b,cacheMethod:"none"});
+        workerPath:b+"/worker.min.js",corePath:b,langPath:b,cacheMethod:"none",gzip:gz});
       OCR.wk=wk; return wk;
     })();
     OCR.wkP.catch(()=>{OCR.wkP=null;OCR.wk=null;});
