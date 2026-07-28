@@ -1,5 +1,5 @@
 /* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.13.0";
+const CACHE = "basho-v0.14.0";
 /* OCRエンジン（ocr/ 約10MB・内容不変）は別キャッシュ＋cache first ＝ 毎回の再DLも版上げ時の再DLもしない */
 const OCR_CACHE = "basho-ocr-v1";
 const ASSETS = ["./", "./index.html", "./pref_data.js", "./leaflet.js", "./leaflet.css", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
@@ -32,6 +32,13 @@ self.addEventListener("fetch", e => {
         caches.open(CACHE).then(c => c.put(e.request, copy));
         return res;
       })
-      .catch(() => caches.match(e.request).then(r => r || caches.match("./index.html")))
+      .catch(() => caches.match(e.request).then(r => {
+        if (r) return r;
+        /* index.htmlへのフォールバックは自分のページだけ。
+           外部サイトへの失敗(CORS等)に自分の画面を返すと、リンクカードの
+           サイト情報取得が「場所帳自身」を掴んでしまう（v0.13.0の実機バグ） */
+        if (new URL(e.request.url).origin === location.origin) return caches.match("./index.html");
+        return Response.error();
+      }))
   );
 });

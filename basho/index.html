@@ -109,8 +109,12 @@
     cursor:pointer;white-space:nowrap}
   .phbtns button:active{background:rgba(11,110,95,.07)}
 
-  /* 添付カード（URL・PDF）: リンクを貼るとサイト名・説明入りのカードで並ぶ */
-  .attbox{display:flex;flex-direction:column;gap:7px;padding:0 16px 11px}
+  /* 添付（URL・PDF）: サムネ列にはミニタイル、実体カードは写真の縦閲覧(pv)の中に並ぶ */
+  .attile{display:flex;align-items:center;justify-content:center;font-size:26px;position:relative;
+    background-size:cover;background-position:center;cursor:pointer}
+  .attile .abdg{position:absolute;right:2px;bottom:2px;font-size:11px;line-height:1;
+    background:rgba(255,255,255,.88);border-radius:6px;padding:2px 3px;pointer-events:none}
+  .pv-body .attcard{margin:0 0 14px}   /* 縦閲覧の中では写真と同じ縦リズムで並ぶ */
   .attcard{display:flex;align-items:center;gap:10px;border:1px solid var(--line);border-radius:10px;
     background:var(--card);padding:8px 10px;cursor:pointer;text-align:left;
     font-family:inherit;color:inherit;width:100%;box-sizing:border-box}
@@ -182,6 +186,7 @@
     box-shadow:0 6px 20px rgba(11,110,95,.34);cursor:pointer}
   .fab small{display:block;font-size:11px;font-weight:400;opacity:.85;letter-spacing:.05em}
 
+  .veil.abovepv{z-index:62}   /* 縦閲覧(pv z58)の上で開く添付メニュー用 */
   .veil{position:fixed;inset:0;background:rgba(27,36,34,.42);z-index:40;display:none;
     align-items:flex-end;justify-content:center}
   .veil.on{display:flex}
@@ -501,7 +506,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.13.0";
+const VER = "0.14.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -711,6 +716,19 @@ function phPurgePlace(p){
    取得はまず直接fetch→CORSで弾かれたら公開プロキシ(allorigins/corsproxy)経由。
    ※送るのは貼り付けたURLだけ。位置情報・座標は一切送らない（従来方針のまま） */
 function attId(){ return "a"+Date.now()+Math.random().toString(36).slice(2,5); }
+/* 表示順 p.ord = 写真id("i…")と添付id("t…")を混ぜた1本のリスト。
+   サムネ列も縦閲覧も この順で表示する。無ければ 写真→添付 の順で自動生成。
+   写真/添付の追加・削除後もここで整合を取る（消えたものは除去・新規は末尾へ）＝冪等 */
+function ordSync(p){
+  const ph=p.ph||[], at=p.att||[];
+  at.forEach(a=>{ if(!a.id) a.id="t"+Date.now()+Math.random().toString(36).slice(2,5); });
+  const valid=new Set(ph.concat(at.map(a=>a.id)));
+  const ord=(p.ord||[]).filter(t=>valid.has(t));
+  const have=new Set(ord);
+  ph.forEach(id=>{ if(!have.has(id)) ord.push(id); });
+  at.forEach(a=>{ if(!have.has(a.id)) ord.push(a.id); });
+  p.ord=ord; return ord;
+}
 function attFmtSize(n){ return n>=1048576?(n/1048576).toFixed(1)+"MB":Math.max(1,Math.round(n/1024))+"KB"; }
 async function attFetch(u,asBlob,ms){
   const tryOne=async url=>{
@@ -724,6 +742,9 @@ async function attFetch(u,asBlob,ms){
       let txt=new TextDecoder("utf-8").decode(buf);
       const m=txt.slice(0,3000).match(/charset=["']?\s*([\w-]+)/i);
       if(m&&!/^utf-?8$/i.test(m[1])){ try{ txt=new TextDecoder(m[1].toLowerCase()).decode(buf); }catch(e){} }
+      /* 旧sw.jsのオフライン保険が外部サイトの失敗に場所帳自身のindex.htmlを
+         返してくることがある→自分の画面を掴んだら失敗扱いにして次の経路へ */
+      if(txt.includes('id="menuBtn"')&&txt.includes("場所帳")) throw 0;
       return txt;
     }finally{ clearTimeout(t); }
   };
@@ -772,11 +793,15 @@ async function attBuildUrl(url){
     const ogi=og("og:image")||og("twitter:image"); if(ogi){const h=abs(ogi);if(h)icCands.push(h);}
     doc.querySelectorAll('link[rel~="icon"]').forEach(l=>{const h=abs(l.getAttribute("href"));if(h)icCands.push(h);});
   }
-  /* 最後の砦: Googleのfaviconサービス（ドメイン名だけ送る） */
+  /* 最後の砦: サイト直下のfavicon.ico → 各社faviconサービス（ドメイン名だけ送る）。
+     どれかが画像を返した時点で終了（非画像はattSaveIconが弾いて次へ） */
+  try{ icCands.push(new URL(url).origin+"/favicon.ico"); }catch(e){}
+  icCands.push("https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url="+encodeURIComponent("https://"+host)+"&size=128");
+  icCands.push("https://icons.duckduckgo.com/ip3/"+host+".ico");
   icCands.push("https://www.google.com/s2/favicons?domain="+encodeURIComponent(host)+"&sz=128");
   a.title=a.title||host;
-  for(const c of icCands.slice(0,4)){
-    const b=await attFetch(c,true,8000);
+  for(const c of icCands.slice(0,7)){
+    const b=await attFetch(c,true,4000);
     const id=await attSaveIcon(b);
     if(id){ a.ic=id; break; }
   }
@@ -861,9 +886,12 @@ function attOpen(a){
     }).catch(()=>toast("PDFを開けませんでした"));
   });
 }
-/* 長押しメニュー: 開く / 名前を変更 / 削除 */
+/* 長押しメニュー: 開く / 名前を変更 / 削除（縦閲覧の中からも開ける） */
 function attMenu(p,a){
   const isPdf=a.t==="pdf";
+  /* 変更後、縦閲覧(pv)が開いていれば中身を作り直す（空になったら閉じる） */
+  const pvSync=()=>{ if(pv.classList.contains("on")){
+    if((p.ph||[]).length||(p.att||[]).length) pvOpen(p,"att"); else pvClose(); } };
   sheet.innerHTML=
     '<h2>'+(isPdf?"📄 ":"🔗 ")+esc(isPdf?(a.name||"PDF"):(a.title||a.host||"リンク"))+'</h2>'+
     (isPdf?"":'<div class="hint" style="word-break:break-all">'+esc(a.url)+'</div>')+
@@ -872,6 +900,7 @@ function attMenu(p,a){
     '<button class="menu-item" id="am_del" style="color:#B4462F">🗑 このカードを削除する</button>'+
     '<div class="sheet-actions"><button class="btn" id="am_close">閉じる</button></div>';
   veil.classList.add("on");
+  if(pv.classList.contains("on")) veil.classList.add("abovepv");
   document.getElementById("am_close").onclick=closeSheet;
   document.getElementById("am_open").onclick=()=>{ closeSheet(); attOpen(a); };
   document.getElementById("am_ren").onclick=()=>{
@@ -879,14 +908,64 @@ function attMenu(p,a){
     const nv=(prompt("新しい名前",cur)||"").trim();
     if(!nv||nv===cur) return;
     if(isPdf) a.name=nv; else a.title=nv;
-    p.updated=Date.now(); closeSheet(); save(); toast("名前を変更しました");
+    p.updated=Date.now(); closeSheet(); save(); pvSync(); toast("名前を変更しました");
   };
   document.getElementById("am_del").onclick=()=>{
     if(!confirm("このカードを削除します。よろしいですか？"+(isPdf?"\nPDFの中身もアプリから消えます（元に戻せません）。":""))) return;
     p.att=(p.att||[]).filter(x=>x!==a);
     ["ic","ref"].forEach(k=>{ if(a[k]){IDB.del(a[k]).catch(()=>{});phCache.delete(a[k]);} });
-    p.updated=Date.now(); closeSheet(); save(); toast("削除しました");
+    p.updated=Date.now(); closeSheet(); save(); pvSync(); toast("削除しました");
   };
+}
+/* ⇅並び順: 写真・リンク・PDFを1本のリストで入れ替える（このカードの中だけ）。
+   ▲▼で1つずつ移動。動かすたびに保存＆一覧へ即反映 */
+function ordSheet(p){
+  if(!ordSync(p).length){ toast("写真やリンク・PDFがまだ入っていません"); return; }
+  sheet.innerHTML=
+    '<h2>⇅ 並び順</h2>'+
+    '<div class="hint">▲▼で入れ替えます。サムネ列も閲覧画面も、この順で表示されます。</div>'+
+    '<div id="ordList" style="max-height:56vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>'+
+    '<div class="sheet-actions"><button class="btn primary" id="ord_done">完了</button></div>';
+  veil.classList.add("on");
+  document.getElementById("ord_done").onclick=closeSheet;
+  const atMap=new Map((p.att||[]).map(a=>[a.id,a]));
+  const listEl=document.getElementById("ordList");
+  const draw=()=>{
+    listEl.innerHTML="";
+    p.ord.forEach((tok,i)=>{
+      const row=document.createElement("div");
+      row.style.cssText="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:var(--card)";
+      const a=atMap.get(tok);
+      const th=document.createElement("div");
+      th.style.cssText="width:44px;height:44px;border-radius:8px;flex:0 0 auto;border:1px solid var(--line);background:#E9ECE4 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:20px";
+      let label="写真";
+      if(a){
+        th.textContent=a.t==="pdf"?"📄":"🌐";
+        if(a.ic) phGet(a.ic).then(du=>{ if(du){th.textContent="";th.style.backgroundImage="url("+du+")";} });
+        label=a.t==="pdf"?("📄 "+(a.name||"PDF")):(a.title||a.host||"リンク");
+      }else{
+        phGet(tok).then(du=>{ if(du) th.style.backgroundImage="url("+du+")"; });
+      }
+      const tx=document.createElement("div");
+      tx.style.cssText="flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      tx.textContent=label;
+      const mk=(sym,d)=>{
+        const b=document.createElement("button");
+        b.textContent=sym;
+        const dead=(d<0&&i===0)||(d>0&&i===p.ord.length-1);
+        b.style.cssText="flex:0 0 auto;width:46px;height:42px;border:1px solid var(--line);border-radius:8px;background:var(--card);font-size:17px;cursor:pointer"+(dead?";opacity:.25":"");
+        b.onclick=()=>{
+          const j=i+d; if(j<0||j>=p.ord.length) return;
+          [p.ord[i],p.ord[j]]=[p.ord[j],p.ord[i]];
+          p.updated=Date.now(); save(); draw();   /* saveで一覧のサムネ列も即並び替わる */
+        };
+        return b;
+      };
+      row.append(th,tx,mk("▲",-1),mk("▼",1));
+      listEl.appendChild(row);
+    });
+  };
+  draw();
 }
 
 /* ライトボックス */
@@ -985,30 +1064,37 @@ lb.onclick=()=>{ if(lbSwiped) return; lbClose(); };
    各写真タップ=単発ライトボックス（左右送りなし。ピンチ拡大は従来どおり） */
 const pv=document.getElementById("pv");
 function pvOpen(p,id){
-  const ids=(p.ph||[]).slice(); if(!ids.length) return;
+  const ord=ordSync(p);
+  if(!ord.length) return;
+  const ids=p.ph||[], ats=p.att||[];
   const c=catColor(p.cat);
   pv.style.setProperty("--pvc",mixHex(c,"#FFFFFF",.78));
   pv.style.setProperty("--pvh",mixHex(c,"#FFFFFF",.60));
   document.getElementById("pvTitle").textContent=p.name||"写真";
-  document.getElementById("pvCnt").textContent=ids.length+"枚";
+  document.getElementById("pvCnt").textContent=
+    [ids.length?ids.length+"枚":"",ats.length?"📎"+ats.length:""].filter(Boolean).join("・");
   const body=document.getElementById("pvBody"); body.innerHTML="";
-  const imgs=ids.map(pid=>{
-    const im=document.createElement("img"); im.alt=""; im.dataset.id=pid;
-    im.onclick=()=>{ lbList=[pid]; lbIdx=0; lbShow(); };
-    body.appendChild(im);
-    return im;
+  /* p.ordの順に 写真とリンク・PDFカードを混ぜて縦に並べる=一緒にスクロールして見られる */
+  const atMap=new Map(ats.map(a=>[a.id,a]));
+  const elMap=new Map(); const imgs=[];
+  ord.forEach(tok=>{
+    const a=atMap.get(tok);
+    if(a){ const el=attCard(p,a); body.appendChild(el); elMap.set(tok,el); return; }
+    const im=document.createElement("img"); im.alt="";
+    im.onclick=()=>{ lbList=[tok]; lbIdx=0; lbShow(); };
+    body.appendChild(im); elMap.set(tok,im); imgs.push({tok,im});
   });
   pv.classList.add("on"); pv.scrollTop=0;
   document.documentElement.classList.add("pvon");
-  /* 全枚の高さが確定してから、タップした写真の位置へ（途中の読み込みでズレない） */
-  Promise.all(ids.map(pid=>phGet(pid).catch(()=>null))).then(dus=>{
-    dus.forEach((du,i)=>{ if(du) imgs[i].src=du; });
-    return Promise.all(imgs.filter(im=>im.src).map(im=>im.decode().catch(()=>{})));
+  /* 全枚の高さが確定してから、タップしたものの位置へ（途中の読み込みでズレない） */
+  Promise.all(imgs.map(o=>phGet(o.tok).catch(()=>null))).then(dus=>{
+    dus.forEach((du,i)=>{ if(du) imgs[i].im.src=du; });
+    return Promise.all(imgs.filter(o=>o.im.src).map(o=>o.im.decode().catch(()=>{})));
   }).then(()=>{
-    const t=imgs.find(im=>im.dataset.id===id);
+    const t=(id==="att")?(ats[0]&&elMap.get(ats[0].id)):elMap.get(id);
     /* 固定ヘッダーの高さぶん引く（stickyは重なるので、そのままだと先頭が隠れる） */
     const hh=pv.querySelector(".pv-head").offsetHeight;
-    if(t&&t!==imgs[0]) pv.scrollTop=t.offsetTop-hh-8;
+    if(t&&t!==body.firstElementChild) pv.scrollTop=t.offsetTop-hh-8;
   });
 }
 function pvClose(){
@@ -1409,10 +1495,9 @@ function _renderBody(){
             '<button data-ph="cam">📷写真</button>'+
             '<button data-ph="pick">📁保存画像</button>'+
           '</div>'+
-          '<div class="phbtns"><button data-ph="att">🔗リンク・PDF</button></div>'+
+          '<div class="phbtns"><button data-ph="att">🔗リンクPDF</button><button data-ph="ord">⇅並び順</button></div>'+
         '</div>'+
       '</div>'+
-      '<div class="attbox"></div>'+
       '<button class="star'+(p.fav?" on":"")+'" aria-label="よく行く">'+(p.fav?"★":"☆")+'</button>'+
       '<div class="actions">'+
         '<button data-a="map">地図を開く</button>'+
@@ -1424,17 +1509,34 @@ function _renderBody(){
     el.querySelector(".card-main").onclick=()=>form(p);
     /* 写真ボックス: サムネ列(新しい順)+下の固定2ボタン。タップ=ライトボックス/長押し=削除 */
     const strip=el.querySelector(".phstrip");
-    if(!(p.ph&&p.ph.length)) strip.style.display="none";
+    if(!((p.ph&&p.ph.length)||(p.att&&p.att.length))) strip.style.display="none";
     el.querySelectorAll(".phbtns button").forEach(b=>{
       b.onclick=e=>{e.stopPropagation();
         if(b.dataset.ph==="att") attSheet(p);
+        else if(b.dataset.ph==="ord") ordSheet(p);
         else phShoot(p,b.dataset.ph==="pick");};
     });
-    /* 添付カード（URL・PDF）: タップ=開く / 長押し=メニュー */
-    const abox=el.querySelector(".attbox");
-    if(!(p.att&&p.att.length)) abox.style.display="none";
-    (p.att||[]).forEach(a=>abox.appendChild(attCard(p,a)));
-    (p.ph||[]).forEach(id=>{
+    /* サムネ列は p.ord の順（写真と添付ミニタイルが混ざって並ぶ）。
+       写真: タップ=縦閲覧 / 長押し=削除。添付: タップ=縦閲覧のその位置へ / 長押し=メニュー */
+    const atMap=new Map((p.att||[]).map(a=>[a.id,a]));
+    ordSync(p).forEach(tok=>{
+      const a=atMap.get(tok);
+      if(a){
+        const tl=document.createElement("div");
+        tl.className="ph attile";
+        if(a.t==="pdf") tl.textContent="📄";
+        else{
+          tl.textContent="🌐";
+          tl.innerHTML+='<span class="abdg">🔗</span>';
+          if(a.ic) phGet(a.ic).then(du=>{ if(du){tl.firstChild.textContent="";tl.style.backgroundImage="url("+du+")";} });
+        }
+        tl.oncontextmenu=e=>e.preventDefault();
+        bookLongPress(tl,()=>attMenu(p,a));
+        tl.onclick=e=>{e.stopPropagation(); if(tl.longFired){tl.longFired=false;return;} pvOpen(p,tok);};
+        strip.appendChild(tl);
+        return;
+      }
+      const id=tok;
       const im=document.createElement("img");
       im.className="ph"; im.alt="";
       im.oncontextmenu=e=>e.preventDefault();
@@ -1699,7 +1801,7 @@ function bookRemove(cat,withPlaces){
 
 /* ───── シート ───── */
 const veil=document.getElementById("veil"), sheet=document.getElementById("sheet");
-function closeSheet(){ Gps.stop(); veil.classList.remove("on"); sheet.innerHTML=""; }
+function closeSheet(){ Gps.stop(); veil.classList.remove("on"); veil.classList.remove("abovepv"); sheet.innerHTML=""; }
 veil.onclick=e=>{ if(e.target===veil) closeSheet(); };
 
 /* 登録：GPSは裏で走らせたまま、名前だけ書いて終わり */
@@ -3155,6 +3257,7 @@ document.getElementById("viewBtn").onclick=e=>{
 function closeTopOverlay(){
   if(document.getElementById("cpick").classList.contains("on")) cpickClose();
   else if(lb.classList.contains("on")) lbClose();
+  else if(veil.classList.contains("abovepv")&&veil.classList.contains("on")) closeSheet();   /* 縦閲覧の上の添付メニュー */
   else if(pv.classList.contains("on")) pvClose();   /* ライトボックス→縦閲覧→一覧 の順で1段ずつ */
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
