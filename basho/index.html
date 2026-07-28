@@ -174,6 +174,8 @@
     font-family:var(--gothic);font-size:13px;color:var(--soft);padding:11px 4px;cursor:pointer}
   .actions button:first-child{border-left:0;color:var(--route);font-weight:700}
   .actions button:active{background:rgba(27,36,34,.05)}
+  /* 赤=このボタンが頼る位置情報が未確定（正確なピンが無い）。白=問題なく動く */
+  .actions button.warn{color:var(--danger);background:rgba(163,58,42,.06)}
 
   .empty{border:1.5px dashed var(--line);border-radius:var(--r);padding:34px 20px;
     text-align:center;color:var(--soft);font-size:14px}
@@ -509,7 +511,7 @@
 <script>
 (function(){
 "use strict";
-const VER = "0.15.1";
+const VER = "0.16.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1144,6 +1146,8 @@ function norm(s){
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));}
 function openUrl(u){const a=document.createElement("a");a.href=u;a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
 function hasSpot(p){return !!(p.url||(p.lat&&p.lng)||p.addr);}
+/* 正確なピンがあるか＝経路・周辺が安心して使える状態（座標あり・精度±80m以内 or 手動ピン=accなし） */
+function goodPin(p){return !!(p.lat&&p.lng&&!(p.acc&&p.acc>80));}
 function q(p){ return (p.lat&&p.lng) ? p.lat+","+p.lng : encodeURIComponent(p.addr||p.name); }
 function openMap(p){ bump(p);
   if(p.url) return openUrl(p.url);
@@ -1468,11 +1472,14 @@ function _renderBody(){
         '</div>'+
       '</div>'+
       '<button class="star'+(p.fav?" on":"")+'" aria-label="よく行く">'+(p.fav?"★":"☆")+'</button>'+
+      /* ボタンの赤=頼る位置情報が未確定のサイン（初見ユーザーへの視覚的な案内）。
+         経路・周辺=正確な座標（±80m以内 or 手動ピン）が無ければ赤。
+         地図を開く=URL・座標・住所のどれも無い時だけ赤。全部そろえば全ボタン白 */
       '<div class="actions">'+
-        '<button data-a="map">地図を開く</button>'+
-        '<button data-a="route">経路</button>'+
+        '<button data-a="map"'+(hasSpot(p)?'':' class="warn"')+'>地図を開く</button>'+
+        '<button data-a="route"'+(goodPin(p)?'':' class="warn"')+'>経路</button>'+
         (p.tel?'<button data-a="tel">電話</button>':'')+
-        '<button data-a="nav">周辺</button>'+
+        '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>周辺</button>'+
       '</div>';
     /* カード本体タップ＝編集（地図は「地図を開く」ボタンから） */
     el.querySelector(".card-main").onclick=()=>form(p);
@@ -1526,7 +1533,14 @@ function _renderBody(){
     el.querySelectorAll(".actions button").forEach(b=>b.onclick=()=>{
       const a=b.dataset.a;
       if(a==="map") hasSpot(p)?openMap(p):(toast("位置がまだ入っていません"),form(p));
-      else if(a==="route") hasSpot(p)?openRoute(p):(toast("位置がまだ入っていません"),form(p));
+      else if(a==="route"){
+        if(!hasSpot(p)){toast("位置がまだ入っていません");form(p);}
+        else{
+          /* 赤ボタン（ピン未確定）で開く時は、ずれる可能性と直し方をひと言だけ添える */
+          if(!goodPin(p)) toast("ピンが未確定のため案内がずれることがあります。編集→「🗺 地図で位置を決める」で確定できます");
+          openRoute(p);
+        }
+      }
       else if(a==="tel") location.href="tel:"+p.tel.replace(/[^\d+]/g,"");
       else if(a==="nav"){
         /* 座標が無ければリンクからの抽出をもう一度試す（フルURLなら取れる） */
@@ -1534,7 +1548,10 @@ function _renderBody(){
           const c=pickCoords(p.url);
           if(c){p.lat=c.lat;p.lng=c.lng;p.acc=null;updatePref(p);save();}
         }
-        if(p.lat&&p.lng){bump(p);nvOpen("place",p);}
+        if(p.lat&&p.lng){
+          if(!goodPin(p)) toast("ピンが未確定のため位置がずれることがあります。編集→「🗺 地図で位置を決める」で確定できます");
+          bump(p);nvOpen("place",p);
+        }
         else toast("位置が入っていません。編集の「🗺 地図で位置を決める」でピンを置いてください");
       }
       else form(p);
