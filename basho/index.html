@@ -627,7 +627,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.17.2";
+const VER = "0.17.3";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3243,7 +3243,8 @@ function ocrParseCoords(text){
   const t=String(text||"")
     .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
     .replace(/[．]/g,".").replace(/[，、]/g,",").replace(/[ー−―–—]/g,"-");
-  const re=/(-?\d{1,3}[.,]\d{3,8})[^\d-]{1,8}(-?\d{1,3}[.,]\d{3,8})/g;
+  /* 小数は3〜15桁（マップのピン長押しは15桁精度で出る） */
+  const re=/(-?\d{1,3}[.,]\d{3,15})[^\d-]{1,8}(-?\d{1,3}[.,]\d{3,15})/g;
   const cands=[]; let m;
   while((m=re.exec(t))){
     let s1=m[1].replace(",","."),s2=m[2].replace(",",".");
@@ -3259,33 +3260,52 @@ function ocrParseCoords(text){
   cands.sort((x,y)=>y.sc-x.sc);
   return cands[0];
 }
-/* 元画像の指定範囲を切り出し＋拡大。暗い画像（ダークモード）は白黒反転してOCRを通す */
-function ocrCropCanvas(nx,ny,nw,nh){
+/* 元画像の指定範囲を切り出し＋拡大。invert=trueで白黒反転版を作る */
+function ocrCropCanvas(nx,ny,nw,nh,invert){
   const scale=Math.max(1,Math.min(nh<90?3:2,1600/nw));
   const c=document.createElement("canvas");
   c.width=Math.max(1,Math.round(nw*scale));c.height=Math.max(1,Math.round(nh*scale));
   const g=c.getContext("2d",{willReadFrequently:true});
   g.imageSmoothingEnabled=true;g.imageSmoothingQuality="high";
   g.drawImage(OCR.img,nx,ny,nw,nh,0,0,c.width,c.height);
-  try{
-    const d=g.getImageData(0,0,c.width,c.height),px=d.data;
-    let sum=0,n=0;
-    for(let i=0;i<px.length;i+=64){sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;n++;}
-    if(sum/n<110){
+  if(invert){
+    try{
+      const d=g.getImageData(0,0,c.width,c.height),px=d.data;
       for(let i=0;i<px.length;i+=4){px[i]=255-px[i];px[i+1]=255-px[i+1];px[i+2]=255-px[i+2];}
       g.putImageData(d,0,0);
-    }
-  }catch(e){}
+    }catch(e){}
+  }
   return c;
 }
-function ocrScanRegion(nx,ny,nw,nh,psm){
+/* 範囲の平均輝度が暗いか（暗い→反転版を先に試すと当たりやすい） */
+function ocrRegionIsDark(nx,ny,nw,nh){
+  try{
+    const c=document.createElement("canvas");c.width=32;c.height=32;
+    const g=c.getContext("2d",{willReadFrequently:true});
+    g.drawImage(OCR.img,nx,ny,nw,nh,0,0,32,32);
+    const px=g.getImageData(0,0,32,32).data;
+    let sum=0,n=0;
+    for(let i=0;i<px.length;i+=4){sum+=px[i]*.299+px[i+1]*.587+px[i+2]*.114;n++;}
+    return sum/n<110;
+  }catch(e){return false;}
+}
+function ocrRecognize(nx,ny,nw,nh,psm,invert,wl){
   return ocrJob(async()=>{
     const wk=await ocrWorker();
-    const c=ocrCropCanvas(nx,ny,nw,nh);
-    await wk.setParameters({tessedit_pageseg_mode:String(psm)});
+    const c=ocrCropCanvas(nx,ny,nw,nh,invert);
+    await wk.setParameters({tessedit_pageseg_mode:String(psm),tessedit_char_whitelist:wl||""});
     const r=await wk.recognize(c);
     return ocrParseCoords(r.data.text);
   });
+}
+/* そのまま／白黒反転の2パスで読む（暗い画像と白吹き出しの混在に強くする）。
+   囲みの中に暗背景＋白カードが混ざると旧・全体平均の一発反転では数字が壊れていた */
+async function ocrScanRegion(nx,ny,nw,nh,psm,wl){
+  const im=OCR.img;
+  const darkFirst=ocrRegionIsDark(nx,ny,nw,nh);
+  let c=await ocrRecognize(nx,ny,nw,nh,psm,darkFirst,wl);
+  if(!c&&OCR.img===im) c=await ocrRecognize(nx,ny,nw,nh,psm,!darkFirst,wl);
+  return c;
 }
 /* statusは固定文言のみ（ユーザーデータを混ぜない） */
 function ocrStatus(html){ocrEl("ocrStatus").innerHTML=html;}
@@ -3294,19 +3314,20 @@ function ocrSetFound(c,msg){
   ocrEl("ocrRes").textContent=c?(c.lat+", "+c.lng):"";
   ocrEl("ocrCopy").disabled=!c;
   ocrEl("ocrUse").disabled=!c;
-  if(c)ocrStatus((msg||"")+"違う数字を読みたい時は、その部分を<b>指でなぞって囲み直せます</b>");
+  if(c)ocrStatus((msg||"")+"違う数字を読みたい時は、その<b>あたりをなぞるかタップ</b>してください");
 }
 async function ocrAutoScan(){
   const im=OCR.img; if(!im)return;
   const W=im.naturalWidth,H=im.naturalHeight;
   ocrStatus("読み取り中…（初回はエンジンの準備に少し時間がかかります）");
   try{
-    /* 検索窓＝画面上部をまず読む（速い）。ダメなら下部のカード帯も試す */
+    /* 検索窓＝画面上部をまず読む（速い）→中央の吹き出し帯→下部のカード帯 */
     let c=await ocrScanRegion(0,0,W,Math.round(H*0.22),6);
+    if(!c&&OCR.img===im) c=await ocrScanRegion(0,Math.round(H*0.30),W,Math.round(H*0.34),6);
     if(!c&&OCR.img===im) c=await ocrScanRegion(0,Math.round(H*0.60),W,H-Math.round(H*0.60),6);
     if(OCR.img!==im)return;   /* 途中で閉じられた */
     if(c)ocrSetFound(c,"見つかりました。");
-    else ocrStatus("自動では見つかりませんでした。座標の数字を<b>指でなぞって囲んで</b>ください");
+    else ocrStatus("自動では見つかりませんでした。数字のあたりを<b>指でなぞるか、トンとタップ</b>してください（だいたいで大丈夫です）");
   }catch(e){
     if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
   }
@@ -3384,25 +3405,45 @@ ocrEl("ocrUse").onclick=()=>{
     show(rectOf(e));
   });
   st.addEventListener("pointermove",e=>{if(p0)show(rectOf(e));});
+  const OCR_WL="0123456789.,- ";   /* 手動指定は数字読み専念（誤読が大きく減る） */
   st.addEventListener("pointerup",async e=>{
     if(!p0)return;
     const r=rectOf(e);p0=null;
-    if(r.w<24||r.h<10){sel.style.display="none";return;}   /* タップだけなら無視 */
     /* 表示px→元画像pxへ変換（imgはアスペクト比維持で縮小表示＝要素枠がそのまま画像） */
     const ir=ocrEl("ocrImg").getBoundingClientRect();
     const im=OCR.img,W=im.naturalWidth,H=im.naturalHeight;
+    if(!im||ir.width<1||ir.height<1){sel.style.display="none";return;}
     const fx=W/ir.width,fy=H/ir.height;
-    let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
-    let nx2=Math.min(W,(r.x2-ir.left)*fx),ny2=Math.min(H,(r.y2-ir.top)*fy);
     setTimeout(()=>sel.style.display="none",300);
-    if(nx2-nx<10||ny2-ny<6)return;
-    ocrStatus("囲んだ範囲を読み取り中…");
     try{
-      const c=await ocrScanRegion(nx,ny,nx2-nx,ny2-ny,7);
-      if(!OCR.img)return;
+      let c=null;
+      if(r.w<24&&r.h<24){
+        /* タップ＝「この辺り」指定：その点を中心にした全幅の帯を読む */
+        const cy=Math.min(H,Math.max(0,((r.y1+r.y2)/2-ir.top)*fy));
+        const bh=Math.max(80,Math.round(H*0.10));
+        const by=Math.max(0,Math.min(H-bh,Math.round(cy-bh/2)));
+        ocrStatus("タップした<b>あたり</b>を読み取り中…");
+        c=await ocrScanRegion(0,by,W,bh,6,OCR_WL);
+      }else{
+        /* なぞり＝囲みは「だいたい」でよい：自動でひと回り広げて読む */
+        let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
+        let nx2=Math.min(W,(r.x2-ir.left)*fx),ny2=Math.min(H,(r.y2-ir.top)*fy);
+        if(nx2-nx<10||ny2-ny<6)return;
+        const padX=Math.max(24,(nx2-nx)*0.35),padY=Math.max(14,(ny2-ny)*0.6);
+        const ex=Math.max(0,nx-padX),ey=Math.max(0,ny-padY);
+        const ew=Math.min(W,nx2+padX)-ex,eh=Math.min(H,ny2+padY)-ey;
+        ocrStatus("囲んだあたりを読み取り中…");
+        c=await ocrScanRegion(ex,ey,ew,eh,eh<H*0.09?7:6,OCR_WL);
+        if(!c&&OCR.img===im){
+          /* 囲み損ね・端切れ対策：同じ高さの帯を画像の端から端まで読む */
+          ocrStatus("見つからないので<b>横いっぱいに広げて</b>探しています…");
+          c=await ocrScanRegion(0,ey,W,eh,6,OCR_WL);
+        }
+      }
+      if(OCR.img!==im)return;
       if(c)ocrSetFound(c,"読み取りました。");
-      else ocrStatus("数字を読めませんでした。<b>数字の行だけを少し広めに</b>囲み直してみてください");
-    }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度囲んでみてください");}
+      else ocrStatus("数字を読めませんでした。数字のあたりを<b>もう一度なぞるかタップ</b>してみてください");
+    }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
   });
   st.addEventListener("pointercancel",()=>{p0=null;sel.style.display="none";});
 })();
