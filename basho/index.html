@@ -627,7 +627,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.17.3";
+const VER = "0.17.4";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3316,22 +3316,6 @@ function ocrSetFound(c,msg){
   ocrEl("ocrUse").disabled=!c;
   if(c)ocrStatus((msg||"")+"違う数字を読みたい時は、その<b>あたりをなぞるかタップ</b>してください");
 }
-async function ocrAutoScan(){
-  const im=OCR.img; if(!im)return;
-  const W=im.naturalWidth,H=im.naturalHeight;
-  ocrStatus("読み取り中…（初回はエンジンの準備に少し時間がかかります）");
-  try{
-    /* 検索窓＝画面上部をまず読む（速い）→中央の吹き出し帯→下部のカード帯 */
-    let c=await ocrScanRegion(0,0,W,Math.round(H*0.22),6);
-    if(!c&&OCR.img===im) c=await ocrScanRegion(0,Math.round(H*0.30),W,Math.round(H*0.34),6);
-    if(!c&&OCR.img===im) c=await ocrScanRegion(0,Math.round(H*0.60),W,H-Math.round(H*0.60),6);
-    if(OCR.img!==im)return;   /* 途中で閉じられた */
-    if(c)ocrSetFound(c,"見つかりました。");
-    else ocrStatus("自動では見つかりませんでした。数字のあたりを<b>指でなぞるか、トンとタップ</b>してください（だいたいで大丈夫です）");
-  }catch(e){
-    if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
-  }
-}
 function ocrOpen(file,cb){
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}}
   OCR.url=URL.createObjectURL(file);
@@ -3341,7 +3325,12 @@ function ocrOpen(file,cb){
     ocrEl("ocrImg").src=OCR.url;
     ocrSetFound(null);
     ocrEl("ocrov").classList.add("on");
-    ocrAutoScan();
+    /* 全面自動スキャンはしない＝ユーザーが数字の場所をタップで教えてくれる方が速くて確実。
+       狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収） */
+    ocrStatus("座標の数字のあたりを<b>指でトンとタップ</b>してください（なぞって囲んでもOK・だいたいで大丈夫です）");
+    ocrWorker().catch(()=>{
+      if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
+    });
   };
   im.onerror=()=>toast("画像を読み込めませんでした");
   im.src=OCR.url;
