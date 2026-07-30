@@ -3410,7 +3410,7 @@ function catEdit(){
    そこで1回のタップで eng（座標）→ jpn（住所）の順に試し、読めた方を採用する＝
    ユーザーは「読みたいあたりをタップ」するだけでよく、モード切替がいらない。
    エンジンは開いた時に裏で温め、閉じたら破棄（メモリ対策） */
-const OCR={img:null,url:null,cb:null,res:null,libP:null,wkP:{},q:Promise.resolve()};
+const OCR={img:null,url:null,cb:null,res:null,libP:null,wkP:{},q:{}};
 const ocrEl=id=>document.getElementById(id);
 function ocrBase(){return new URL("ocr",location.href).href;}   /* 絶対URL（worker内の相対解決ズレ防止） */
 function ocrLib(){
@@ -3452,8 +3452,15 @@ function ocrWorker(lang){
   }
   return OCR.wkP[lang];
 }
-/* recognizeの直列化（範囲選択の連打とautoScanが混ざらないように） */
-function ocrJob(fn){const p=OCR.q.then(fn);OCR.q=p.catch(()=>{});return p;}
+/* recognizeの直列化（連打が混ざらないように）。★キューは言語ごと＝
+   1つのworkerの中では順番待ちだが、英語(座標)と日本語(住所)は同時に走れる。
+   実機は1回の認識に約4秒かかるため、直列だと住所タップが約8秒＝並列で半分にする */
+function ocrJob(lang,fn){
+  const prev=OCR.q[lang]||Promise.resolve();
+  const p=prev.then(fn);
+  OCR.q[lang]=p.catch(()=>{});
+  return p;
+}
 /* OCR結果テキスト→「緯度, 経度」抽出。小数3桁以上の数字ペアだけを座標とみなす */
 function ocrParseCoords(text){
   const t=String(text||"")
@@ -3545,7 +3552,7 @@ function ocrRegionIsDark(nx,ny,nw,nh){
 }
 const OCR_WL="0123456789.,- ";   /* 座標読みは数字専念（誤読が大きく減る） */
 function ocrText(lang,nx,ny,nw,nh,psm,invert,wl){
-  return ocrJob(async()=>{
+  return ocrJob(lang,async()=>{
     const wk=await ocrWorker(lang);
     const c=ocrCropCanvas(nx,ny,nw,nh,invert);
     await wk.setParameters({tessedit_pageseg_mode:String(psm),tessedit_char_whitelist:wl||""});
@@ -3565,15 +3572,18 @@ async function ocrScanAuto(nx,ny,nw,nh,psm){
      入っていない時は文字が壊れている可能性が高いので、もう一方のパスも試して良い方を採る */
   const good=a=>!!a&&PREF_ORDER.some(p=>a.indexOf(p)>=0);
   let weak=null;
+  /* ★実測（実機）: 1回の認識はおよそ4秒で、切り出しを小さくしても速くならない＝
+     コストは「認識の回数」で決まる。2エンジンの同時実行も競合で逆に遅くなった（13秒）ので、
+     英語→ダメなら日本語 の順に1回ずつ動かす。座標は1回(約4秒)、住所は2回目(約8秒)で確定する */
   for(let i=0;i<passes.length;i++){
-    let t=await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL);
+    const tc=await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL);
     if(OCR.img!==im)return null;
-    const c=ocrParseCoords(t);
+    const c=ocrParseCoords(tc);
     if(c)return {type:"coord",val:c};
     if(i===0)ocrStatus("日本語（住所）としても読んでいます…");
-    t=await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],"");
+    const ta=await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],"");
     if(OCR.img!==im)return null;
-    const a=ocrParseAddr(t);
+    const a=ocrParseAddr(ta);
     if(good(a))return {type:"addr",val:a};
     if(a&&!weak)weak=a;
   }
@@ -3636,7 +3646,7 @@ function ocrClose(){
     if(p)p.then(wk=>{try{wk.terminate();}catch(e){}}).catch(()=>{});
   });
   OCR.wkP={};
-  OCR.q=Promise.resolve();
+  OCR.q={};
 }
 ocrEl("ocrCloseBtn").onclick=ocrClose;
 ocrEl("ocrCopy").onclick=async()=>{
