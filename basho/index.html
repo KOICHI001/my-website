@@ -670,14 +670,14 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     </div>
   </div>
 </div>
-<input type="file" id="ocrFile" accept="image/*" hidden>
+<input type="file" id="ocrFile" accept="image/png,image/jpeg,image/webp" hidden>
 
 <script src="pref_data.js"></script>
 <script src="leaflet.js"></script>
 <script>
 (function(){
 "use strict";
-const VER = "0.20.0";
+const VER = "0.21.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3497,16 +3497,63 @@ function ocrParseCoords(text){
   cands.sort((x,y)=>y.sc-x.sc);
   return cands[0];
 }
-/* OCR結果テキスト→住所。〒か都道府県名で始まる所を頭にして、折り返した続きの行を繋ぐ。
+/* OCR結果 → 1行ずつの「文字」と「位置・大きさ」。
+   ★v0.21.0: 名前も住所も2行に折り返すことがある（実機スクショで確認）。
+   文字だけを見ていると「どこまでが1つのかたまりか」が分からないので、
+   Tesseractが返す各行の枠（bbox）＝上下の位置・左端・文字の高さを使う。
+   折り返しの続きの行は「左端がそろう・行間が狭い・文字の大きさが同じ」で見分けられる。
+   位置が取れない場合（古い版・失敗時）は文字だけの行に落として従来どおり動かす */
+function ocrRecLines(rec){
+  const raw=[];
+  const d=rec||{};
+  let ls=Array.isArray(d.lines)?d.lines:null;
+  if(!ls||!ls.length){                                  /* 版によっては blocks の中にだけ入っている */
+    ls=[];
+    (d.blocks||[]).forEach(b=>(b.paragraphs||[]).forEach(p=>(p.lines||[]).forEach(l=>ls.push(l))));
+  }
+  ls.forEach(l=>{
+    const t=String((l&&l.text)||"").trim();
+    if(!t)return;
+    const b=(l&&l.bbox)||{};
+    const y0=+b.y0||0,y1=+b.y1||0;
+    raw.push({t,x0:+b.x0||0,x1:+b.x1||0,y0,y1,h:Math.max(0,y1-y0),
+              conf:(l&&typeof l.confidence==="number")?l.confidence:null});
+  });
+  if(!raw.length){
+    String(d.text||"").split(/\r?\n/).forEach(s=>{
+      s=s.trim();
+      if(s)raw.push({t:s,x0:0,x1:0,y0:0,y1:0,h:0,conf:(typeof d.conf==="number"?d.conf:null)});
+    });
+  }
+  return raw;
+}
+/* 2つの行が「同じかたまりの折り返し」か。true=折り返し / false=別のもの / null=位置が無くて判断不能 */
+function ocrWrapped(prev,cur){
+  if(!prev||!cur||!prev.h||!cur.h)return null;
+  const hi=Math.max(prev.h,cur.h),lo=Math.min(prev.h,cur.h);
+  if(hi>lo*1.45)return false;                     /* 文字の大きさが違う＝別の項目 */
+  const gap=cur.y0-prev.y1;
+  if(gap>lo*1.15||gap<-lo*0.7)return false;       /* 行間が空きすぎ／重なりすぎ */
+  if(Math.abs(cur.x0-prev.x0)>lo*1.6)return false;/* 折り返しは左端がそろう */
+  return true;
+}
+/* OCR結果→住所。〒か都道府県名で始まる所を頭にして、折り返した続きの行を繋ぐ。
    ★実機スクショの実測で分かったこと:
      ・カードの住所は幅で折り返す（「…仙石原9」「40-48」の2行）→ 繋がないと番地が切れる
+     ・折り返しは数字だけとは限らない（「…軽井沢町軽」「井沢1178-1246 旧駅舎口」）→
+       v0.21.0から行の位置で見分ける。数字だけ判定は位置が無い時の保険に残す
      ・地図ピンのアイコンが1文字のゴミ（"o"等）として頭に付く → 〒/県名より前は捨てる
      ・番地が全角（９４０－４８）で写る → 半角に正規化する */
-function ocrParseAddr(text){
+const OCR_ADDR_CONT=/^[0-9A-Za-zぁ-ゖァ-ヺ一-鿿々〆ヶ\- ]+$/;      /* 住所の続きに出てよい字だけ */
+const OCR_ADDR_NG=/口コミ|レビュー|評価|営業|閉店|開店|定休|時間|経路|保存|共有|ラベル|電話|予約|ナビ|メニュー|注文|ウェブ|サイト|www|http|^\d{2,4}-\d{2,4}-\d{4}$/;
+function ocrParseAddr(rec){
   const norm=s=>String(s||"")
     .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
     .replace(/[－ー―‐−–—]/g,"-").replace(/[　\t]/g," ");
-  const lines=norm(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const src=ocrRecLines(rec).map(o=>{
+    const c=Object.assign({},o); c.t=norm(o.t).trim(); return c;
+  }).filter(o=>o.t);
+  const lines=src.map(o=>o.t);
   const ZIP=/〒?\s*\d{3}\s*-\s*\d{4}/;
   let head=-1,cut=0;
   for(let i=0;i<lines.length&&head<0;i++){
@@ -3520,13 +3567,23 @@ function ocrParseAddr(text){
   }
   if(head<0)return null;
   let out=lines[head].slice(cut);
-  for(let i=head+1;i<lines.length;i++){         /* 折り返しの続き（数字と記号だけの短い行）を繋ぐ */
-    if(!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
-    out+=lines[i];
+  for(let i=head+1;i<lines.length&&i<=head+2;i++){   /* 折り返しの続きを繋ぐ（住所は多くても2行） */
+    const w=ocrWrapped(src[i-1],src[i]),L=lines[i];
+    const cont = w===true  ? (OCR_ADDR_CONT.test(L)&&!OCR_ADDR_NG.test(L))
+               : w===false ? false
+               : /^[0-9\-\s]{1,12}$/.test(L);        /* 位置が取れない時は従来どおり数字だけ */
+    if(!cont)break;
+    out+=L;
   }
-  out=out.replace(/\s+/g,"");                   /* OCRは字間を空白に読むので一度すべて詰める */
+  /* OCRは字間を空白に読むので一度すべて詰める。ただし「番地のあとの建物名・入口」の前は
+     1つ空ける（実測「1178-1246 旧駅舎口」）＝数字の直後に日本語が来る所の空白だけ残す */
+  out=out.split(/[ 　]+/).reduce((acc,seg)=>{
+    if(!acc)return seg;
+    const keep=/[0-9\-]$/.test(acc)&&/^[ぁ-ゖァ-ヺ一-鿿]/.test(seg);
+    return acc+(keep?" ":"")+seg;
+  },"");
   const zm2=out.match(/^〒?(\d{3})-(\d{4})/);   /* 〒の後だけ1つ空ける（マップの表記に合わせる） */
-  if(zm2)out="〒"+zm2[1]+"-"+zm2[2]+" "+out.slice(zm2[0].length);
+  if(zm2)out="〒"+zm2[1]+"-"+zm2[2]+" "+out.slice(zm2[0].length).replace(/^\s+/,"");
   out=out.replace(/[^0-9A-Za-z぀-ヿ一-鿿\-]+$/,"");   /* 末尾の記号ゴミを落とす */
   if(out.replace(/\s/g,"").length<6)return null;   /* 短すぎ＝誤読とみなす */
   return out;
@@ -3544,28 +3601,63 @@ const OCR_NAME_NG=[
   /^\s*\d+([.,]\d+)?\s*[★☆*(（]/,                                  /* 4.6 ★★★★☆ (1,234) */
   /\d\s*(km|ｋｍ|m|分|時間)\s*$/, /徒歩|車で|電車/   /* 「1.2 km」「5 分」＝距離の行（数字付きに限る） */
 ];
-function ocrParseName(text,conf){
-  const lines=String(text||"").replace(/[　\t]+/g," ").split(/\r?\n/)
-    .map(s=>s.trim()).filter(Boolean);
-  let best=null;
-  for(const raw of lines){
+function ocrParseName(rec){
+  const src=ocrRecLines(rec);
+  if(!src.length)return null;
+  /* カードの中で名前はいちばん大きい字で書かれている＝「他の行と比べてどれだけ大きいか」を
+     いちばん強い手がかりにする。まん中の高さ（中央値）を物差しにする */
+  const hs=src.map(o=>o.h).filter(h=>h>0).sort((a,b)=>a-b);
+  const medH=hs.length?hs[Math.floor(hs.length/2)]:0;
+  const cand=[];
+  src.forEach((o,i)=>{
     /* 先頭のアイコン誤読・末尾の記号ゴミを落とす（住所と同じ癖） */
-    const L=raw.replace(/^[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿]+/,"")
+    const L=String(o.t).replace(/[　\t]+/g," ")
+               .replace(/^[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿]+/,"")
                .replace(/[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿ー・＆&'’)）]+$/,"").trim();
-    if(L.length<3||L.length>40)continue;
-    if(PREF_ORDER.some(p=>L.indexOf(p)>=0))continue;   /* 住所の行 */
-    if(OCR_NAME_NG.some(re=>re.test(L)))continue;
+    if(L.length<2||L.length>40)return;
+    if(PREF_ORDER.some(p=>L.indexOf(p)>=0))return;   /* 住所の行 */
+    if(OCR_NAME_NG.some(re=>re.test(L)))return;
+    const big=medH>0&&o.h>=medH*1.15;
     /* 日本語の行に空白がいくつも入る＝字が崩れて読めている合図（実測「4Se エ っ7二日折記る」）。
-       「道の駅 箱根峠」のような本物もあるので1つまでは許す */
-    if(/[ぁ-ゖァ-ヺ一-鿿]/.test(L)&&(L.match(/ /g)||[]).length>=2)continue;
+       ただし「プリモ フィト 軽井沢」のような本物の店名もある＝
+       大きい字／自信を持って読めた行なら空白があっても名前として認める */
+    if(/[ぁ-ゖァ-ヺ一-鿿]/.test(L)&&(L.match(/ /g)||[]).length>=2
+       &&!big&&!(o.conf!=null&&o.conf>=80))return;
+    if(o.conf!=null&&o.conf<45)return;               /* まるで読めていない行 */
+    if(!/[0-9A-Za-zぁ-ゖァ-ヺ一-鿿]/.test(L))return;
+    cand.push({i,L,h:o.h,line:o});
+  });
+  if(!cand.length)return null;
+  /* 折り返した名前をひとまとめにする（「プリモ フィト 軽井沢」＋「駅舎店」）。
+     行がとなり合っていて、位置から見て折り返しなら繋ぐ */
+  const groups=[];
+  cand.forEach(c=>{
+    const g=groups[groups.length-1];
+    const prev=g&&g.last;
+    if(g&&c.i===prev.i+1&&ocrWrapped(prev.line,c.line)===true){
+      /* 英語は単語の切れ目で折り返す＝空白を入れる。日本語は途中で折り返すのでそのまま繋ぐ */
+      const sep=(/[0-9A-Za-z]$/.test(g.text)&&/^[0-9A-Za-z]/.test(c.L))?" ":"";
+      g.text+=sep+c.L; g.h=Math.max(g.h,c.h); g.last=c;
+      g.conf=(g.conf==null||c.line.conf==null)?null:Math.min(g.conf,c.line.conf);
+    }else{
+      groups.push({text:c.L,h:c.h,conf:c.line.conf,last:c});
+    }
+  });
+  let best=null;
+  for(const g of groups){
+    const L=g.text;
+    if(L.length>44)continue;
     const jp=(L.match(/[ぁ-ゖァ-ヺ一-鿿]/g)||[]).length;
     const al=(L.match(/[0-9A-Za-z]/g)||[]).length;
     if(jp+al<3)continue;
-    const sc=jp*2+al+Math.min(6,L.length);
-    if(!best||sc>best.sc)best={text:L,sc};
+    /* 他より大きい字ほど名前らしい（1.5倍でおよそ+10点） */
+    const size=medH>0?Math.max(-6,Math.min(16,Math.round((g.h/medH-1)*20))):0;
+    const sc=jp*2+al+Math.min(6,L.length)+size;
+    if(!best||sc>best.sc)best={text:L,sc,conf:g.conf};
   }
   /* 「神社」「カフェ」だけのような業種行を名前と誤らないよう下限を設ける（実質4文字以上の日本語） */
-  if(!best||best.sc<8)return null;
+  if(!best||best.sc<8||best.text.length<3)return null;
+  const conf=best.conf!=null?best.conf:(rec&&typeof rec.conf==="number"?rec.conf:null);
   best.strong=(conf==null||conf>=65);   /* 文字が壊れ気味なら反転パスの結果と見比べる */
   return best;
 }
@@ -3611,7 +3703,9 @@ function ocrText(lang,nx,ny,nw,nh,psm,invert,wl){
     const c=ocrCropCanvas(nx,ny,nw,nh,invert);
     await wk.setParameters({tessedit_pageseg_mode:String(psm),tessedit_char_whitelist:wl||""});
     const r=await wk.recognize(c);
-    return {text:r.data.text||"",conf:(typeof r.data.confidence==="number"?r.data.confidence:null)};
+    /* linesは1行ごとの文字＋枠（bbox）。折り返しの判定に使う（無い版でもtextだけで動く） */
+    return {text:r.data.text||"",conf:(typeof r.data.confidence==="number"?r.data.confidence:null),
+            lines:r.data.lines||null,blocks:r.data.blocks||null};
   });
 }
 /* 指定範囲を「座標？住所？名前？」の順に自動判定して読む。
@@ -3641,10 +3735,10 @@ async function ocrScanAuto(nx,ny,nw,nh,psm){
     if(i===0)ocrStatus("日本語（住所・名前）としても読んでいます…");
     const rj=await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],"");
     if(OCR.img!==im)return null;
-    const a=ocrParseAddr(rj.text);
+    const a=ocrParseAddr(rj);
     if(good(a))return {addr:a};
     if(a&&!weakA)weakA=a;
-    const n=a?null:ocrParseName(rj.text,rj.conf);   /* 住所が写っている帯は名前を探さない */
+    const n=a?null:ocrParseName(rj);   /* 住所が写っている帯は名前を探さない */
     if(n&&(!bestN||n.sc>bestN.sc))bestN=n;
     /* 名前がしっかり読めた＝カードの見出しをタップした時。ここで打ち切る */
     if(n&&n.strong)return {name:n.text};
@@ -3783,9 +3877,10 @@ ocrEl("ocrUse").onclick=()=>{
       let c=null;
       if(r.w<24&&r.h<24){
         /* タップ＝「この辺り」指定：その点を中心にした全幅の帯を読む。
-           帯は画像の高さの10%＝住所が2行に折り返していても丸ごと入る */
+           帯は画像の高さの14%＝大きい字の名前が2行に折り返していても丸ごと入る
+           （v0.20.0の10%では2行目が帯から切れることがあった。認識の時間は帯の広さでは変わらない） */
         const cy=Math.min(H,Math.max(0,((r.y1+r.y2)/2-ir.top)*fy));
-        const bh=Math.max(80,Math.round(H*0.10));
+        const bh=Math.max(110,Math.round(H*0.14));
         const by=Math.max(0,Math.min(H-bh,Math.round(cy-bh/2)));
         ocrStatus("タップした<b>あたり</b>を読み取り中…");
         c=await ocrScanAuto(0,by,W,bh,6);
