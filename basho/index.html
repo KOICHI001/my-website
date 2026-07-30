@@ -394,6 +394,29 @@
     box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
   .fab3 span{display:block;font-size:11px;letter-spacing:.04em}
   /* ───── 📍近くビュー（上=カード列 / 下=地図・連動フォーカス） ───── */
+  /* ヘルプ（使い方）: ⋯メニュー最下部から。同梱の説明画像を縦に連ねてスクロール閲覧 */
+  .helpov{position:fixed;inset:0;z-index:57;display:none;overflow-y:auto;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;--pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
+  .helpov.on{display:block}
+  .helpov .pv-body img{cursor:default}
+  /* 表紙の位置調整: 枠=本と同じ3:4。ドラッグで移動・ピンチ/ホイールで拡縮（cover方式=枠内に余白を出さない） */
+  .cvcrop{position:fixed;inset:0;z-index:72;background:rgba(18,22,21,.78);display:none;
+    align-items:center;justify-content:center;padding:20px}
+  .cvcrop.on{display:flex}
+  .cvcrop-box{background:var(--paper);border-radius:16px;padding:16px 14px;width:100%;max-width:340px}
+  .cvcrop-tt{font-family:var(--mincho);font-size:17px;font-weight:600;text-align:center;
+    margin-bottom:10px;letter-spacing:.06em}
+  .cvcrop-vp{position:relative;aspect-ratio:3/4;width:min(58vw,240px);margin:0 auto;background:#000;
+    border-radius:4px 14px 14px 4px;overflow:hidden;border:2px solid var(--route);
+    touch-action:none;user-select:none;cursor:grab}
+  .cvcrop-vp.drag{cursor:grabbing}
+  /* 左端=背表紙の色ライン。実物の本と同じだけ隠れる範囲を見せて位置決めの正直なプレビューにする */
+  .cvcrop-vp::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;
+    background:var(--catcolor,#6B7280);z-index:2}
+  .cvcrop-vp img{position:absolute;left:50%;top:50%;transform-origin:0 0;max-width:none;
+    pointer-events:none;user-select:none;-webkit-user-drag:none}
+  .cvcrop-hint{font-size:11.5px;color:var(--soft);text-align:center;margin:9px 0 12px;line-height:1.5}
+  .cvcrop-acts{display:flex;gap:8px}
   .nearov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
   .nearov.on{display:flex}
   body.nearon .fab,body.nearon .fab2,body.nearon .fab3{display:none}   /* 表示中はFAB全部隠す */
@@ -548,6 +571,25 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="near-map" id="nearMap"></div>
 </div>
 
+<!-- ヘルプ（使い方）: ⋯メニュー最下部のボタンから。help01〜04.pngを縦スクロールで読む -->
+<div class="helpov" id="helpov">
+  <div class="pv-head">
+    <button class="pv-back" id="helpBack" aria-label="戻る">←</button>
+    <div class="pv-title">使い方</div>
+  </div>
+  <div class="pv-body" id="helpBody"></div>
+</div>
+
+<!-- 表紙の位置調整: 本の長押し→「表紙の画像を選ぶ」→画像選択→ここで位置決め・拡縮→決定 -->
+<div class="cvcrop" id="cvcrop">
+  <div class="cvcrop-box">
+    <div class="cvcrop-tt">表紙の位置を調整</div>
+    <div class="cvcrop-vp" id="cvcropVp"><img id="cvcropImg" alt=""></div>
+    <div class="cvcrop-hint">ドラッグで移動／2本指で拡大縮小できます。<br>枠に写っている範囲がそのまま表紙になります。</div>
+    <div class="cvcrop-acts"><button class="btn" id="cvcropNg">やめる</button><button class="btn primary" id="cvcropOk">これで決定</button></div>
+  </div>
+</div>
+
 <div class="nvov" id="nvov">
   <div class="nv-top">
     <button class="nv-back" id="nvClose">← 戻る</button>
@@ -627,7 +669,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.17.5";
+const VER = "0.18.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1899,15 +1941,8 @@ function coverMenu(cat){
     COVERS[cat.n]={id:c?c.id:null,t:chk.checked?1:0};
     saveCovers(); render();
   };
-  document.getElementById("cv_pick").onclick=()=>{
-    phCapture(true,id=>{
-      const old=covOf(cat.n);
-      if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
-      COVERS[cat.n]={id:id,t:chk.checked?1:0};
-      saveCovers(); closeSheet(); render();
-      toast("表紙を設定しました");
-    });
-  };
+  /* 画像選択→クロップ画面（位置決め・拡縮）→決定で保存。箱のヘッダー画像と同じ流儀 */
+  document.getElementById("cv_pick").onclick=()=>cvCropPick(cat);
   const del=document.getElementById("cv_del");
   if(del) del.onclick=()=>{
     if(!confirm("表紙の画像を外します。よろしいですか？"))return;
@@ -1919,6 +1954,136 @@ function coverMenu(cat){
   };
   const db=document.getElementById("cv_delbook");
   if(db) db.onclick=()=>bookDelete(cat);
+}
+
+/* ───── 表紙の位置調整（クロップ） ─────
+   箱のヘッダー画像クロップと同じ流儀: 画像を選ぶ→本と同じ3:4の枠にドラッグで位置決め・
+   ピンチ/ホイールで拡縮→決定で枠の範囲だけをCanvasに焼いて保存。
+   ズームはcoverスケールを下限にする＝枠の中に余白が出ない（iOSプロフィール画像と同じ） */
+let CVC=null;
+function cvCropPick(cat){
+  const inp=document.createElement("input");
+  inp.type="file"; inp.accept="image/*";
+  inp.onchange=()=>{
+    const f=inp.files&&inp.files[0]; if(!f) return;
+    const img=new Image();
+    img.onload=()=>{
+      const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+      if(!iw||!ih){ URL.revokeObjectURL(img.src); toast("画像を読み込めませんでした"); return; }
+      const vp=document.getElementById("cvcropVp"), imEl=document.getElementById("cvcropImg");
+      vp.style.setProperty("--catcolor",cat.c);   /* 左端の背表紙ラインも実物どおり見せる */
+      document.getElementById("cvcrop").classList.add("on");
+      requestAnimationFrame(()=>{                  /* 表示後でないと枠サイズが取れない */
+        const r=vp.getBoundingClientRect();
+        const cover=Math.max(r.width/iw,r.height/ih);
+        CVC={cat:cat,img:img,iw:iw,ih:ih,vw:r.width,vh:r.height,
+             sc:cover,min:cover,max:cover*4,tx:0,ty:0,
+             ptr:new Map(),lx:0,ly:0,pd:null,ps:0,ptx:0,pty:0,pmx:0,pmy:0,pcx:0,pcy:0};
+        imEl.src=img.src;
+        imEl.style.width=iw+"px"; imEl.style.height=ih+"px";
+        cvCropApply();
+      });
+    };
+    img.onerror=()=>{ URL.revokeObjectURL(img.src); toast("画像を読み込めませんでした"); };
+    img.src=URL.createObjectURL(f);
+  };
+  inp.click();
+}
+function cvCropApply(){
+  if(!CVC) return;
+  const w=CVC.iw*CVC.sc, h=CVC.ih*CVC.sc;
+  document.getElementById("cvcropImg").style.transform=
+    "translate("+(-w/2+CVC.tx)+"px,"+(-h/2+CVC.ty)+"px) scale("+CVC.sc+")";
+}
+function cvCropClamp(){
+  const mx=Math.max(0,(CVC.iw*CVC.sc-CVC.vw)/2), my=Math.max(0,(CVC.ih*CVC.sc-CVC.vh)/2);
+  CVC.tx=Math.min(mx,Math.max(-mx,CVC.tx));
+  CVC.ty=Math.min(my,Math.max(-my,CVC.ty));
+}
+(function(){
+  const vp=document.getElementById("cvcropVp");
+  vp.addEventListener("pointerdown",e=>{
+    if(!CVC) return;
+    try{vp.setPointerCapture&&vp.setPointerCapture(e.pointerId);}catch(x){}   /* 失敗してもドラッグ自体は続行 */
+    CVC.ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    CVC.lx=e.clientX; CVC.ly=e.clientY; CVC.pd=null;   /* 指の数が変わるたびピンチ基準はリセット */
+    vp.classList.add("drag"); e.preventDefault();
+  });
+  vp.addEventListener("pointermove",e=>{
+    if(!CVC||!CVC.ptr.has(e.pointerId)) return;
+    CVC.ptr.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    const ps=[...CVC.ptr.values()];
+    if(ps.length===1){                                  /* 1本指=パン */
+      CVC.tx+=e.clientX-CVC.lx; CVC.ty+=e.clientY-CVC.ly;
+      CVC.lx=e.clientX; CVC.ly=e.clientY;
+      cvCropClamp(); cvCropApply();
+    }else if(ps.length===2){                            /* 2本指=ピンチ（中点の画像点をピン留め） */
+      const dx=ps[0].x-ps[1].x, dy=ps[0].y-ps[1].y, d=Math.hypot(dx,dy),
+            mx=(ps[0].x+ps[1].x)/2, my=(ps[0].y+ps[1].y)/2;
+      if(CVC.pd==null){
+        const r=vp.getBoundingClientRect();
+        CVC.pcx=r.left+CVC.vw/2; CVC.pcy=r.top+CVC.vh/2;
+        CVC.pd=Math.max(d,1); CVC.ps=CVC.sc; CVC.ptx=CVC.tx; CVC.pty=CVC.ty;
+        CVC.pmx=mx-CVC.pcx; CVC.pmy=my-CVC.pcy;
+      }else{
+        const Mx=mx-CVC.pcx, My=my-CVC.pcy;
+        const ix=(CVC.pmx-CVC.ptx)/CVC.ps, iy=(CVC.pmy-CVC.pty)/CVC.ps;
+        const ns=Math.min(CVC.max,Math.max(CVC.min,CVC.ps*(d/CVC.pd)));
+        CVC.sc=ns; CVC.tx=Mx-ix*ns; CVC.ty=My-iy*ns;
+        cvCropClamp(); cvCropApply();
+      }
+    }
+    e.preventDefault();
+  });
+  const up=e=>{
+    if(!CVC) return;
+    CVC.ptr.delete(e.pointerId); CVC.pd=null;
+    if(!CVC.ptr.size) vp.classList.remove("drag");
+    else{ const p=[...CVC.ptr.values()][0]; CVC.lx=p.x; CVC.ly=p.y; }   /* ピンチ→パンの引き継ぎ */
+    try{vp.releasePointerCapture&&vp.releasePointerCapture(e.pointerId);}catch(x){}
+  };
+  vp.addEventListener("pointerup",up);
+  vp.addEventListener("pointercancel",up);
+  vp.addEventListener("wheel",e=>{                      /* デスクトップ用: マウス位置ピン留めズーム */
+    if(!CVC) return; e.preventDefault();
+    const f=e.deltaY>0?0.92:1/0.92, r=vp.getBoundingClientRect();
+    const Mx=e.clientX-(r.left+CVC.vw/2), My=e.clientY-(r.top+CVC.vh/2);
+    const ix=(Mx-CVC.tx)/CVC.sc, iy=(My-CVC.ty)/CVC.sc;
+    const ns=Math.min(CVC.max,Math.max(CVC.min,CVC.sc*f));
+    CVC.sc=ns; CVC.tx=Mx-ix*ns; CVC.ty=My-iy*ns;
+    cvCropClamp(); cvCropApply();
+  },{passive:false});
+  document.getElementById("cvcropNg").onclick=cvCropCancel;
+  document.getElementById("cvcropOk").onclick=cvCropOk;
+})();
+function cvCropCancel(){
+  const im=document.getElementById("cvcropImg");
+  if(im.src&&im.src.startsWith("blob:")) URL.revokeObjectURL(im.src);
+  im.removeAttribute("src");
+  document.getElementById("cvcrop").classList.remove("on");
+  CVC=null;
+}
+function cvCropOk(){
+  if(!CVC){ cvCropCancel(); return; }
+  /* 枠に写っている範囲を600×800(3:4)に焼く＝表紙の表示幅は最大でも300px程度なので十分な解像度 */
+  const OW=600, OH=800, s=CVC.sc, sw=CVC.vw/s, sh=CVC.vh/s;
+  let sx=CVC.iw/2-CVC.tx/s-sw/2, sy=CVC.ih/2-CVC.ty/s-sh/2;
+  sx=Math.min(Math.max(0,sx),CVC.iw-sw); sy=Math.min(Math.max(0,sy),CVC.ih-sh);
+  const cv=document.createElement("canvas"); cv.width=OW; cv.height=OH;
+  cv.getContext("2d").drawImage(CVC.img,sx,sy,sw,sh,0,0,OW,OH);
+  const du=cv.toDataURL("image/jpeg",.85);
+  const cat=CVC.cat;
+  cvCropCancel();   /* blob URLの後片付け（drawImage済みなので安全） */
+  const id="i"+Date.now()+Math.random().toString(36).slice(2,5);
+  IDB.set(id,du).then(()=>{
+    phCache.set(id,du);
+    const old=covOf(cat.n);
+    if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
+    const chk=document.getElementById("cv_label");   /* 帯フラグはシートの今のチェック状態を引き継ぐ */
+    COVERS[cat.n]={id:id,t:chk?(chk.checked?1:0):1};
+    saveCovers(); closeSheet(); render();
+    toast("表紙を設定しました");
+  }).catch(()=>toast("表紙を保存できませんでした（空き容量を確認）"));
 }
 
 /* 本（カテゴリ）ごと削除: 中の場所をどうするか必ず選ばせる（ワンタップで消させない） */
@@ -2770,6 +2935,27 @@ function nvSearchGo(autoJump){
   tryGsi(0);
 }
 
+/* ───── ヘルプ（使い方） ─────
+   ⋯メニュー最下部から。同梱の説明画像(help01〜04.png)を縦に連ねて読むだけの面＝オフラインでも開ける */
+const HELP_PAGES=["help01.png","help02.png","help03.png","help04.png"];
+function helpOpen(){
+  const b=document.getElementById("helpBody");
+  if(!b.childElementCount)
+    HELP_PAGES.forEach((f,i)=>{
+      const im=document.createElement("img");
+      im.alt="使い方 "+(i+1)+"ページ目"; im.src=f;
+      b.appendChild(im);
+    });
+  const ov=document.getElementById("helpov");
+  ov.classList.add("on"); ov.scrollTop=0;
+  document.documentElement.classList.add("pvon");   /* 背面スクロール封じ（縦閲覧と同じ流儀） */
+}
+function helpClose(){
+  document.getElementById("helpov").classList.remove("on");
+  if(!pv.classList.contains("on")) document.documentElement.classList.remove("pvon");
+}
+document.getElementById("helpBack").onclick=helpClose;
+
 /* ───── 設定 ───── */
 function menu(){
   sheet.innerHTML=
@@ -2779,6 +2965,7 @@ function menu(){
     '<button class="menu-item" id="m_exp">バックアップを書き出す</button>'+
     '<button class="menu-item" id="m_imp">バックアップを読み込む</button>'+
     '<button class="menu-item" id="m_gmi">Googleマップのお気に入りを取り込む</button>'+
+    '<button class="menu-item" id="m_help">❓ 使い方（ヘルプ）</button>'+
     '<div class="hint" style="margin-top:12px">データはこの端末の中だけに保存されます。'+
     '機種を替える前に書き出しておけば、そのまま引き継げます。<br>場所帳 v'+VER+'</div>'+
     '<div class="sheet-actions"><button class="btn" id="m_close">閉じる</button></div>';
@@ -2791,6 +2978,7 @@ function menu(){
   };
   document.getElementById("m_cats").onclick=catEdit;
   document.getElementById("m_gmi").onclick=gmImport;
+  document.getElementById("m_help").onclick=()=>{ closeSheet(); helpOpen(); };
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
@@ -3492,19 +3680,22 @@ document.getElementById("viewBtn").onclick=e=>{
 /* 開いている面を上から順に1つ閉じる（Escape・Android戻るボタン共通） */
 function closeTopOverlay(){
   if(dlg.classList.contains("on")) dlgClose();   /* 注意ダイアログ=最前面（キャンセル扱い） */
+  else if(document.getElementById("cvcrop").classList.contains("on")) cvCropCancel();   /* 表紙の位置調整 */
   else if(document.getElementById("cpick").classList.contains("on")) cpickClose();
   else if(lb.classList.contains("on")) lbClose();
   else if(veil.classList.contains("abovepv")&&veil.classList.contains("on")) closeSheet();   /* 縦閲覧の上の添付メニュー */
   else if(pv.classList.contains("on")) pvClose();   /* ライトボックス→縦閲覧→一覧 の順で1段ずつ */
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
+  else if(document.getElementById("helpov").classList.contains("on")) helpClose();   /* 使い方 */
   else if(document.getElementById("nearov").classList.contains("on")) nearClose();
   else if(veil.classList.contains("on")) closeSheet();
   else if(homeTab==="shelf"&&shelfCat&&shelfSub){ shelfSub=null; renderTop(); }   /* フォルダ→本へ */
   else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; renderTop(); }   /* 本の中→本棚へ */
 }
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay(); });
-/* 本の中・フォルダの中（カード一覧の画面）だけ: 左フリックで1つ戻る（フォルダ→本→本棚）。
+/* 本の中・フォルダの中（カード一覧の画面）だけ: 右フリックで1つ戻る（フォルダ→本→本棚）。
+   戻るボタンは左⇐＝本棚は左にある心象。画面を右へよけて左の本棚へ帰る＝右フリックが自然（コーイチさん指摘で左→右に修正）。
    Androidナビバーを隠して使う場合、戻るボタンの呼び出しがもどかしいため（コーイチさん要望）。
    地図・写真・周辺など他の面には付けない。写真サムネの横スクロール(.phstrip)とは衝突させない */
 (function(){
@@ -3523,7 +3714,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay();
     const t=e.changedTouches[0]; if(!t) return;
     const dx=t.clientX-sx, dy=t.clientY-sy;
     if(Date.now()-st>600) return;                                        /* フリック=素早い動きだけ */
-    if(dx>-70||Math.abs(dy)>60||Math.abs(dx)<Math.abs(dy)*1.5) return;   /* 左向き・横優勢のみ=縦スクロール誤爆なし */
+    if(dx<70||Math.abs(dy)>60||Math.abs(dx)<Math.abs(dy)*1.5) return;    /* 右向き・横優勢のみ=縦スクロール誤爆なし */
     if(shelfSub){ shelfSub=null; renderTop(); }
     else { shelfCat=null; shelfSub=null; renderTop(); }
   },{passive:true});
