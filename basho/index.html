@@ -446,7 +446,7 @@
   .nearrow.focus{border-color:var(--nrc,#6B7280);box-shadow:0 0 0 2.5px var(--nrc,#6B7280)}
   .nearrow.focus .nr-d{color:var(--nrc,#6B7280)}
   .near-map{flex:1;position:relative;background:#DDE2D8}
-  /* ───── OCR（スクショから座標を読む） ───── */
+  /* ───── OCR（スクショから読み取る: 座標・住所） ───── */
   .ocrov{position:fixed;inset:0;z-index:55;background:rgba(10,14,13,.96);display:none;
     flex-direction:column;touch-action:none}
   .ocrov.on{display:flex}
@@ -465,6 +465,9 @@
   .ocr-status b{color:var(--route)}
   .ocr-res{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--route);
     margin:4px 0 0;word-break:break-all;min-height:1.3em}
+  /* 住所は日本語なので明朝ではなくゴシックで。座標行のすぐ下に出る＝両方そろったか一目で分かる */
+  .ocr-addr{font-family:var(--gothic);font-size:14.5px;font-weight:700;color:var(--route);
+    margin:2px 0 0;word-break:break-all;line-height:1.5;min-height:0}
   .ocr-btns{display:flex;gap:8px;margin-top:8px}
   .ocr-btns .btn{padding:12px}
   .ocr-btns .btn:disabled{opacity:.4;cursor:default}
@@ -647,7 +650,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <div class="ocrov" id="ocrov">
   <div class="ocr-top">
     <button class="nv-back" id="ocrCloseBtn">← 戻る</button>
-    <div class="ocr-tt">スクショから座標を読む</div>
+    <div class="ocr-tt">スクショから読み取る</div>
   </div>
   <div class="ocr-stage" id="ocrStage">
     <img id="ocrImg" alt="">
@@ -656,6 +659,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="ocr-bar">
     <div class="ocr-status" id="ocrStatus"></div>
     <div class="ocr-res" id="ocrRes"></div>
+    <div class="ocr-addr" id="ocrAddr"></div>
     <div class="ocr-btns">
       <button class="btn" id="ocrCopy" disabled>📋 コピー</button>
       <button class="btn primary" id="ocrUse" disabled>この座標を使う</button>
@@ -669,7 +673,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.18.0";
+const VER = "0.19.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2225,14 +2229,17 @@ function shareAdd(name,url,c,addr){
     '<div class="gps ok" id="shbox"></div>'+
     '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'"'+(name?'':' placeholder="この場所の名前を入力"')+'>'+
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
-    (c?'':'<button class="subbtn" id="shOcr">🔢 スクショから座標を読む</button>')+
     '<label>住所（任意）</label>'+
     '<input type="text" id="f_addr" value="'+esc(addr||"")+'" placeholder="コピペでOK（〒や建物名付きでも大丈夫）">'+
+    /* 座標がすでに入っている共有でも出す＝住所をスクショから入れたい場面が多いため（旧: 座標なしの時だけ表示） */
+    '<button class="subbtn" id="shOcr">🔢 スクショから読み取る（座標・住所）</button>'+
     '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 住所・カテゴリは選び漏れ防止で最初から表に出す */
     '<details><summary>メモも入れる</summary>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
-    (c?'':'<div class="hint">共有には座標が入っていませんでした。座標が写ったスクショがあれば「🔢 スクショから座標を読む」で。'+
+    (c?'<div class="hint">住所は共有では受け取れません。マップのカードを写したスクショがあれば'+
+      '「🔢 スクショから読み取る」で住所を入れられます（カードの住所を長押しコピーでもOK）。</div>'
+      :'<div class="hint">共有には座標が入っていませんでした。座標や住所が写ったスクショがあれば「🔢 スクショから読み取る」で。'+
       'なければ登録後にそのまま「地図で位置を決める」が開きます（検索欄に名前が入った状態・不要なら戻るでスキップ）。</div>')+
     '<div class="sheet-actions">'+
       '<button class="btn" id="cancel">やめる</button>'+
@@ -2246,7 +2253,12 @@ function shareAdd(name,url,c,addr){
   shSync();
   const shOcr=document.getElementById("shOcr");
   if(shOcr) shOcr.onclick=()=>{
-    ocrPick((lat,lng)=>{ cc={lat:String(lat),lng:String(lng)}; shSync(); toast("座標を入れました。「登録する」で確定"); });
+    ocrPick((lat,lng,addr)=>{
+      const got=[];
+      if(lat&&lng){ cc={lat:String(lat),lng:String(lng)}; shSync(); got.push("座標"); }
+      if(addr){ document.getElementById("f_addr").value=addr; got.push("住所"); }
+      if(got.length)toast(got.join("と")+"を入れました。「登録する」で確定");
+    });
   };
   /* リンク欄：フルURL・座標コピペ（35.67, 139.69）からの自動読み取り（編集シートと同じ挙動） */
   document.getElementById("f_url").addEventListener("input",e=>{
@@ -2300,13 +2312,13 @@ function form(d){
     '</div>'+
     '<button class="subbtn" id="here">今いる場所で上書きする</button> '+
     '<button class="subbtn" id="pickmap">🗺 地図で位置を決める</button> '+
-    '<button class="subbtn" id="ocrBtn">🔢 スクショから座標を読む</button> '+
+    '<button class="subbtn" id="ocrBtn">🔢 スクショから読み取る（座標・住所）</button> '+
     '<button class="subbtn" id="addr2geo">🏠 住所から座標を入れる</button>'+
     '<label>Googleマップのリンク（共有 → リンクをコピー）</label>'+
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
     '<div class="hint">「地図を開く」はこのリンクを優先して開きます。ただし短縮リンクには座標が入っていないため、'+
     '<b>周辺モード</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
-    '座標が写ったスクショがあれば「🔢 スクショから座標を読む」でも取り込めます。</div>'+
+    '座標や住所が写ったスクショがあれば「🔢 スクショから読み取る」で両方まとめて取り込めます。</div>'+
     '<details><summary>住所・電話・メモ・座標を直接いじる</summary>'+
       '<label>住所</label><input type="text" id="f_addr" value="'+esc(d.addr)+'">'+
       '<label>電話番号</label><input type="tel" id="f_tel" value="'+esc(d.tel)+'">'+
@@ -2365,13 +2377,23 @@ function form(d){
     toast("住所のあたりを表示します。＋印を合わせて「この位置にする」");
   };
   document.getElementById("ocrBtn").onclick=()=>{
-    ocrPick((lat,lng)=>{
-      document.getElementById("f_lat").value=lat;
-      document.getElementById("f_lng").value=lng;
-      accPend=null; accFor=lat+","+lng;
-      box.className="gps ok";
-      box.innerHTML='スクショから読み取りました<span class="mono">'+lat+", "+lng+'</span>';
-      toast("座標を入れました。「保存する」を忘れずに");
+    ocrPick((lat,lng,addr)=>{
+      const got=[];
+      if(lat&&lng){
+        document.getElementById("f_lat").value=lat;
+        document.getElementById("f_lng").value=lng;
+        accPend=null; accFor=lat+","+lng;
+        box.className="gps ok";
+        box.innerHTML='スクショから読み取りました<span class="mono">'+esc(lat)+", "+esc(lng)+'</span>';
+        got.push("座標");
+      }
+      if(addr){
+        document.getElementById("f_addr").value=addr;
+        /* 住所欄は「直接いじる」の中に畳まれている＝入れたのに見えないと不安なので開く */
+        const dt=sheet.querySelector("details"); if(dt)dt.open=true;
+        got.push("住所");
+      }
+      if(got.length)toast(got.join("と")+"を入れました。「保存する」を忘れずに");
     });
   };
   document.getElementById("f_url").addEventListener("input",e=>{
@@ -3379,11 +3401,16 @@ function catEdit(){
   draw();
 }
 
-/* ───── OCR: スクショから座標を読む ─────
-   Googleマップでピンを長押し→検索窓に出る座標をスクショ→ここで読み取る。
-   Tesseract.jsをローカル同梱（ocr/）＝画像も座標も端末の外に出さない。
-   エンジンは初回タップ時にだけ読み込み、閉じたら破棄（メモリ対策） */
-const OCR={img:null,url:null,cb:null,found:null,libP:null,wk:null,wkP:null,q:Promise.resolve()};
+/* ───── OCR: スクショから読み取る（座標・住所） ─────
+   Googleマップでピンを長押し→検索窓に出る座標／カードの住所をスクショ→ここで読み取る。
+   Tesseract.jsをローカル同梱（ocr/）＝画像も座標も住所も端末の外に出さない。
+   ★実測（実機スクショ1080×2400で検証）で役割がはっきり分かれた:
+     ・座標(小数15桁) → engモデル+数字ホワイトリストが完璧。jpnだと桁を1つ増やす誤読が出る
+     ・日本語の住所   → jpnモデルがほぼ完璧。engでは原理的に読めない
+   そこで1回のタップで eng（座標）→ jpn（住所）の順に試し、読めた方を採用する＝
+   ユーザーは「読みたいあたりをタップ」するだけでよく、モード切替がいらない。
+   エンジンは開いた時に裏で温め、閉じたら破棄（メモリ対策） */
+const OCR={img:null,url:null,cb:null,res:null,libP:null,wkP:{},q:Promise.resolve()};
 const ocrEl=id=>document.getElementById(id);
 function ocrBase(){return new URL("ocr",location.href).href;}   /* 絶対URL（worker内の相対解決ズレ防止） */
 function ocrLib(){
@@ -3399,30 +3426,31 @@ function ocrLib(){
   }
   return OCR.libP;
 }
-function ocrWorker(){
-  if(!OCR.wkP){
-    OCR.wkP=(async()=>{
+/* 言語ごとにworkerを持つ（eng=座標用 / jpn=住所用）。使う時に初めて作る */
+function ocrWorker(lang){
+  lang=lang||"eng";
+  if(!OCR.wkP[lang]){
+    OCR.wkP[lang]=(async()=>{
       await ocrLib();
       const b=ocrBase();
       /* cacheMethod:none = Tesseract内蔵のIndexedDBキャッシュを使わない
          （環境により読み込みが固まる不具合を実測。オフライン持続はsw.jsのbasho-ocrキャッシュが担う）
          ★APK版(Capacitor): AndroidのAAPTがassets内の.gzを自動解凍して拡張子を剥がすため
-         eng.traineddata.gzは404、実体は拡張子なしのeng.traineddata。
+         <言語>.traineddata.gzは404、実体は拡張子なしの<言語>.traineddata。
          createWorkerは404でもrejectせずworker内でUncaughtになり永遠に固まる（実測）ので、
          先に.gzの存在をfetchで確かめてからgzip設定を決める。workerはgzipマジックバイトを
          自動判定するので中身はどちらでも動く。PWAではこの判定は走らない（従来どおり.gz固定） */
       const native=window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform();
       let gz=true;
       if(native){
-        try{gz=(await fetch(b+"/eng.traineddata.gz",{cache:"no-store"})).ok;}catch(e){gz=false;}
+        try{gz=(await fetch(b+"/"+lang+".traineddata.gz",{cache:"no-store"})).ok;}catch(e){gz=false;}
       }
-      const wk=await Tesseract.createWorker("eng",1,{
+      return await Tesseract.createWorker(lang,1,{
         workerPath:b+"/worker.min.js",corePath:b,langPath:b,cacheMethod:"none",gzip:gz});
-      OCR.wk=wk; return wk;
     })();
-    OCR.wkP.catch(()=>{OCR.wkP=null;OCR.wk=null;});
+    OCR.wkP[lang].catch(()=>{OCR.wkP[lang]=null;});
   }
-  return OCR.wkP;
+  return OCR.wkP[lang];
 }
 /* recognizeの直列化（範囲選択の連打とautoScanが混ざらないように） */
 function ocrJob(fn){const p=OCR.q.then(fn);OCR.q=p.catch(()=>{});return p;}
@@ -3448,12 +3476,50 @@ function ocrParseCoords(text){
   cands.sort((x,y)=>y.sc-x.sc);
   return cands[0];
 }
-/* 元画像の指定範囲を切り出し＋拡大。invert=trueで白黒反転版を作る */
+/* OCR結果テキスト→住所。〒か都道府県名で始まる所を頭にして、折り返した続きの行を繋ぐ。
+   ★実機スクショの実測で分かったこと:
+     ・カードの住所は幅で折り返す（「…仙石原9」「40-48」の2行）→ 繋がないと番地が切れる
+     ・地図ピンのアイコンが1文字のゴミ（"o"等）として頭に付く → 〒/県名より前は捨てる
+     ・番地が全角（９４０－４８）で写る → 半角に正規化する */
+function ocrParseAddr(text){
+  const norm=s=>String(s||"")
+    .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    .replace(/[－ー―‐−–—]/g,"-").replace(/[　\t]/g," ");
+  const lines=norm(text).split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+  const ZIP=/〒?\s*\d{3}\s*-\s*\d{4}/;
+  let head=-1,cut=0;
+  for(let i=0;i<lines.length&&head<0;i++){
+    const L=lines[i];
+    let at=-1;
+    const pf=PREF_ORDER.find(p=>L.indexOf(p)>=0);
+    if(pf)at=L.indexOf(pf);
+    const zm=L.match(ZIP);
+    if(zm){const zi=L.indexOf(zm[0]); at=at<0?zi:Math.min(at,zi);}
+    if(at>=0){head=i;cut=at;}
+  }
+  if(head<0)return null;
+  let out=lines[head].slice(cut);
+  for(let i=head+1;i<lines.length;i++){         /* 折り返しの続き（数字と記号だけの短い行）を繋ぐ */
+    if(!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
+    out+=lines[i];
+  }
+  out=out.replace(/\s+/g,"");                   /* OCRは字間を空白に読むので一度すべて詰める */
+  const zm2=out.match(/^〒?(\d{3})-(\d{4})/);   /* 〒の後だけ1つ空ける（マップの表記に合わせる） */
+  if(zm2)out="〒"+zm2[1]+"-"+zm2[2]+" "+out.slice(zm2[0].length);
+  out=out.replace(/[^0-9A-Za-z぀-ヿ一-鿿\-]+$/,"");   /* 末尾の記号ゴミを落とす */
+  if(out.replace(/\s/g,"").length<6)return null;   /* 短すぎ＝誤読とみなす */
+  return out;
+}
+/* 元画像の指定範囲を切り出し＋拡大。invert=trueで白黒反転版を作る。
+   ★ここで willReadFrequently:true を付けてはいけない（実測で確定した重要な落とし穴）:
+   このフラグはCanvasをCPU描画に切り替えるため縮小リサンプルの質が落ち、
+   同じ帯でも「神奈川県足柄下郡箱根町仙石原」→「神奈足柄下町人石原」のように
+   小さな文字が壊れる。読み取りは1回しかgetImageDataしないので既定(GPU)のままでよい */
 function ocrCropCanvas(nx,ny,nw,nh,invert){
   const scale=Math.max(1,Math.min(nh<90?3:2,1600/nw));
   const c=document.createElement("canvas");
   c.width=Math.max(1,Math.round(nw*scale));c.height=Math.max(1,Math.round(nh*scale));
-  const g=c.getContext("2d",{willReadFrequently:true});
+  const g=c.getContext("2d");
   g.imageSmoothingEnabled=true;g.imageSmoothingQuality="high";
   g.drawImage(OCR.img,nx,ny,nw,nh,0,0,c.width,c.height);
   if(invert){
@@ -3477,46 +3543,72 @@ function ocrRegionIsDark(nx,ny,nw,nh){
     return sum/n<110;
   }catch(e){return false;}
 }
-function ocrRecognize(nx,ny,nw,nh,psm,invert,wl){
+const OCR_WL="0123456789.,- ";   /* 座標読みは数字専念（誤読が大きく減る） */
+function ocrText(lang,nx,ny,nw,nh,psm,invert,wl){
   return ocrJob(async()=>{
-    const wk=await ocrWorker();
+    const wk=await ocrWorker(lang);
     const c=ocrCropCanvas(nx,ny,nw,nh,invert);
     await wk.setParameters({tessedit_pageseg_mode:String(psm),tessedit_char_whitelist:wl||""});
     const r=await wk.recognize(c);
-    return ocrParseCoords(r.data.text);
+    return r.data.text||"";
   });
 }
-/* そのまま／白黒反転の2パスで読む（暗い画像と白吹き出しの混在に強くする）。
-   囲みの中に暗背景＋白カードが混ざると旧・全体平均の一発反転では数字が壊れていた */
-async function ocrScanRegion(nx,ny,nw,nh,psm,wl){
+/* 指定範囲を「座標？住所？」の順に自動判定して読む。
+   そのまま／白黒反転の2巡（暗い地図＋白い吹き出しの混在に強くする。
+   囲みの中に暗背景＋白カードが混ざると旧・全体平均の一発反転では数字が壊れていた）。
+   ほとんどの場合は1巡目の1回目（座標）か2回目（住所）で決まる */
+async function ocrScanAuto(nx,ny,nw,nh,psm){
   const im=OCR.img;
-  const darkFirst=ocrRegionIsDark(nx,ny,nw,nh);
-  let c=await ocrRecognize(nx,ny,nw,nh,psm,darkFirst,wl);
-  if(!c&&OCR.img===im) c=await ocrRecognize(nx,ny,nw,nh,psm,!darkFirst,wl);
-  return c;
+  const dark=ocrRegionIsDark(nx,ny,nw,nh);
+  const passes=[dark,!dark];
+  /* 都道府県名が入っていれば「ちゃんと読めた住所」とみなす。
+     入っていない時は文字が壊れている可能性が高いので、もう一方のパスも試して良い方を採る */
+  const good=a=>!!a&&PREF_ORDER.some(p=>a.indexOf(p)>=0);
+  let weak=null;
+  for(let i=0;i<passes.length;i++){
+    let t=await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL);
+    if(OCR.img!==im)return null;
+    const c=ocrParseCoords(t);
+    if(c)return {type:"coord",val:c};
+    if(i===0)ocrStatus("日本語（住所）としても読んでいます…");
+    t=await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],"");
+    if(OCR.img!==im)return null;
+    const a=ocrParseAddr(t);
+    if(good(a))return {type:"addr",val:a};
+    if(a&&!weak)weak=a;
+  }
+  return weak?{type:"addr",val:weak}:null;
 }
 /* statusは固定文言のみ（ユーザーデータを混ぜない） */
 function ocrStatus(html){ocrEl("ocrStatus").innerHTML=html;}
-function ocrSetFound(c,msg){
-  OCR.found=c||null;
-  ocrEl("ocrRes").textContent=c?(c.lat+", "+c.lng):"";
-  ocrEl("ocrCopy").disabled=!c;
-  ocrEl("ocrUse").disabled=!c;
-  if(c)ocrStatus((msg||"")+"違う数字を読みたい時は、その<b>あたりをなぞるかタップ</b>してください");
+/* 読み取り結果は座標・住所を別々にためる＝1枚のスクショから両方そろえられる */
+function ocrSync(msg){
+  const r=OCR.res||{},hasC=!!(r.lat&&r.lng),hasA=!!r.addr;
+  ocrEl("ocrRes").textContent=hasC?(r.lat+", "+r.lng):"";
+  ocrEl("ocrAddr").textContent=hasA?r.addr:"";
+  ocrEl("ocrCopy").disabled=!hasC&&!hasA;
+  ocrEl("ocrUse").disabled=!hasC&&!hasA;
+  ocrEl("ocrUse").textContent=
+    hasC&&hasA?"座標と住所を使う":(hasA&&!hasC?"この住所を使う":"この座標を使う");
+  if(msg!==undefined)ocrStatus(msg+
+    (hasC&&hasA?"両方そろいました。"
+      :(hasC?"<b>住所</b>も読むなら、住所のあたりをタップ"
+             :"<b>座標</b>も読むなら、座標のあたりをタップ")));
 }
 function ocrOpen(file,cb){
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}}
   OCR.url=URL.createObjectURL(file);
   const im=new Image();
   im.onload=()=>{
-    OCR.img=im;OCR.cb=cb||null;
+    OCR.img=im;OCR.cb=cb||null;OCR.res={lat:null,lng:null,addr:null};
     ocrEl("ocrImg").src=OCR.url;
-    ocrSetFound(null);
+    ocrSync();
     ocrEl("ocrov").classList.add("on");
-    /* 全面自動スキャンはしない＝ユーザーが数字の場所をタップで教えてくれる方が速くて確実。
-       狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収） */
-    ocrStatus("座標の数字のあたりを<b>指でトンとタップ</b>してください（なぞって囲んでもOK・だいたいで大丈夫です）");
-    ocrWorker().catch(()=>{
+    /* 全面自動スキャンはしない＝ユーザーが読みたい場所をタップで教えてくれる方が速くて確実。
+       狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収）。
+       日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
+    ocrStatus("読みたい<b>座標</b>や<b>住所</b>のあたりを<b>指でトンとタップ</b>してください（なぞって囲んでもOK・だいたいで大丈夫です）");
+    ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
     });
   };
@@ -3537,15 +3629,20 @@ function ocrClose(){
   ocrEl("ocrImg").removeAttribute("src");
   ocrEl("ocrSel").style.display="none";
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}OCR.url=null;}
-  OCR.img=null;OCR.found=null;OCR.cb=null;
+  OCR.img=null;OCR.res=null;OCR.cb=null;
   /* エンジンは閉じるたびに破棄（スマホのメモリを食い続けない。言語データはキャッシュ済みで再開は速い） */
-  if(OCR.wkP){OCR.wkP.then(wk=>{try{wk.terminate();}catch(e){}}).catch(()=>{});OCR.wkP=null;OCR.wk=null;}
+  Object.keys(OCR.wkP).forEach(k=>{
+    const p=OCR.wkP[k];
+    if(p)p.then(wk=>{try{wk.terminate();}catch(e){}}).catch(()=>{});
+  });
+  OCR.wkP={};
   OCR.q=Promise.resolve();
 }
 ocrEl("ocrCloseBtn").onclick=ocrClose;
 ocrEl("ocrCopy").onclick=async()=>{
-  const c=OCR.found; if(!c)return;
-  const s=c.lat+", "+c.lng;
+  const r=OCR.res; if(!r)return;
+  const s=(r.lat&&r.lng)?(r.lat+", "+r.lng):(r.addr||"");
+  if(!s)return;
   try{await navigator.clipboard.writeText(s);toast("コピーしました: "+s);}
   catch(e){
     const ta=document.createElement("textarea");
@@ -3555,10 +3652,11 @@ ocrEl("ocrCopy").onclick=async()=>{
   }
 };
 ocrEl("ocrUse").onclick=()=>{
-  const c=OCR.found,cb=OCR.cb;
-  if(!c)return;
+  const r=OCR.res,cb=OCR.cb;
+  if(!r||(!r.addr&&!(r.lat&&r.lng)))return;
+  const out={lat:r.lat,lng:r.lng,addr:r.addr};
   ocrClose();
-  if(cb)cb(c.lat,c.lng);
+  if(cb)cb(out.lat,out.lng,out.addr);
 };
 /* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR */
 (function(){
@@ -3582,7 +3680,6 @@ ocrEl("ocrUse").onclick=()=>{
     show(rectOf(e));
   });
   st.addEventListener("pointermove",e=>{if(p0)show(rectOf(e));});
-  const OCR_WL="0123456789.,- ";   /* 手動指定は数字読み専念（誤読が大きく減る） */
   st.addEventListener("pointerup",async e=>{
     if(!p0)return;
     const r=rectOf(e);p0=null;
@@ -3595,12 +3692,13 @@ ocrEl("ocrUse").onclick=()=>{
     try{
       let c=null;
       if(r.w<24&&r.h<24){
-        /* タップ＝「この辺り」指定：その点を中心にした全幅の帯を読む */
+        /* タップ＝「この辺り」指定：その点を中心にした全幅の帯を読む。
+           帯は画像の高さの10%＝住所が2行に折り返していても丸ごと入る */
         const cy=Math.min(H,Math.max(0,((r.y1+r.y2)/2-ir.top)*fy));
         const bh=Math.max(80,Math.round(H*0.10));
         const by=Math.max(0,Math.min(H-bh,Math.round(cy-bh/2)));
         ocrStatus("タップした<b>あたり</b>を読み取り中…");
-        c=await ocrScanRegion(0,by,W,bh,6,OCR_WL);
+        c=await ocrScanAuto(0,by,W,bh,6);
       }else{
         /* なぞり＝囲みは「だいたい」でよい：自動でひと回り広げて読む */
         let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
@@ -3610,16 +3708,21 @@ ocrEl("ocrUse").onclick=()=>{
         const ex=Math.max(0,nx-padX),ey=Math.max(0,ny-padY);
         const ew=Math.min(W,nx2+padX)-ex,eh=Math.min(H,ny2+padY)-ey;
         ocrStatus("囲んだあたりを読み取り中…");
-        c=await ocrScanRegion(ex,ey,ew,eh,eh<H*0.09?7:6,OCR_WL);
+        c=await ocrScanAuto(ex,ey,ew,eh,6);
         if(!c&&OCR.img===im){
           /* 囲み損ね・端切れ対策：同じ高さの帯を画像の端から端まで読む */
           ocrStatus("見つからないので<b>横いっぱいに広げて</b>探しています…");
-          c=await ocrScanRegion(0,ey,W,eh,6,OCR_WL);
+          c=await ocrScanAuto(0,ey,W,eh,6);
         }
       }
       if(OCR.img!==im)return;
-      if(c)ocrSetFound(c,"読み取りました。");
-      else ocrStatus("数字を読めませんでした。数字のあたりを<b>もう一度なぞるかタップ</b>してみてください");
+      if(c&&c.type==="coord"){
+        OCR.res.lat=c.val.lat; OCR.res.lng=c.val.lng;
+        ocrSync("座標を読み取りました。");
+      }else if(c&&c.type==="addr"){
+        OCR.res.addr=c.val;
+        ocrSync("住所を読み取りました。");
+      }else ocrStatus("読めませんでした。読みたい<b>座標</b>や<b>住所</b>のあたりを、もう一度なぞるかタップしてみてください");
     }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
   });
   st.addEventListener("pointercancel",()=>{p0=null;sel.style.display="none";});
