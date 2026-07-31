@@ -461,6 +461,10 @@
     border-radius:4px;pointer-events:none;display:none}
   .ocr-bar{padding:10px 14px calc(14px + env(safe-area-inset-bottom));background:var(--paper);
     border-radius:14px 14px 0 0}
+  /* ★下の帯は高さを固定する（v0.22.0）。説明文が伸び縮みしたり読み取り結果の行が増えると
+     帯の高さが変わり、余った分だけ上の画像が再フィットして拡大縮小＝狙いを定めている最中に
+     画像が動く（実測: タップした瞬間に272×604→281×624）。中身が増えたらここだけスクロールさせる */
+  .ocr-info{height:100px;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .ocr-status{font-size:12.5px;color:var(--soft);line-height:1.55;min-height:1.55em}
   .ocr-status b{color:var(--route)}
   .ocr-res{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--route);
@@ -660,10 +664,14 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <div class="ocr-selbox" id="ocrSel"></div>
   </div>
   <div class="ocr-bar">
-    <div class="ocr-status" id="ocrStatus"></div>
-    <div class="ocr-name" id="ocrName"></div>
-    <div class="ocr-res" id="ocrRes"></div>
-    <div class="ocr-addr" id="ocrAddr"></div>
+    <!-- 高さを固定した枠に収める。読めたもの（名前・座標・住所）を先に置き、
+         説明文は下＝あふれてスクロールしても大事な結果は必ず見えている -->
+    <div class="ocr-info">
+      <div class="ocr-name" id="ocrName"></div>
+      <div class="ocr-res" id="ocrRes"></div>
+      <div class="ocr-addr" id="ocrAddr"></div>
+      <div class="ocr-status" id="ocrStatus"></div>
+    </div>
     <div class="ocr-btns">
       <button class="btn" id="ocrCopy" disabled>📋 コピー</button>
       <button class="btn primary" id="ocrUse" disabled>この座標を使う</button>
@@ -677,7 +685,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.21.0";
+const VER = "0.22.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3544,8 +3552,20 @@ function ocrWrapped(prev,cur){
        v0.21.0から行の位置で見分ける。数字だけ判定は位置が無い時の保険に残す
      ・地図ピンのアイコンが1文字のゴミ（"o"等）として頭に付く → 〒/県名より前は捨てる
      ・番地が全角（９４０－４８）で写る → 半角に正規化する */
-const OCR_ADDR_CONT=/^[0-9A-Za-zぁ-ゖァ-ヺ一-鿿々〆ヶ\- ]+$/;      /* 住所の続きに出てよい字だけ */
+const OCR_ADDR_DROP=/[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿々〆ヶ\- ]/g;      /* 住所に出ない字＝落とす（行ごとは捨てない） */
 const OCR_ADDR_NG=/口コミ|レビュー|評価|営業|閉店|開店|定休|時間|経路|保存|共有|ラベル|電話|予約|ナビ|メニュー|注文|ウェブ|サイト|www|http|^\d{2,4}-\d{2,4}-\d{4}$/;
+/* 住所の続き行かどうか。★実測（実機スクショ 2026-07-31）で分かったこと:
+   住所1行目の枠には地図ピンのアイコンまで入るので、高さも左端も2行目と全くそろわない
+     1行目 "o 〒389-0102 長野県北佐久郡軽井沢町軽井沢1"  高さ109 左端155
+     2行目 "178-1246 旧駅舎口"                          高さ 52 左端286
+   ここに ocrWrapped の「大きさがそろう・左端がそろう」を求めると2行目は必ず落ちる＝番地が消える。
+   行間だけ見れば十分見分けられる（続き＝-2px / 次の項目「1 階」＝134px空く）ので大きさと左端は見ない。
+   ★判断の基準は「読めない」より「余分が付く」＝余分は消せばいいが、読めないと手打ちになる */
+function ocrAddrCont(prev,cur){
+  if(!prev||!cur||!prev.h||!cur.h)return null;
+  const lo=Math.min(prev.h,cur.h),gap=cur.y0-prev.y1;
+  return gap<=lo*1.1&&gap>=-lo*1.3;
+}
 function ocrParseAddr(rec){
   const norm=s=>String(s||"")
     .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
@@ -3568,11 +3588,14 @@ function ocrParseAddr(rec){
   if(head<0)return null;
   let out=lines[head].slice(cut);
   for(let i=head+1;i<lines.length&&i<=head+2;i++){   /* 折り返しの続きを繋ぐ（住所は多くても2行） */
-    const w=ocrWrapped(src[i-1],src[i]),L=lines[i];
-    const cont = w===true  ? (OCR_ADDR_CONT.test(L)&&!OCR_ADDR_NG.test(L))
-               : w===false ? false
-               : /^[0-9\-\s]{1,12}$/.test(L);        /* 位置が取れない時は従来どおり数字だけ */
-    if(!cont)break;
+    const w=ocrAddrCont(src[i-1],src[i]);
+    if(w===false)break;                              /* 行間が空いた＝別の項目（「1 階」電話 など） */
+    if(OCR_ADDR_NG.test(lines[i]))break;
+    /* 位置が取れない版のTesseractでは、従来どおり「数字だけの行」に限って続きとみなす */
+    if(w===null&&!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
+    /* ★混じったゴミ文字はその字だけ落とす（行ごと捨てると番地が丸ごと消える＝いちばん困る） */
+    const L=lines[i].replace(OCR_ADDR_DROP,"").trim();
+    if(!L)break;
     out+=L;
   }
   /* OCRは字間を空白に読むので一度すべて詰める。ただし「番地のあとの建物名・入口」の前は
@@ -3582,6 +3605,9 @@ function ocrParseAddr(rec){
     const keep=/[0-9\-]$/.test(acc)&&/^[ぁ-ゖァ-ヺ一-鿿]/.test(seg);
     return acc+(keep?" ":"")+seg;
   },"");
+  /* 番地（1178-1246）の直後に建物名・入口が続く時は1つ空ける。OCRが空白なしで読むことがあり、
+     詰まったままだと読みにくい。「1丁目」のように区切ってはいけない所は数字にハイフンが無いので当たらない */
+  out=out.replace(/(\d+-\d+)(?=[ぁ-ゖァ-ヺ一-鿿])/g,"$1 ");
   const zm2=out.match(/^〒?(\d{3})-(\d{4})/);   /* 〒の後だけ1つ空ける（マップの表記に合わせる） */
   if(zm2)out="〒"+zm2[1]+"-"+zm2[2]+" "+out.slice(zm2[0].length).replace(/^\s+/,"");
   out=out.replace(/[^0-9A-Za-z぀-ヿ一-鿿\-]+$/,"");   /* 末尾の記号ゴミを落とす */
@@ -3597,9 +3623,12 @@ const OCR_NAME_NG=[
   /口コミ|レビュー|評価|件\)|件$/,
   /営業|閉店|開店|定休|時間|時に閉|時に開|24時間|ラストオーダー/,
   /経路|保存|共有|ラベル|付近|周辺|検索|ウェブサイト|サイト|メニュー|注文|予約|電話|ナビ|出発|到着/,
+  /写真や動画|動画を追加|クチコミを書く|レビューを書く|質問する|案内を開始/,   /* カードのボタン */
   /^〒/, /丁目|番地|\d+-\d+/,
   /^\s*\d+([.,]\d+)?\s*[★☆*(（]/,                                  /* 4.6 ★★★★☆ (1,234) */
-  /\d\s*(km|ｋｍ|m|分|時間)\s*$/, /徒歩|車で|電車/   /* 「1.2 km」「5 分」＝距離の行（数字付きに限る） */
+  /\d\s*(km|ｋｍ|m|分|時間)\s*$/, /徒歩|車で|電車/,  /* 「1.2 km」「5 分」＝距離の行（数字付きに限る） */
+  /* マップの見出し・タブそのもの。★丸ごと一致だけ＝この語を含む店名（例「概要書店」）は巻き込まない */
+  /^(概要|写真|最新情報|基本情報|企業からの提供|評価とクチコミ|所在地|サービス|施設|バリアフリー|お支払い|よくある質問|関連する検索|周辺のスポット|この場所について|人気の時間帯)$/,
 ];
 function ocrParseName(rec){
   const src=ocrRecLines(rec);
@@ -3652,7 +3681,14 @@ function ocrParseName(rec){
     if(jp+al<3)continue;
     /* 他より大きい字ほど名前らしい（1.5倍でおよそ+10点） */
     const size=medH>0?Math.max(-6,Math.min(16,Math.round((g.h/medH-1)*20))):0;
-    const sc=jp*2+al+Math.min(6,L.length)+size;
+    /* ★名前は短い。文字数がそのまま点になると、カードの説明文（実測
+       「信州食材をふんだんに使った「軽井沢を五感で感じ…」）が長さだけで店名に勝ってしまう。
+       日本語の点は12文字で頭打ちにし、20文字を超えたぶんは減点。
+       さらに句読点・かぎ括弧が入る行は「文章」＝名前ではないので大きく減点する */
+    const core=Math.min(jp,12)*2+Math.min(al,16);
+    const longPen=(jp+al)>20?((jp+al)-20)*2:0;
+    const sentence=/[、。「」『』！？…]/.test(L)?22:0;
+    const sc=core+Math.min(6,L.length)+size-longPen-sentence;
     if(!best||sc>best.sc)best={text:L,sc,conf:g.conf};
   }
   /* 「神社」「カフェ」だけのような業種行を名前と誤らないよう下限を設ける（実質4文字以上の日本語） */
@@ -3779,7 +3815,7 @@ function ocrOpen(file,cb){
     /* 全面自動スキャンはしない＝ユーザーが読みたい場所をタップで教えてくれる方が速くて確実。
        狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収）。
        日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
-    ocrStatus("読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>してください（なぞって囲んでもOK・だいたいで大丈夫です）");
+    ocrStatus("読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）");
     ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
     });
@@ -3877,27 +3913,37 @@ ocrEl("ocrUse").onclick=()=>{
       let c=null;
       if(r.w<24&&r.h<24){
         /* タップ＝「この辺り」指定：その点を中心にした全幅の帯を読む。
-           帯は画像の高さの14%＝大きい字の名前が2行に折り返していても丸ごと入る
-           （v0.20.0の10%では2行目が帯から切れることがあった。認識の時間は帯の広さでは変わらない） */
+           帯は画像の高さの18%＝大きい字の名前が2行に折り返していても丸ごと入る
+           （v0.20.0の10%・v0.21.0の14%では2行目が帯から切れることがあった。
+             認識の時間は帯の広さでは変わらない＝広く取っても遅くならない）
+           ★外しても読めるように、空振りしたら黙って倍近くまで広げてもう一度探す */
         const cy=Math.min(H,Math.max(0,((r.y1+r.y2)/2-ir.top)*fy));
-        const bh=Math.max(110,Math.round(H*0.14));
-        const by=Math.max(0,Math.min(H-bh,Math.round(cy-bh/2)));
+        const band=async ratio=>{
+          const h=Math.min(H,Math.max(110,Math.round(H*ratio)));
+          const y=Math.max(0,Math.min(H-h,Math.round(cy-h/2)));
+          return await ocrScanAuto(0,y,W,h,6);
+        };
         ocrStatus("タップした<b>あたり</b>を読み取り中…");
-        c=await ocrScanAuto(0,by,W,bh,6);
+        c=await band(0.18);
+        if(!c&&OCR.img===im){
+          ocrStatus("見つからないので<b>もう少し広げて</b>探しています…");
+          c=await band(0.34);
+        }
       }else{
         /* なぞり＝囲みは「だいたい」でよい：自動でひと回り広げて読む */
         let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
         let nx2=Math.min(W,(r.x2-ir.left)*fx),ny2=Math.min(H,(r.y2-ir.top)*fy);
         if(nx2-nx<10||ny2-ny<6)return;
-        const padX=Math.max(24,(nx2-nx)*0.35),padY=Math.max(14,(ny2-ny)*0.6);
+        const padX=Math.max(24,(nx2-nx)*0.5),padY=Math.max(20,(ny2-ny)*1.0);
         const ex=Math.max(0,nx-padX),ey=Math.max(0,ny-padY);
         const ew=Math.min(W,nx2+padX)-ex,eh=Math.min(H,ny2+padY)-ey;
         ocrStatus("囲んだあたりを読み取り中…");
         c=await ocrScanAuto(ex,ey,ew,eh,6);
         if(!c&&OCR.img===im){
-          /* 囲み損ね・端切れ対策：同じ高さの帯を画像の端から端まで読む */
-          ocrStatus("見つからないので<b>横いっぱいに広げて</b>探しています…");
-          c=await ocrScanAuto(0,ey,W,eh,6);
+          /* 囲み損ね・端切れ対策：横は端から端まで、縦も上下に広げてもう一度読む */
+          ocrStatus("見つからないので<b>もっと広げて</b>探しています…");
+          const ey2=Math.max(0,ey-eh*0.5),eh2=Math.min(H,ny2+padY+eh*0.5)-ey2;
+          c=await ocrScanAuto(0,ey2,W,eh2,6);
         }
       }
       if(OCR.img!==im)return;
