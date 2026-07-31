@@ -707,7 +707,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.26.0";
+const VER = "0.27.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -4021,6 +4021,9 @@ function ocrNameApply(nm){
 }
 function ocrPick(cb){
   const inp=ocrEl("ocrFile");
+  /* ★スクショ選びのワンクッション（タップ→チェック→「完了」）はAndroidの写真ピッカー側の作りで、
+     acceptの書き方では変わらないことを実機で確認済み。APK版はアプリ側（MainActivity）で
+     1タップで確定するファイル選択UIに差し替えている */
   inp.onchange=()=>{
     const f=inp.files&&inp.files[0];
     inp.value="";
