@@ -707,7 +707,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.25.0";
+const VER = "0.26.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1152,12 +1152,17 @@ function ordSheet(p){
    背景タップ・戻るボタン=キャンセル扱い */
 const dlg=document.getElementById("dlg");
 let dlgCb=null;
-function dlgOpen(msg,withCancel,cb){
+/* opt={yes,no,title}でボタンの文言と見出しを差し替えられる。
+   ★入れ替えの確認のように「時間で消えると取り返しがつかない」ものは必ずこれを使う
+   （トーストは数秒で消えるので、気づかないうちに読み取った内容が失われる） */
+function dlgOpen(msg,withCancel,cb,opt){
+  opt=opt||{};
   dlgCb=cb||null;
+  document.querySelector("#dlg .dlg-t").textContent=opt.title||"⚠️ 注意";
   document.getElementById("dlgMsg").textContent=msg;
   document.getElementById("dlgBtns").innerHTML=withCancel
-    ?'<button id="dlgNo">やめる</button><button class="pri" id="dlgYes">開く</button>'
-    :'<button class="pri" id="dlgYes">OK</button>';
+    ?'<button id="dlgNo">'+esc(opt.no||"やめる")+'</button><button class="pri" id="dlgYes">'+esc(opt.yes||"開く")+'</button>'
+    :'<button class="pri" id="dlgYes">'+esc(opt.yes||"OK")+'</button>';
   const done=v=>{dlg.classList.remove("on");const f=dlgCb;dlgCb=null;if(f)f(v);};
   const no=document.getElementById("dlgNo");
   if(no) no.onclick=()=>done(false);
@@ -2294,8 +2299,9 @@ function shareAdd(name,url,c,addr){
       if(lat&&lng){ cc={lat:String(lat),lng:String(lng)}; shSync(); got.push("座標"); }
       if(addr){ document.getElementById("f_addr").value=addr; got.push("住所"); }
       const msg=got.length?(got.join("と")+"を入れました"):"";
-      if(nr.ask) toast(msg||"名前を読み取りました","「"+nm+"」にする",nr.ask);
-      else if(msg) toast(msg+"。「登録する」で確定");
+      /* 入れ替えの確認は「はい／いいえ」のダイアログ（トーストだと数秒で消えて名前が失われる） */
+      if(msg) toast(msg+"。「登録する」で確定");
+      if(nr.ask) nr.ask();
     });
   };
   /* リンク欄：フルURL・座標コピペ（35.67, 139.69）からの自動読み取り（編集シートと同じ挙動） */
@@ -2434,8 +2440,9 @@ function form(d){
         got.push("住所");
       }
       const msg=got.length?(got.join("と")+"を入れました"):"";
-      if(nr.ask) toast(msg||"名前を読み取りました","「"+nm+"」にする",nr.ask);
-      else if(msg) toast(msg+"。「保存する」を忘れずに");
+      /* 入れ替えの確認は「はい／いいえ」のダイアログ（トーストだと数秒で消えて名前が失われる） */
+      if(msg) toast(msg+"。「保存する」を忘れずに");
+      if(nr.ask) nr.ask();
     });
   };
   document.getElementById("f_url").addEventListener("input",e=>{
@@ -3907,19 +3914,26 @@ function ocrPut(kind,val){
   };
   if(ocrHas(kind)&&OCR.lock[kind]&&ocrEl(K.chk).checked){
     const shown=kind==="coord"?(val.lat+", "+val.lng):val;
-    toast(K.label+"は前のスクショの分が入っています","「"+shown+"」にする",
-      ()=>{set();ocrSync(K.label+"を差し替えました。");});
+    const now=kind==="coord"?(r.lat+", "+r.lng):r[kind];
+    /* ★「はい／いいえ」で必ず答えてもらう。トーストだと数秒で消えて、
+       せっかく読み取ったものが気づかないうちに失われる（コーイチさん指摘 v0.26.0） */
+    dlgOpen(K.label+"はすでに入っています。\n\n今の"+K.label+"：\n"+now+"\n\n読み取った"+K.label+"：\n"+shown+"\n\n入れ替えますか？",
+      true,v=>{if(v){set();ocrSync(K.label+"を差し替えました。");}},
+      {title:K.label+"を入れ替えますか？",yes:"入れ替える",no:"今のまま"});
     return false;
   }
   set(); return true;
 }
 /* ★読み取った文字はその場で直せる（v0.24.0）。1文字だけ違う時に全部打ち直さなくていい。
    直した内容がそのまま「使う」に乗る＝チェックが入っていれば採用される */
-function ocrEdited(kind){
+function ocrEdited(kind,quiet){
   const K=OCR_KIND[kind],r=OCR.res;
-  if(!r)return;
+  if(!r)return false;
+  if(ocrEl(K.item).style.display==="none")return false;   /* 出ていない行は触らない */
   const wasBad=!!OCR.bad[kind];
   const t=ocrEl(K.el).textContent.replace(/[\r\n\t]+/g," ").replace(/\s{2,}/g," ").trim();
+  const before=ocrText2(kind);
+  if(t===before&&!wasBad)return false;   /* 変わっていない＝チェックも触らない（読むだけで採用にしない） */
   if(kind==="coord"){
     const m=t.match(/^(-?\d{1,3}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);
     /* 座標だけは形が決まっている＝壊れた形のまま使わせない（赤くして「使う」から外す） */
@@ -3928,15 +3942,29 @@ function ocrEdited(kind){
   }else r[kind]=t;
   ocrEl(K.chk).checked=true;   /* 自分で直した＝使うつもり */
   OCR.lock[kind]=false;        /* 自分の手で直したものは、以後まもる対象から外す */
+  if(quiet)return true;
   ocrSync();
   if(kind==="coord"){
     if(OCR.bad.coord)ocrStatus("<b>座標の形</b>が違います（例 36.343116, 138.634493）。直すか、チェックを外してください");
     else if(wasBad)ocrStatus("座標を直しました。");
   }
+  return true;
+}
+/* ★画面に出ている文字を必ず結果に取り込んでから使う（v0.26.0）。
+   スマホの日本語入力（IME）では変換を確定するまでinputイベントが来ないことがあり、
+   直した文字が結果に入らないまま「使う」を押されると、直す前の文字が入ってしまう
+   （実測: 「ケーキの家 果楓」に直したのに「ケーキの家 果」が入った）。
+   イベント頼みをやめ、押された瞬間に画面から読み直す */
+function ocrPullEdits(){
+  let ch=false;
+  ["name","coord","addr"].forEach(k=>{if(ocrEdited(k,true))ch=true;});
+  if(ch)ocrSync();
+  return ch;
 }
 ["name","coord","addr"].forEach(k=>{
   const el=ocrEl(OCR_KIND[k].el);
   el.addEventListener("input",()=>ocrEdited(k));
+  el.addEventListener("compositionend",()=>ocrEdited(k));   /* 日本語入力の確定 */
   /* 改行は入れさせない（1行のまま）。Enter＝入力おわり */
   el.addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();el.blur();}});
   /* 書式付きの貼り付けは字だけにする */
@@ -3945,7 +3973,7 @@ function ocrEdited(kind){
     const t=(e.clipboardData||window.clipboardData).getData("text").replace(/\s+/g," ");
     document.execCommand("insertText",false,t);
   });
-  el.addEventListener("blur",()=>ocrSync());
+  el.addEventListener("blur",()=>{ocrEdited(k);ocrSync();});
 });
 function ocrOpen(file,cb){
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}}
@@ -3978,13 +4006,18 @@ function ocrOpen(file,cb){
 }
 /* 読み取った名前を名前欄（共有・編集どちらも id="f_name"）へ入れる。
    ★すでに名前が入っている時は勝手に上書きしない＝OCRの読み違いで大事な名前が消えるのが一番困る。
-   代わりにトーストの「〜にする」を押した時だけ置き換える（押さなければ元のまま） */
+   ★v0.26.0: 確認は必ず「はい／いいえ」のダイアログで出す。以前はトーストのボタンだったが
+   数秒で消えてしまい、気づかないうちに読み取った名前が失われていた（コーイチさん指摘）。 */
 function ocrNameApply(nm){
   const el=document.getElementById("f_name");
   const cur=el?el.value.trim():"";
   if(!el||!nm||cur===nm)return {filled:false,ask:null};
   if(!cur){el.value=nm;return {filled:true,ask:null};}
-  return {filled:false,ask:()=>{el.value=nm;toast("名前を「"+nm+"」にしました");}};
+  return {filled:false,ask:()=>{
+    dlgOpen("名前がすでに入っています。\n\n今の名前：\n"+cur+"\n\n読み取った名前：\n"+nm+"\n\n入れ替えますか？",
+      true,v=>{if(v){el.value=nm;toast("名前を「"+nm+"」にしました");}},
+      {title:"名前を入れ替えますか？",yes:"入れ替える",no:"今のまま"});
+  }};
 }
 function ocrPick(cb){
   const inp=ocrEl("ocrFile");
@@ -4011,6 +4044,7 @@ function ocrClose(){
 }
 ocrEl("ocrCloseBtn").onclick=ocrClose;
 ocrEl("ocrCopy").onclick=async()=>{
+  ocrPullEdits();                /* 画面で直した文字を必ず取り込んでから */
   const r=OCR.res; if(!r)return;
   /* チェックが入っている分だけを上から順に（名前／住所／座標）。1つだけならその1行 */
   const s=[ocrOn("name")?r.name:"",ocrOn("addr")?r.addr:"",
@@ -4026,8 +4060,13 @@ ocrEl("ocrCopy").onclick=async()=>{
   }
 };
 ocrEl("ocrUse").onclick=()=>{
+  ocrPullEdits();                /* ★押された瞬間に画面の文字を読み直す（IMEでinputが来ないことがある） */
   const r=OCR.res,cb=OCR.cb;
   if(!r)return;
+  if(OCR.bad.coord&&ocrEl("ocrResChk").checked){   /* 直した結果が壊れた座標なら送らせない */
+    ocrStatus("<b>座標の形</b>が違います（例 36.343116, 138.634493）。直すか、チェックを外してください");
+    return;
+  }
   /* ★チェックを外したものは渡さない（null）。受け取る側は項目ごとに見ているので、
      渡さなければその欄は触られない＝読み違えた1つのせいで他が消えることはない */
   const useC=ocrOn("coord");
