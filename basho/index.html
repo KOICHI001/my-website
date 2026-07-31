@@ -719,7 +719,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.28.0";
+const VER = "0.29.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1409,6 +1409,11 @@ function q(p){
   return encodeURIComponent(name);
 }
 function openMap(p){ bump(p);
+  /* ★住所が分かっているなら、それで開くのが最優先（v0.29.0）。
+     ピン長押しの共有リンクは短縮URL（maps.app.goo.gl/…）でも中身は座標のピンなので、
+     リンクを先に開くとマップの名称欄に数字の羅列が出てしまう＝実機のレコードで確認済み。
+     短縮URLは中身が見えず見分けられないため、住所があればそちらを信じる */
+  if((p.addr||"").trim()) return openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
   if(p.url) return openUrl(p.url);
   /* 住所が無く名前+座標だけの時はラベル付きピン＝マップの名称欄に登録名が出る
      （query=座標だけだと座標文字列がそのまま名称になる）。
@@ -2382,7 +2387,8 @@ function form(d){
     '<button class="subbtn" id="addr2geo">🏠 住所から座標を入れる</button>'+
     '<label>Googleマップのリンク（共有 → リンクをコピー）</label>'+
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
-    '<div class="hint">「地図を開く」はこのリンクを優先して開きます。ただし短縮リンクには座標が入っていないため、'+
+    '<div class="hint">「地図を開く」は<b>住所があれば住所（＋名前）</b>で開き、住所が無いときにこのリンクを使います'+
+    '（ピン長押しの共有リンクは、開くと名称欄に緯度経度が出てしまうため）。ただし短縮リンクには座標が入っていないため、'+
     '<b>周辺モード</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
     '名前・住所・座標が写ったスクショがあれば「🔢 スクショから読み取る」でまとめて取り込めます。</div>'+
     '<details><summary>住所・電話・メモ・座標を直接いじる</summary>'+
