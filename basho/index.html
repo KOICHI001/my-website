@@ -455,8 +455,18 @@
   .ocr-tt{flex:1;font-family:var(--mincho);font-size:15px;font-weight:600;letter-spacing:.06em}
   .ocr-stage{flex:1;position:relative;min-height:0;display:flex;align-items:center;
     justify-content:center;overflow:hidden;padding:4px}
-  #ocrImg{max-width:100%;max-height:100%;
+  /* 2本指で拡大縮小・移動できる（v0.30.0）。★変えるのは見た目だけ＝読み取りは常に元画像の
+     画素を使うので、拡大しても粗くならないし精度も変わらない。
+     transform-originは中央固定＝倍率と位置の計算をひとつの式で済ませる */
+  #ocrImg{max-width:100%;max-height:100%;transform-origin:50% 50%;will-change:transform;
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none}
+  /* 今の倍率＝押すと元の大きさに戻る。拡大している時だけ出す */
+  .ocr-zoom{position:absolute;right:8px;bottom:8px;display:none;
+    padding:7px 12px;border-radius:999px;border:none;
+    background:rgba(11,110,95,.92);color:#F8F9F5;
+    font-size:12px;font-weight:700;font-family:var(--gothic);letter-spacing:.04em;
+    white-space:nowrap;cursor:pointer;box-shadow:0 2px 10px rgba(0,0,0,.4)}
+  .ocr-zoom.on{display:block}
   .ocr-selbox{position:absolute;border:2px solid #F4C960;background:rgba(244,201,96,.16);
     border-radius:4px;pointer-events:none;display:none}
   /* 読み取り中の目印。★下の帯は読めたものが並ぶと説明文が隠れて見えなくなるので、
@@ -688,6 +698,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <img id="ocrImg" alt="">
     <div class="ocr-selbox" id="ocrSel"></div>
     <div class="ocr-busy" id="ocrBusy">読み取り中…</div>
+    <button class="ocr-zoom" id="ocrZoom" type="button">×1.0 ⟲もとの大きさ</button>
   </div>
   <div class="ocr-bar">
     <!-- 高さを固定した枠に収める。読めたもの（名前・座標・住所）を先に置き、
@@ -719,7 +730,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.29.0";
+const VER = "0.30.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -4024,15 +4035,17 @@ function ocrOpen(file,cb){
     if(!keep){OCR.res={lat:null,lng:null,addr:null,name:null};OCR.bad={};}
     OCR.lock=keep?{name:true,coord:true,addr:true}:{};
     ocrEl("ocrImg").src=OCR.url;
+    if(OCR.zreset)OCR.zreset();       /* 新しい絵は必ず等倍から */
     ocrSync();
     ocrEl("ocrov").classList.add("on");
     /* 全面自動スキャンはしない＝ユーザーが読みたい場所をタップで教えてくれる方が速くて確実。
        狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収）。
        日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
     const kept=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);   /* チェックが入っている＝採用中のものだけ */
-    ocrStatus(kept.length
+    ocrStatus((kept.length
       ? "<b>"+kept.join("・")+"</b>は前のスクショの分を残しています。足りないもののあたりを<b>指でトンとタップ</b>"
-      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）");
+      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）")
+      +"<br>スクショは<b>2本指で広げると大きく</b>できます（動かすのも2本指）");
     ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
     });
@@ -4070,6 +4083,7 @@ function ocrPick(cb){
 function ocrClose(){
   ocrEl("ocrov").classList.remove("on");
   ocrEl("ocrImg").removeAttribute("src");
+  if(OCR.zreset)OCR.zreset();
   ocrEl("ocrSel").style.display="none";
   ocrBusy(false);
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}OCR.url=null;}
@@ -4120,10 +4134,71 @@ ocrEl("ocrUse").onclick=()=>{
 ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
 /* チェックの付け外しでボタンの文言（何を使うか）を追随させる */
 ["ocrNameChk","ocrResChk","ocrAddrChk"].forEach(id=>{ocrEl(id).onchange=()=>ocrSync();});
-/* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR */
+/* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR
+   ＋2本指でスクショそのものを拡大縮小・移動（v0.30.0）
+   ・1本指＝今まで通り「タップ＝この辺り」「なぞり＝囲む」
+   ・2本指＝広げると拡大／動かすと移動（1本指のパンにすると、なぞって囲むのと区別できない）
+   ★拡大は見た目だけ＝読み取りは常に元画像の画素で行うので、拡大しても粗くならない。
+     指の位置→元画像の位置の換算は getBoundingClientRect（＝拡大後の枠）を見ているので、
+     拡大していてもそのまま正しく当たる（換算の式は触っていない） */
 (function(){
-  const st=ocrEl("ocrStage"),sel=ocrEl("ocrSel");
-  let p0=null;
+  const st=ocrEl("ocrStage"),sel=ocrEl("ocrSel"),img=ocrEl("ocrImg"),zb=ocrEl("ocrZoom");
+  const Z={s:1,x:0,y:0,min:1,max:8};
+  const pts=new Map();          /* 今ふれている指 */
+  let p0=null,pinch=null,hold=false;   /* hold＝2本指の間。指を離しきるまで読み取りを起こさない */
+  const baseW=()=>img.offsetWidth, baseH=()=>img.offsetHeight;   /* 拡大前（枠に収まった）の大きさ */
+  function apply(){
+    /* はみ出しすぎて画像を見失わないよう、動かせる範囲は「はみ出した分」まで */
+    const sr=st.getBoundingClientRect();
+    const ox=Math.max(0,(baseW()*Z.s-sr.width)/2),oy=Math.max(0,(baseH()*Z.s-sr.height)/2);
+    Z.x=Math.max(-ox,Math.min(ox,Z.x));Z.y=Math.max(-oy,Math.min(oy,Z.y));
+    img.style.transform="translate("+Z.x+"px,"+Z.y+"px) scale("+Z.s+")";
+    const on=Z.s>1.02;
+    zb.classList.toggle("on",on);
+    if(on)zb.textContent="×"+(Math.round(Z.s*10)/10)+" ⟲もとの大きさ";
+  }
+  function zreset(){Z.s=1;Z.x=0;Z.y=0;apply();}
+  OCR.zreset=zreset;            /* 別のスクショを開いた時に等倍へ戻す */
+  const two=()=>{const a=[...pts.values()];return [a[0],a[1]];};
+  function pinchStart(){
+    const [a,b]=two();if(!a||!b)return;
+    const cr=img.getBoundingClientRect();
+    pinch={d:Math.max(1,Math.hypot(a.x-b.x,a.y-b.y)),
+           m:{x:(a.x+b.x)/2,y:(a.y+b.y)/2},s:Z.s,x:Z.x,y:Z.y,
+           /* 拡大前の中心＝今の枠の中心から今のズレを引いたもの */
+           c:{x:cr.left+cr.width/2-Z.x,y:cr.top+cr.height/2-Z.y}};
+  }
+  function pinchMove(){
+    const [a,b]=two();if(!a||!b||!pinch)return;
+    const d=Math.max(1,Math.hypot(a.x-b.x,a.y-b.y));
+    const mx=(a.x+b.x)/2,my=(a.y+b.y)/2;
+    const s=Math.max(Z.min,Math.min(Z.max,pinch.s*d/pinch.d)),k=s/pinch.s;
+    /* 2本指の真ん中にある画像の点が、指の真ん中から動かないようにする（つまんだ所が中心） */
+    Z.s=s;
+    Z.x=mx-pinch.c.x-k*(pinch.m.x-pinch.c.x-pinch.x);
+    Z.y=my-pinch.c.y-k*(pinch.m.y-pinch.c.y-pinch.y);
+    apply();
+  }
+  /* ★下からキーボードが出ると画面が縮み、スクショもその分だけ小さくなって
+     手直しのお手本にならない（コーイチさん指摘 v0.30.0）。拡大している間は、
+     縮んだ分だけ倍率を上げ直して「今見えている大きさ」を保つ */
+  let lastH=0;
+  function zkeep(){
+    const h=baseH();
+    if(!h){lastH=0;return;}                       /* 画面を閉じている間は覚え直し */
+    if(lastH&&Z.s>1.001&&Math.abs(h-lastH)>1){
+      Z.s=Math.max(Z.min,Math.min(Z.max,Z.s*lastH/h));apply();
+    }
+    lastH=h;
+  }
+  /* 2通りの合図で拾う（機種差の保険）: 画像の大きさが変わった時／画面そのものが変わった時 */
+  if(window.ResizeObserver)new ResizeObserver(zkeep).observe(img);
+  window.addEventListener("resize",zkeep);
+  if(window.visualViewport)window.visualViewport.addEventListener("resize",zkeep);
+  /* 倍率の札＝押したら等倍に戻す。画像の上にあるので、押しても読み取りは起こさない */
+  ["pointerdown","pointermove","pointerup","pointercancel"].forEach(t=>
+    zb.addEventListener(t,e=>e.stopPropagation()));
+  zb.onclick=e=>{e.stopPropagation();zreset();};
   function rectOf(e){
     const sr=st.getBoundingClientRect();
     const x1=Math.min(p0.x,e.clientX),y1=Math.min(p0.y,e.clientY);
@@ -4137,12 +4212,25 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
   }
   st.addEventListener("pointerdown",e=>{
     if(!OCR.img)return;
-    try{st.setPointerCapture(e.pointerId);}catch(x){}
+    try{st.setPointerCapture(e.pointerId);}catch(x){}   /* 枠の外まで指が出ても最後まで追える */
+    pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pts.size>=2){                       /* 2本目が触れた＝拡大縮小へ。書きかけの囲みは取り消す */
+      p0=null;sel.style.display="none";hold=true;
+      pinchStart();
+      return;
+    }
     p0={x:e.clientX,y:e.clientY};
     show(rectOf(e));
   });
-  st.addEventListener("pointermove",e=>{if(p0)show(rectOf(e));});
+  st.addEventListener("pointermove",e=>{
+    if(pts.has(e.pointerId))pts.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    if(pinch&&pts.size>=2){pinchMove();return;}
+    if(p0)show(rectOf(e));
+  });
   st.addEventListener("pointerup",async e=>{
+    pts.delete(e.pointerId);
+    if(pinch){pinch=null;hold=pts.size>0;return;}      /* 拡大縮小の指離し＝読み取りはしない */
+    if(hold){hold=pts.size>0;return;}                  /* 残りの1本を離しただけ */
     if(!p0)return;
     const r=rectOf(e);p0=null;
     /* 表示px→元画像pxへ変換（imgはアスペクト比維持で縮小表示＝要素枠がそのまま画像） */
@@ -4200,7 +4288,12 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
     }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
     finally{ocrBusy(false);}
   });
-  st.addEventListener("pointercancel",()=>{p0=null;sel.style.display="none";});
+  st.addEventListener("pointercancel",e=>{
+    pts.delete(e.pointerId);
+    if(pts.size<2)pinch=null;
+    hold=pts.size>0;
+    p0=null;sel.style.display="none";
+  });
 })();
 /* 保険: OCR画面のスワイプをブラウザに渡さない（引っ張って更新の封じ・周辺モードと同方式）。
    ★ただし読み取り結果の枠の中だけは通す＝隠れた行を指で上下に動かして見られるようにする */
