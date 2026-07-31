@@ -459,12 +459,23 @@
     -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none}
   .ocr-selbox{position:absolute;border:2px solid #F4C960;background:rgba(244,201,96,.16);
     border-radius:4px;pointer-events:none;display:none}
+  /* 読み取り中の目印。★下の帯は読めたものが並ぶと説明文が隠れて見えなくなるので、
+     進んでいるのか止まっているのかが画像の上で分かるようにする（コーイチさん指摘 v0.28.0） */
+  .ocr-busy{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none;
+    padding:9px 16px;border-radius:999px;background:rgba(11,110,95,.92);color:#F8F9F5;
+    font-size:13px;font-weight:700;letter-spacing:.06em;white-space:nowrap;pointer-events:none;
+    box-shadow:0 2px 12px rgba(0,0,0,.4);animation:ocrBusyBlink 1.1s ease-in-out infinite}
+  .ocr-busy.on{display:block}
+  @keyframes ocrBusyBlink{0%,100%{opacity:1}50%{opacity:.3}}
   .ocr-bar{padding:10px 14px calc(14px + env(safe-area-inset-bottom));background:var(--paper);
     border-radius:14px 14px 0 0}
   /* ★下の帯は高さを固定する（v0.22.0）。説明文が伸び縮みしたり読み取り結果の行が増えると
      帯の高さが変わり、余った分だけ上の画像が再フィットして拡大縮小＝狙いを定めている最中に
      画像が動く（実測: タップした瞬間に272×604→281×624）。中身が増えたらここだけスクロールさせる */
-  .ocr-info{height:118px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  /* 読めたものが増えると入りきらないので、ここだけ指で上下に動かせる（touch-actionが要る＝
+     OCR画面はスワイプを打ち消しているため、この枠だけ縦スクロールを通す） */
+  .ocr-info{height:118px;overflow-y:auto;-webkit-overflow-scrolling:touch;
+    touch-action:pan-y;overscroll-behavior:contain}
   .ocr-status{font-size:12.5px;color:var(--soft);line-height:1.55;min-height:1.55em}
   .ocr-status b{color:var(--route)}
   /* 読めたものは1行ずつチェックボックス付きで出す＝外したものは使わない。
@@ -676,6 +687,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="ocr-stage" id="ocrStage">
     <img id="ocrImg" alt="">
     <div class="ocr-selbox" id="ocrSel"></div>
+    <div class="ocr-busy" id="ocrBusy">読み取り中…</div>
   </div>
   <div class="ocr-bar">
     <!-- 高さを固定した枠に収める。読めたもの（名前・座標・住所）を先に置き、
@@ -707,7 +719,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.27.0";
+const VER = "0.28.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1385,13 +1397,23 @@ function openUrl(u){const a=document.createElement("a");a.href=u;a.target="_blan
 function hasSpot(p){return !!(p.url||(p.lat&&p.lng)||p.addr);}
 /* 正確なピンがあるか＝経路・周辺が安心して使える状態（座標あり・精度±80m以内 or 手動ピン=accなし） */
 function goodPin(p){return !!(p.lat&&p.lng&&!(p.acc&&p.acc>80));}
-function q(p){ return (p.lat&&p.lng) ? p.lat+","+p.lng : encodeURIComponent(p.addr||p.name); }
+/* 地図・経路で渡す「行き先」。
+   ★座標を渡すとGoogleマップの名称欄に数字の羅列が出る（コーイチさん指摘 v0.28.0）。
+   この帳面の場所は多くがマップから取ってきたもの＝住所があるので、「名称 住所」で渡せば
+   ちゃんとお店のカードが出る。住所が無い時だけ座標にする＝「ここを登録」で自分が付けた名前
+   （例「車をとめた所」）で検索させると、まるで違う場所に飛んでしまうため */
+function q(p){
+  const name=(p.name||"").trim(), addr=(p.addr||"").trim();
+  if(addr) return encodeURIComponent((name?name+" ":"")+addr);
+  if(p.lat&&p.lng) return p.lat+","+p.lng;
+  return encodeURIComponent(name);
+}
 function openMap(p){ bump(p);
   if(p.url) return openUrl(p.url);
-  /* 名前+座標がある時はラベル付きピン＝マップの名称欄に登録名が出る
+  /* 住所が無く名前+座標だけの時はラベル付きピン＝マップの名称欄に登録名が出る
      （query=座標だけだと座標文字列がそのまま名称になる）。
      Android=geo:のラベル付きピン（マップアプリの定番機能）／それ以外=従来の検索URL */
-  if(p.lat&&p.lng&&p.name){
+  if(!(p.addr||"").trim()&&p.lat&&p.lng&&p.name){
     const label="("+encodeURIComponent(p.name)+")";
     const web="https://maps.google.com/maps?q="+p.lat+","+p.lng+label;
     /* Android: intent://でGoogleマップへ直行（geo:だとアプリ選択が出る端末がある）。
@@ -3608,6 +3630,9 @@ function ocrAddrWords(o){
   const kept=ws.filter(w=>{
     if(!w.t)return false;
     if(w.conf===0)return false;
+    /* ★ハイフンだけの単語は残す。番地は「１７−５」のように区切りが単語として切り出されることがあり、
+       落とすと「175」になって別の番地になってしまう（実機実測 v0.28.0で修正） */
+    if(/^[-－ー―‐−–—]+$/.test(w.t))return true;
     if(!/[0-9A-Za-zぁ-ゖァ-ヺ一-鿿]/.test(w.t))return false;
     if(w.conf!=null&&w.conf<80&&/^[ぁ-ゖァ-ヺ]$/.test(w.t))return false;
     return true;
@@ -3658,12 +3683,14 @@ function ocrParseAddr(rec){
      1つ空ける（実測「1178-1246 旧駅舎口」）＝数字の直後に日本語が来る所の空白だけ残す */
   out=out.split(/[ 　]+/).reduce((acc,seg)=>{
     if(!acc)return seg;
-    const keep=/[0-9\-]$/.test(acc)&&/^[ぁ-ゖァ-ヺ一-鿿]/.test(seg);
+    /* 「1丁目」「2階」のような単位はくっつけ、建物名・入口の前だけ空ける */
+    const unit=/^(丁目|丁|番地|番|号|階|F)/.test(seg);
+    const keep=/[0-9\-]$/.test(acc)&&/^[ぁ-ゖァ-ヺ一-鿿A-Za-z]/.test(seg)&&!unit;
     return acc+(keep?" ":"")+seg;
   },"");
   /* 番地（1178-1246）の直後に建物名・入口が続く時は1つ空ける。OCRが空白なしで読むことがあり、
      詰まったままだと読みにくい。「1丁目」のように区切ってはいけない所は数字にハイフンが無いので当たらない */
-  out=out.replace(/(\d+-\d+)(?=[ぁ-ゖァ-ヺ一-鿿])/g,"$1 ");
+  out=out.replace(/(\d+-\d+)(?=[ぁ-ゖァ-ヺ一-鿿A-Za-z])(?![丁番号階F])/g,"$1 ");
   const zm2=out.match(/^〒?(\d{3})-(\d{4})/);   /* 〒の後だけ1つ空ける（マップの表記に合わせる） */
   if(zm2)out="〒"+zm2[1]+"-"+zm2[2]+" "+out.slice(zm2[0].length).replace(/^\s+/,"");
   out=out.replace(/[^0-9A-Za-z぀-ヿ一-鿿\-]+$/,"");   /* 末尾の記号ゴミを落とす */
@@ -3861,6 +3888,9 @@ async function ocrScanAuto(nx,ny,nw,nh,psm){
 }
 /* statusは固定文言のみ（ユーザーデータを混ぜない） */
 function ocrStatus(html){ocrEl("ocrStatus").innerHTML=html;}
+/* 読み取り中の目印を画像の真ん中に点滅表示。★下の帯は読めたものが並ぶと説明文が押し出されて
+   見えなくなるため、これが無いと進んでいるのか止まっているのか分からない（コーイチさん指摘） */
+function ocrBusy(on){ocrEl("ocrBusy").classList.toggle("on",!!on);}
 /* 読み取り結果は名前・住所・座標を別々にためる＝1枚のスクショから全部そろえられる。
    ★チェックを外したものは使わない（v0.23.0）。読み違えた1つのために、
    正しく読めた残りまで捨てなくて済む＝足りない分は「別のスクショ」から読み足せる */
@@ -4035,6 +4065,7 @@ function ocrClose(){
   ocrEl("ocrov").classList.remove("on");
   ocrEl("ocrImg").removeAttribute("src");
   ocrEl("ocrSel").style.display="none";
+  ocrBusy(false);
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}OCR.url=null;}
   OCR.img=null;OCR.res=null;OCR.cb=null;OCR.lock={};OCR.bad={};
   /* エンジンは閉じるたびに破棄（スマホのメモリを食い続けない。言語データはキャッシュ済みで再開は速い） */
@@ -4114,6 +4145,7 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
     if(!im||ir.width<1||ir.height<1){sel.style.display="none";return;}
     const fx=W/ir.width,fy=H/ir.height;
     setTimeout(()=>sel.style.display="none",300);
+    ocrBusy(true);
     try{
       let c=null;
       if(r.w<24&&r.h<24){
@@ -4160,11 +4192,16 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
       else if(c) ocrSync("");   /* 前のスクショの分を守った＝トーストの「〜にする」で差し替えられる */
       else ocrStatus("読めませんでした。読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを、もう一度なぞるかタップしてみてください");
     }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
+    finally{ocrBusy(false);}
   });
   st.addEventListener("pointercancel",()=>{p0=null;sel.style.display="none";});
 })();
-/* 保険: OCR画面のスワイプをブラウザに渡さない（引っ張って更新の封じ・周辺モードと同方式） */
-ocrEl("ocrov").addEventListener("touchmove",e=>{if(e.cancelable)e.preventDefault();},{passive:false});
+/* 保険: OCR画面のスワイプをブラウザに渡さない（引っ張って更新の封じ・周辺モードと同方式）。
+   ★ただし読み取り結果の枠の中だけは通す＝隠れた行を指で上下に動かして見られるようにする */
+ocrEl("ocrov").addEventListener("touchmove",e=>{
+  if(e.target&&e.target.closest&&e.target.closest(".ocr-info"))return;
+  if(e.cancelable)e.preventDefault();
+},{passive:false});
 
 /* ───── トースト ───── */
 let tt;
