@@ -707,7 +707,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.24.0";
+const VER = "0.25.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3549,8 +3549,11 @@ function ocrRecLines(rec){
     raw.push({t,x0:+b.x0||0,x1:+b.x1||0,y0,y1,h:Math.max(0,y1-y0),
               conf:(l&&typeof l.confidence==="number")?l.confidence:null,
               /* 単語ごとの読めた自信。住所からアイコンの誤読を落とすのに使う */
-              words:((l&&l.words)||[]).map(w=>({t:String((w&&w.text)||"").trim(),
-                conf:(w&&typeof w.confidence==="number")?w.confidence:null}))});
+              words:((l&&l.words)||[]).map(w=>{
+                const wb=(w&&w.bbox)||{};
+                return {t:String((w&&w.text)||"").trim(),
+                        conf:(w&&typeof w.confidence==="number")?w.confidence:null,
+                        h:Math.max(0,(+wb.y1||0)-(+wb.y0||0))};})});
   });
   if(!raw.length){
     String(d.text||"").split(/\r?\n/).forEach(s=>{
@@ -3666,7 +3669,8 @@ function ocrParseAddr(rec){
    残った中でいちばん名前らしい行を選ぶ、という消去法で決める。 */
 const OCR_NAME_NG=[
   /^[\s\d.,:：;・|/\\()（）\[\]＜＞<>*★☆♦◆●○■□▶►→←↑↓＋+=~〜_—―ー-]+$/,  /* 数字・記号だけの行 */
-  /口コミ|レビュー|評価|件\)|件$/,
+  /口コミ|クチコミ|レビュー|評価|件\)|件$/,   /* ★マップの表記はカタカナの「クチコミ」 */
+  /すべて.*表示|もっと見る|続きを読む|詳細を見る|通話/,
   /営業|閉店|開店|定休|時間|時に閉|時に開|24時間|ラストオーダー/,
   /経路|保存|共有|ラベル|付近|周辺|検索|ウェブサイト|サイト|メニュー|注文|予約|電話|ナビ|出発|到着/,
   /写真や動画|動画を追加|クチコミを書く|レビューを書く|質問する|案内を開始/,   /* カードのボタン */
@@ -3676,23 +3680,43 @@ const OCR_NAME_NG=[
   /* マップの見出し・タブそのもの。★丸ごと一致だけ＝この語を含む店名（例「概要書店」）は巻き込まない */
   /^(概要|写真|最新情報|基本情報|企業からの提供|評価とクチコミ|所在地|サービス|施設|バリアフリー|お支払い|よくある質問|関連する検索|周辺のスポット|この場所について|人気の時間帯)$/,
 ];
+/* 名前の行から、右端に写り込むアイコン（しおり・共有・×）の誤読を切り落とす。
+   ★実測（2026-07-31 実機「ケーキの家 果楓」）: カードの見出しは
+     「ケー(93) キ(93) の(93) 家(91) 果(91) 楓(84) …大きく間が空いて… ロペ(conf 0)」
+   と読まれる。これを丸ごと見ると空白が多く「崩れた読み」と誤判定されて捨てられていた。
+   大きく間が空いた先／まるで読めていない単語から先は名前ではないので切る */
+function ocrNameCut(o){
+  let t=String((o&&o.t)||"").replace(/[　\t]+/g," ");
+  const m=t.match(/^(.*?)\s{3,}\S/);                 /* 空白が3つ以上並ぶ＝視覚的に大きく離れている */
+  if(m&&m[1].trim().length>=2)t=m[1];
+  const bad=((o&&o.words)||[]).find(w=>w.t&&w.conf===0&&w.t.length<=4);
+  if(bad){const i=t.indexOf(bad.t); if(i>1)t=t.slice(0,i);}
+  return t.trim();
+}
+/* その行の文字の大きさ。★行の枠(bbox)の高さは、時計とマップのラベルが1行に混ざると
+   実際の字より遥かに大きくなる（実測 179px）。単語の高さの中央値なら字の大きさに近い */
+function ocrLineSize(o){
+  const hs=((o&&o.words)||[]).map(w=>w.h).filter(h=>h>0).sort((a,b)=>a-b);
+  return hs.length?hs[Math.floor(hs.length/2)]:((o&&o.h)||0);
+}
 function ocrParseName(rec){
   const src=ocrRecLines(rec);
   if(!src.length)return null;
   /* カードの中で名前はいちばん大きい字で書かれている＝「他の行と比べてどれだけ大きいか」を
      いちばん強い手がかりにする。まん中の高さ（中央値）を物差しにする */
-  const hs=src.map(o=>o.h).filter(h=>h>0).sort((a,b)=>a-b);
+  const hs=src.map(ocrLineSize).filter(h=>h>0).sort((a,b)=>a-b);
   const medH=hs.length?hs[Math.floor(hs.length/2)]:0;
   const cand=[];
   src.forEach((o,i)=>{
-    /* 先頭のアイコン誤読・末尾の記号ゴミを落とす（住所と同じ癖） */
-    const L=String(o.t).replace(/[　\t]+/g," ")
+    /* 右のアイコンの誤読を切り、先頭のアイコン誤読・末尾の記号ゴミを落とす（住所と同じ癖） */
+    const L=ocrNameCut(o)
                .replace(/^[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿]+/,"")
                .replace(/[^0-9A-Za-zぁ-ゖァ-ヺ一-鿿ー・＆&'’)）]+$/,"").trim();
     if(L.length<2||L.length>40)return;
     if(PREF_ORDER.some(p=>L.indexOf(p)>=0))return;   /* 住所の行 */
     if(OCR_NAME_NG.some(re=>re.test(L)))return;
-    const big=medH>0&&o.h>=medH*1.15;
+    const sz=ocrLineSize(o);
+    const big=medH>0&&sz>=medH*1.15;
     /* 日本語の行に空白がいくつも入る＝字が崩れて読めている合図（実測「4Se エ っ7二日折記る」）。
        ただし「プリモ フィト 軽井沢」のような本物の店名もある＝
        大きい字／自信を持って読めた行なら空白があっても名前として認める */
@@ -3700,7 +3724,7 @@ function ocrParseName(rec){
        &&!big&&!(o.conf!=null&&o.conf>=80))return;
     if(o.conf!=null&&o.conf<45)return;               /* まるで読めていない行 */
     if(!/[0-9A-Za-zぁ-ゖァ-ヺ一-鿿]/.test(L))return;
-    cand.push({i,L,h:o.h,line:o});
+    cand.push({i,L,h:sz,line:o});
   });
   if(!cand.length)return null;
   /* 折り返した名前をひとまとめにする（「プリモ フィト 軽井沢」＋「駅舎店」）。
