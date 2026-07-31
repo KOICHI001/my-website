@@ -464,17 +464,22 @@
   /* ★下の帯は高さを固定する（v0.22.0）。説明文が伸び縮みしたり読み取り結果の行が増えると
      帯の高さが変わり、余った分だけ上の画像が再フィットして拡大縮小＝狙いを定めている最中に
      画像が動く（実測: タップした瞬間に272×604→281×624）。中身が増えたらここだけスクロールさせる */
-  .ocr-info{height:100px;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ocr-info{height:118px;overflow-y:auto;-webkit-overflow-scrolling:touch}
   .ocr-status{font-size:12.5px;color:var(--soft);line-height:1.55;min-height:1.55em}
   .ocr-status b{color:var(--route)}
+  /* 読めたものは1行ずつチェックボックス付きで出す＝外したものは使わない。
+     読み違えた1つのために、正しく読めた残りまで捨てなくて済む */
+  .ocr-item{display:flex;align-items:flex-start;gap:9px;margin:3px 0}
+  .ocr-item>input{width:19px;height:19px;flex:none;margin:3px 0 0;accent-color:var(--route)}
+  .ocr-item>span{flex:1;min-width:0}
   .ocr-res{font-family:var(--mono);font-size:17px;font-weight:700;color:var(--route);
-    margin:4px 0 0;word-break:break-all;min-height:1.3em}
+    word-break:break-all}
   /* 住所は日本語なので明朝ではなくゴシックで。座標行のすぐ下に出る＝両方そろったか一目で分かる */
   .ocr-addr{font-family:var(--gothic);font-size:14.5px;font-weight:700;color:var(--route);
-    margin:2px 0 0;word-break:break-all;line-height:1.5;min-height:0}
+    word-break:break-all;line-height:1.5}
   /* 名前は3つの中で一番の主役なので、いちばん上に少し大きく出す */
   .ocr-name{font-family:var(--gothic);font-size:16px;font-weight:700;color:var(--route);
-    margin:0 0 2px;word-break:break-all;line-height:1.45;min-height:0}
+    word-break:break-all;line-height:1.45}
   .ocr-btns{display:flex;gap:8px;margin-top:8px}
   .ocr-btns .btn{padding:12px}
   .ocr-btns .btn:disabled{opacity:.4;cursor:default}
@@ -658,6 +663,8 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="ocr-top">
     <button class="nv-back" id="ocrCloseBtn">← 戻る</button>
     <div class="ocr-tt">スクショから読み取る</div>
+    <!-- 読めた分はそのままに、別のスクショから足りないものだけ読み直せる -->
+    <button class="nv-back" id="ocrSwapBtn">別のスクショ</button>
   </div>
   <div class="ocr-stage" id="ocrStage">
     <img id="ocrImg" alt="">
@@ -667,9 +674,12 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <!-- 高さを固定した枠に収める。読めたもの（名前・座標・住所）を先に置き、
          説明文は下＝あふれてスクロールしても大事な結果は必ず見えている -->
     <div class="ocr-info">
-      <div class="ocr-name" id="ocrName"></div>
-      <div class="ocr-res" id="ocrRes"></div>
-      <div class="ocr-addr" id="ocrAddr"></div>
+      <label class="ocr-item" id="ocrNameItem" style="display:none">
+        <input type="checkbox" id="ocrNameChk" checked><span class="ocr-name" id="ocrName"></span></label>
+      <label class="ocr-item" id="ocrResItem" style="display:none">
+        <input type="checkbox" id="ocrResChk" checked><span class="ocr-res" id="ocrRes"></span></label>
+      <label class="ocr-item" id="ocrAddrItem" style="display:none">
+        <input type="checkbox" id="ocrAddrChk" checked><span class="ocr-addr" id="ocrAddr"></span></label>
       <div class="ocr-status" id="ocrStatus"></div>
     </div>
     <div class="ocr-btns">
@@ -685,7 +695,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.22.0";
+const VER = "0.23.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3432,7 +3442,7 @@ function catEdit(){
    ひとタップでひとつ（名前／住所／座標）。読んだ分は消えずにたまるので、
    名前・住所・座標と順にタップすれば1枚のスクショから全部そろう。
    エンジンは開いた時に裏で温め、閉じたら破棄（メモリ対策） */
-const OCR={img:null,url:null,cb:null,res:null,libP:null,wkP:{},q:{}};
+const OCR={img:null,url:null,cb:null,res:null,lock:{},libP:null,wkP:{},q:{}};
 const ocrEl=id=>document.getElementById(id);
 function ocrBase(){return new URL("ocr",location.href).href;}   /* 絶対URL（worker内の相対解決ズレ防止） */
 function ocrLib(){
@@ -3525,7 +3535,10 @@ function ocrRecLines(rec){
     const b=(l&&l.bbox)||{};
     const y0=+b.y0||0,y1=+b.y1||0;
     raw.push({t,x0:+b.x0||0,x1:+b.x1||0,y0,y1,h:Math.max(0,y1-y0),
-              conf:(l&&typeof l.confidence==="number")?l.confidence:null});
+              conf:(l&&typeof l.confidence==="number")?l.confidence:null,
+              /* 単語ごとの読めた自信。住所からアイコンの誤読を落とすのに使う */
+              words:((l&&l.words)||[]).map(w=>({t:String((w&&w.text)||"").trim(),
+                conf:(w&&typeof w.confidence==="number")?w.confidence:null}))});
   });
   if(!raw.length){
     String(d.text||"").split(/\r?\n/).forEach(s=>{
@@ -3561,6 +3574,24 @@ const OCR_ADDR_NG=/口コミ|レビュー|評価|営業|閉店|開店|定休|時
    ここに ocrWrapped の「大きさがそろう・左端がそろう」を求めると2行目は必ず落ちる＝番地が消える。
    行間だけ見れば十分見分けられる（続き＝-2px / 次の項目「1 階」＝134px空く）ので大きさと左端は見ない。
    ★判断の基準は「読めない」より「余分が付く」＝余分は消せばいいが、読めないと手打ちになる */
+/* 住所の行から、カード右のアイコン（しおり・共有・×）を読み違えた単語だけを落とす。
+   ★実測（2026-07-31 実機スクショ2枚目）: 住所の行に
+     「〒389-0111(90) 長野(96) 県(93) 北(41) 呈(0) ぐ(72) ペ(67) ※(89)」
+   のようにアイコン由来の単語が混ざる。単語ごとの自信と文字種で見分けられる。
+   ★落としすぎない: 迷ったら残す（[[余分が付く方がまし]]）。消すのは
+   「まるで読めていない(0)」「使える字が1つも無い」「ぽつんと1文字だけの仮名」だけ */
+function ocrAddrWords(o){
+  const ws=o&&o.words;
+  if(!ws||!ws.length)return o.t;
+  const kept=ws.filter(w=>{
+    if(!w.t)return false;
+    if(w.conf===0)return false;
+    if(!/[0-9A-Za-zぁ-ゖァ-ヺ一-鿿]/.test(w.t))return false;
+    if(w.conf!=null&&w.conf<80&&/^[ぁ-ゖァ-ヺ]$/.test(w.t))return false;
+    return true;
+  }).map(w=>w.t);
+  return kept.length?kept.join(" "):o.t;
+}
 function ocrAddrCont(prev,cur){
   if(!prev||!cur||!prev.h||!cur.h)return null;
   const lo=Math.min(prev.h,cur.h),gap=cur.y0-prev.y1;
@@ -3571,7 +3602,7 @@ function ocrParseAddr(rec){
     .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
     .replace(/[－ー―‐−–—]/g,"-").replace(/[　\t]/g," ");
   const src=ocrRecLines(rec).map(o=>{
-    const c=Object.assign({},o); c.t=norm(o.t).trim(); return c;
+    const c=Object.assign({},o); c.t=norm(ocrAddrWords(o)).trim(); return c;
   }).filter(o=>o.t);
   const lines=src.map(o=>o.t);
   const ZIP=/〒?\s*\d{3}\s*-\s*\d{4}/;
@@ -3587,9 +3618,12 @@ function ocrParseAddr(rec){
   }
   if(head<0)return null;
   let out=lines[head].slice(cut);
-  for(let i=head+1;i<lines.length&&i<=head+2;i++){   /* 折り返しの続きを繋ぐ（住所は多くても2行） */
+  /* 折り返しの続きを繋ぐ。★カードが狭いと3行になる（実測「〒389-0111 長野県北／佐久郡軽井沢町長倉7／48-5」）
+     ので続きは3行まで見る。行間が空いた所で必ず止まるので、伸ばしても別の項目は拾わない */
+  for(let i=head+1;i<lines.length&&i<=head+3;i++){
     const w=ocrAddrCont(src[i-1],src[i]);
     if(w===false)break;                              /* 行間が空いた＝別の項目（「1 階」電話 など） */
+    if(src[i].conf!=null&&src[i].conf<35)break;      /* 行ごと読めていない＝ボタンの並びなど（実測 conf 0） */
     if(OCR_ADDR_NG.test(lines[i]))break;
     /* 位置が取れない版のTesseractでは、従来どおり「数字だけの行」に限って続きとみなす */
     if(w===null&&!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
@@ -3784,38 +3818,77 @@ async function ocrScanAuto(nx,ny,nw,nh,psm){
 }
 /* statusは固定文言のみ（ユーザーデータを混ぜない） */
 function ocrStatus(html){ocrEl("ocrStatus").innerHTML=html;}
-/* 読み取り結果は名前・住所・座標を別々にためる＝1枚のスクショから全部そろえられる */
+/* 読み取り結果は名前・住所・座標を別々にためる＝1枚のスクショから全部そろえられる。
+   ★チェックを外したものは使わない（v0.23.0）。読み違えた1つのために、
+   正しく読めた残りまで捨てなくて済む＝足りない分は「別のスクショ」から読み足せる */
+const OCR_KIND={name:{item:"ocrNameItem",chk:"ocrNameChk",label:"名前"},
+                coord:{item:"ocrResItem", chk:"ocrResChk", label:"座標"},
+                addr:{item:"ocrAddrItem",chk:"ocrAddrChk",label:"住所"}};
+function ocrHas(kind){
+  const r=OCR.res||{};
+  return kind==="coord"?!!(r.lat&&r.lng):!!r[kind];
+}
+function ocrOn(kind){   /* 持っていて、かつチェックが入っている＝使う */
+  return ocrHas(kind)&&!!ocrEl(OCR_KIND[kind].chk).checked;
+}
 function ocrSync(msg){
-  const r=OCR.res||{},hasC=!!(r.lat&&r.lng),hasA=!!r.addr,hasN=!!r.name;
-  ocrEl("ocrName").textContent=hasN?r.name:"";
-  ocrEl("ocrRes").textContent=hasC?(r.lat+", "+r.lng):"";
-  ocrEl("ocrAddr").textContent=hasA?r.addr:"";
-  const any=hasC||hasA||hasN;
-  ocrEl("ocrCopy").disabled=!any;
-  ocrEl("ocrUse").disabled=!any;
-  const got=[]; if(hasN)got.push("名前"); if(hasA)got.push("住所"); if(hasC)got.push("座標");
+  const r=OCR.res||{};
+  ocrEl("ocrName").textContent=r.name||"";
+  ocrEl("ocrRes").textContent=(r.lat&&r.lng)?(r.lat+", "+r.lng):"";
+  ocrEl("ocrAddr").textContent=r.addr||"";
+  ["name","coord","addr"].forEach(k=>{ocrEl(OCR_KIND[k].item).style.display=ocrHas(k)?"":"none";});
+  const use=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);
+  ocrEl("ocrCopy").disabled=!use.length;
+  ocrEl("ocrUse").disabled=!use.length;
   ocrEl("ocrUse").textContent=
-    got.length?((got.length===1?"この":"")+got.join("と")+"を使う"):"この座標を使う";
+    use.length?((use.length===1?"この":"")+use.join("と")+"を使う"):"使うものにチェック";
   if(msg!==undefined){
-    const miss=[]; if(!hasN)miss.push("名前"); if(!hasA)miss.push("住所"); if(!hasC)miss.push("座標");
+    const miss=["name","addr","coord"].filter(k=>!ocrHas(k)).map(k=>OCR_KIND[k].label);
     ocrStatus(msg+(miss.length
-      ? "<b>"+miss.join("・")+"</b>も読むなら、そのあたりをタップ"
-      : "ぜんぶそろいました。"));
+      ? "<b>"+miss.join("・")+"</b>も読むなら、そのあたりをタップ（<b>別のスクショ</b>からでもOK）"
+      : "ぜんぶそろいました。使わないものはチェックを外してください。"));
   }
+}
+/* 読み取った値を結果に入れる。★別のスクショに切り替えたあとは、前のスクショで読めていて
+   チェックが入ったままのものを黙って上書きしない＝正しく読めた分を捨てないため、
+   トーストの「こちらにする」を押した時だけ差し替える。
+   同じスクショの中では読み直しがそのまま効く（狙い直しをやり直させない） */
+function ocrPut(kind,val){
+  const r=OCR.res,K=OCR_KIND[kind];
+  const set=()=>{
+    if(kind==="coord"){r.lat=val.lat;r.lng=val.lng;}else r[kind]=val;
+    ocrEl(K.chk).checked=true; OCR.lock[kind]=false;
+  };
+  if(ocrHas(kind)&&OCR.lock[kind]&&ocrEl(K.chk).checked){
+    const shown=kind==="coord"?(val.lat+", "+val.lng):val;
+    toast(K.label+"は前のスクショの分が入っています","「"+shown+"」にする",
+      ()=>{set();ocrSync(K.label+"を差し替えました。");});
+    return false;
+  }
+  set(); return true;
 }
 function ocrOpen(file,cb){
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}}
   OCR.url=URL.createObjectURL(file);
   const im=new Image();
   im.onload=()=>{
-    OCR.img=im;OCR.cb=cb||null;OCR.res={lat:null,lng:null,addr:null,name:null};
+    OCR.img=im;
+    if(cb)OCR.cb=cb;
+    /* ★2枚目以降は、それまでに読めた分をそのまま残す（別のスクショから足りないものだけ読み足す）。
+       残っているものは「前のスクショ由来」として鍵をかけ、勝手に上書きされないようにする */
+    const keep=!!OCR.res;
+    if(!keep)OCR.res={lat:null,lng:null,addr:null,name:null};
+    OCR.lock=keep?{name:true,coord:true,addr:true}:{};
     ocrEl("ocrImg").src=OCR.url;
     ocrSync();
     ocrEl("ocrov").classList.add("on");
     /* 全面自動スキャンはしない＝ユーザーが読みたい場所をタップで教えてくれる方が速くて確実。
        狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収）。
        日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
-    ocrStatus("読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）");
+    const kept=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);   /* チェックが入っている＝採用中のものだけ */
+    ocrStatus(kept.length
+      ? "<b>"+kept.join("・")+"</b>は前のスクショの分を残しています。足りないもののあたりを<b>指でトンとタップ</b>"
+      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）");
     ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
     });
@@ -3847,7 +3920,7 @@ function ocrClose(){
   ocrEl("ocrImg").removeAttribute("src");
   ocrEl("ocrSel").style.display="none";
   if(OCR.url){try{URL.revokeObjectURL(OCR.url);}catch(e){}OCR.url=null;}
-  OCR.img=null;OCR.res=null;OCR.cb=null;
+  OCR.img=null;OCR.res=null;OCR.cb=null;OCR.lock={};
   /* エンジンは閉じるたびに破棄（スマホのメモリを食い続けない。言語データはキャッシュ済みで再開は速い） */
   Object.keys(OCR.wkP).forEach(k=>{
     const p=OCR.wkP[k];
@@ -3859,8 +3932,9 @@ function ocrClose(){
 ocrEl("ocrCloseBtn").onclick=ocrClose;
 ocrEl("ocrCopy").onclick=async()=>{
   const r=OCR.res; if(!r)return;
-  /* 読めた分を上から順に（名前／住所／座標）。1つだけならその1行 */
-  const s=[r.name||"",r.addr||"",(r.lat&&r.lng)?(r.lat+", "+r.lng):""].filter(Boolean).join("\n");
+  /* チェックが入っている分だけを上から順に（名前／住所／座標）。1つだけならその1行 */
+  const s=[ocrOn("name")?r.name:"",ocrOn("addr")?r.addr:"",
+           ocrOn("coord")?(r.lat+", "+r.lng):""].filter(Boolean).join("\n");
   if(!s)return;
   const done=()=>toast(s.indexOf("\n")<0?("コピーしました: "+s):"読み取った分をコピーしました");
   try{await navigator.clipboard.writeText(s);done();}
@@ -3873,11 +3947,20 @@ ocrEl("ocrCopy").onclick=async()=>{
 };
 ocrEl("ocrUse").onclick=()=>{
   const r=OCR.res,cb=OCR.cb;
-  if(!r||(!r.addr&&!r.name&&!(r.lat&&r.lng)))return;
-  const out={lat:r.lat,lng:r.lng,addr:r.addr,name:r.name};
+  if(!r)return;
+  /* ★チェックを外したものは渡さない（null）。受け取る側は項目ごとに見ているので、
+     渡さなければその欄は触られない＝読み違えた1つのせいで他が消えることはない */
+  const useC=ocrOn("coord");
+  const out={lat:useC?r.lat:null,lng:useC?r.lng:null,
+             addr:ocrOn("addr")?r.addr:null,name:ocrOn("name")?r.name:null};
+  if(!out.addr&&!out.name&&!(out.lat&&out.lng))return;
   ocrClose();
   if(cb)cb(out.lat,out.lng,out.addr,out.name);
 };
+/* 「別のスクショ」＝読めた分はそのままに、次の画像を開く（onchangeはocrPickで登録済み） */
+ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
+/* チェックの付け外しでボタンの文言（何を使うか）を追随させる */
+["ocrNameChk","ocrResChk","ocrAddrChk"].forEach(id=>{ocrEl(id).onchange=()=>ocrSync();});
 /* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR */
 (function(){
   const st=ocrEl("ocrStage"),sel=ocrEl("ocrSel");
@@ -3948,10 +4031,11 @@ ocrEl("ocrUse").onclick=()=>{
       }
       if(OCR.img!==im)return;
       const got=[];
-      if(c&&c.coord){ OCR.res.lat=c.coord.lat; OCR.res.lng=c.coord.lng; got.push("座標"); }
-      if(c&&c.name){ OCR.res.name=c.name; got.push("名前"); }
-      if(c&&c.addr){ OCR.res.addr=c.addr; got.push("住所"); }
+      if(c&&c.coord&&ocrPut("coord",c.coord)) got.push("座標");
+      if(c&&c.name &&ocrPut("name", c.name )) got.push("名前");
+      if(c&&c.addr &&ocrPut("addr", c.addr )) got.push("住所");
       if(got.length) ocrSync(got.join("と")+"を読み取りました。");
+      else if(c) ocrSync("");   /* 前のスクショの分を守った＝トーストの「〜にする」で差し替えられる */
       else ocrStatus("読めませんでした。読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを、もう一度なぞるかタップしてみてください");
     }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
   });
