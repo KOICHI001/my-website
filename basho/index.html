@@ -469,7 +469,8 @@
      画素を使うので、拡大しても粗くならないし精度も変わらない。
      transform-originは中央固定＝倍率と位置の計算をひとつの式で済ませる */
   #ocrImg{max-width:100%;max-height:100%;transform-origin:50% 50%;will-change:transform;
-    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none}
+    -webkit-user-select:none;user-select:none;-webkit-touch-callout:none;pointer-events:none;
+    -webkit-user-drag:none}
   /* 今の倍率＝押すと元の大きさに戻る。拡大している時だけ出す */
   .ocr-zoom{position:absolute;right:8px;bottom:8px;display:none;
     padding:7px 12px;border-radius:999px;border:none;
@@ -705,7 +706,9 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <button class="nv-back" id="ocrSwapBtn">別のスクショ</button>
   </div>
   <div class="ocr-stage" id="ocrStage">
-    <img id="ocrImg" alt="">
+    <!-- draggable=false: パソコンのブラウザでマウスで囲もうとすると、画像のドラッグ＆ドロップが
+         始まってブラウザが指の操作を打ち切ってしまう（pointercancel）＝囲み選択ができなくなる -->
+    <img id="ocrImg" alt="" draggable="false">
     <div class="ocr-selbox" id="ocrSel"></div>
     <div class="ocr-busy" id="ocrBusy">読み取り中…</div>
     <button class="ocr-zoom" id="ocrZoom" type="button">×1.0 ⟲もとの大きさ</button>
@@ -743,7 +746,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.34.1";
+const VER = "0.34.2";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -4439,6 +4442,10 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
     sel.style.left=r.l+"px";sel.style.top=r.t+"px";
     sel.style.width=r.w+"px";sel.style.height=r.h+"px";
   }
+  /* ★パソコンのブラウザでマウスで囲もうとすると、ブラウザの「画像のドラッグ＆ドロップ」が
+     始まって指の操作が打ち切られる（pointerdown→dragstart→pointercancel を実測）＝囲めない。
+     指で触るスマホでは起きないが、PWAはパソコンでも開ける。ここで断ち切る */
+  st.addEventListener("dragstart",e=>e.preventDefault());
   st.addEventListener("pointerdown",e=>{
     if(!OCR.img)return;
     try{st.setPointerCapture(e.pointerId);}catch(x){}   /* 枠の外まで指が出ても最後まで追える */
