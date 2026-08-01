@@ -730,7 +730,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.30.0";
+const VER = "0.31.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1459,6 +1459,65 @@ function pickCoords(url){
   const m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)||url.match(/[?&]q=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)
         ||url.match(/[?&]query=(-?\d+\.\d+),\s*(-?\d+\.\d+)/)||url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
   return m?{lat:m[1],lng:m[2]}:null;
+}
+/* ───── 短縮リンクを開かずに中身だけ調べる（Googleマップの共有リンク） ─────
+   共有で届くのは「名前＋短縮リンク」だけで、住所も座標も載っていない。
+   ところが maps.app.goo.gl/… に「行き先はどこ？」と1回聞くと、返ってくる行き先に
+     ・/maps/place/<名前>/…!3d<緯度>!4d<経度>  → 名前とピンの正確な座標
+     ・/?q=<住所＋名前>&ftid=…                 → 郵便番号つきの住所
+   が丸ごと入っている（実測。ピン長押しの共有リンクにも座標が入っている）。
+   ★アプリ(APK)から Google へ直接聞く＝中継サービスを一切通さない。
+     ブラウザ(PWA)版はブラウザの決まりで直接聞けないため、この機能は動かない（従来どおり手入力・OCRで） */
+function isMapsShort(u){ return /^https?:\/\/(maps\.app\.goo\.gl|goo\.gl\/maps)\//i.test(String(u||"").trim()); }
+function httpNative(){
+  return (window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()
+    &&window.Capacitor.Plugins&&window.Capacitor.Plugins.CapacitorHttp)||null;
+}
+/* 実際に調べられる時だけ true＝案内文もこれで出し分ける（PWA版で「自動で入ります」と嘘をつかない） */
+function canExpandShort(u){ return !!httpNative()&&isMapsShort(u); }
+/* Androidは受け取ったヘッダーを1バイト文字として読むので、日本語が混ざると化ける。
+   全部が0x80〜0xFFに収まっていて、UTF-8として筋が通る時だけ日本語に戻す（化けていない文字列は素通り） */
+function utf8Fix(s){
+  s=String(s||"");
+  if(!/[\u0080-\u00FF]/.test(s)||/[^\u0000-\u00FF]/.test(s)) return s;
+  try{ return new TextDecoder("utf-8",{fatal:true})
+    .decode(Uint8Array.from(Array.from(s,c=>c.charCodeAt(0)))); }catch(e){ return s; }
+}
+async function expandShortUrl(u){
+  const CP=httpNative();
+  if(!CP) return null;   /* PWA版はここで終わり＝何も起きない（今までと同じ動き） */
+  try{
+    const r=await CP.request({url:u,method:"GET",disableRedirects:true,
+      connectTimeout:8000,readTimeout:8000,responseType:"text"});
+    let loc="";
+    const h=(r&&r.headers)||{};
+    for(const k in h){ if(/^location$/i.test(k)){ loc=h[k]; break; } }
+    if(!loc&&r&&r.url&&r.url!==u) loc=r.url;   /* 行き先まで進んでしまった端末の保険 */
+    loc=utf8Fix(String(loc||"").trim());
+    return /^https?:\/\//i.test(loc)?loc:null;
+  }catch(e){ return null; }
+}
+/* 行き先URL → 名前・住所・座標 */
+function readExpanded(loc,knownName){
+  const out={name:"",addr:"",c:null};
+  if(!loc) return out;
+  const isLL=t=>/^-?\d{1,2}\.\d+\s*,\s*-?\d{1,3}\.\d+$/.test(t);
+  const dec=t=>{ try{ return decodeURIComponent(t.replace(/\+/g," ")); }catch(e){ return t.replace(/\+/g," "); } };
+  out.c=pickCoords(loc);
+  /* /maps/place/<名前>/ … ピン長押しの共有はここが座標の文字列そのもの→名前にはしない */
+  const mp=loc.match(/\/maps\/place\/([^\/@?]+)/);
+  if(mp){ const n=dec(mp[1]).trim(); if(n&&!isLL(n)&&!dmsToDec(n)) out.name=n; }
+  /* ?q=… は「住所＋末尾に名前」の形。名前が分かっているなら削って住所だけにする */
+  const mq=loc.match(/[?&]q=([^&]+)/);
+  if(mq){
+    let q=dec(mq[1]).trim();
+    if(q&&!isLL(q)){
+      const nm=(knownName||out.name||"").trim();
+      if(nm&&q.length>nm.length&&q.slice(-nm.length)===nm) q=q.slice(0,-nm.length).trim();
+      out.addr=pickAddr(q)||"";
+    }
+  }
+  return out;
 }
 function save(){ Store.save(places); render(); }
 
@@ -2299,11 +2358,13 @@ function dmsToDec(t){
   if(!isFinite(la)||!isFinite(lo)||Math.abs(la)>90||Math.abs(lo)>180)return null;
   return {lat:la.toFixed(6),lng:lo.toFixed(6)};
 }
+let shareSeq=0;   /* 共有シートの通し番号（裏で調べた結果が古い画面に書き込まれるのを防ぐ） */
 function shareAdd(name,url,c,addr){
   let cc=c?{lat:String(c.lat),lng:String(c.lng)}:null;   /* OCR・コピペで後から入ることがある */
   sheet.innerHTML=
     '<h2>共有から登録</h2>'+
     '<div class="gps ok" id="shbox"></div>'+
+    '<div class="hint" id="shnote" style="display:none"></div>'+
     '<label>名前</label><input type="text" id="f_name" value="'+esc(name)+'"'+(name?'':' placeholder="この場所の名前を入力"')+'>'+
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     '<label>住所（任意）</label>'+
@@ -2314,10 +2375,13 @@ function shareAdd(name,url,c,addr){
     '<details><summary>メモも入れる</summary>'+
       '<label>メモ</label><textarea id="f_memo"></textarea>'+
     '</details>'+
-    (c?'<div class="hint">住所は共有では受け取れません。マップのカードを写したスクショがあれば'+
-      '「🔢 スクショから読み取る」で名前も住所も入れられます（カードの住所を長押しコピーでもOK）。</div>'
-      :'<div class="hint">共有には座標が入っていませんでした。名前・住所・座標が写ったスクショがあれば「🔢 スクショから読み取る」で。'+
-      'なければ登録後にそのまま「地図で位置を決める」が開きます（検索欄に名前が入った状態・不要なら戻るでスキップ）。</div>')+
+    (canExpandShort(url)
+      ? '<div class="hint">共有そのものには住所が入っていないため、リンクの中身を調べて住所・座標を補います'+
+        '（空いている欄だけ・数秒）。入らなかった時は「🔢 スクショから読み取る」か、'+
+        'カードの住所を長押しコピーで貼り付けてください。'
+      : '<div class="hint">住所は共有では受け取れません。マップのカードを写したスクショがあれば'+
+        '「🔢 スクショから読み取る」で名前も住所も入れられます（カードの住所を長押しコピーでもOK）。')+
+      (c?'':'座標が入っていない時は、登録後にそのまま「地図で位置を決める」が開きます（不要なら戻るでスキップ）。')+'</div>'+
     '<div class="sheet-actions">'+
       '<button class="btn" id="cancel">やめる</button>'+
       '<button class="btn primary" id="ok">登録する</button>'+
@@ -2328,6 +2392,28 @@ function shareAdd(name,url,c,addr){
   const shSync=()=>{ shbox.innerHTML='Googleマップから受け取りました'+
     (cc?'<span class="mono">'+esc(cc.lat)+", "+esc(cc.lng)+'</span>':''); };
   shSync();
+  /* 共有された短縮リンクの中身を調べて、住所・座標（名前が空なら名前も）を補う。
+     開いたまま裏で進めるので待たされない。空いている欄だけ埋める＝入っているものは触らない。
+     ★別のシートを開いた後に結果が返ってくることがあるので、番号(shareSeq)と
+       このシート固有のshnoteの両方で「まだ同じ画面か」を確かめてから書き込む */
+  const myTok=++shareSeq;
+  if(canExpandShort(url)) (async()=>{
+    const note=document.getElementById("shnote");
+    if(note){ note.style.display=""; note.textContent="リンクの中身を調べています…"; }
+    const loc=await expandShortUrl(url);
+    if(myTok!==shareSeq||!document.getElementById("shnote")) return;   /* もう別の画面 */
+    const fn=document.getElementById("f_name"), fa=document.getElementById("f_addr");
+    const r=readExpanded(loc,fn?fn.value.trim():"");
+    const got=[];
+    if(r.name&&fn&&!fn.value.trim()){ fn.value=r.name; got.push("名前"); }
+    if(r.addr&&fa&&!fa.value.trim()){ fa.value=r.addr; got.push("住所"); }
+    if(r.c&&!cc){ cc={lat:String(r.c.lat),lng:String(r.c.lng)}; shSync(); got.push("座標"); }
+    const n2=document.getElementById("shnote");
+    if(!n2) return;
+    if(got.length){ n2.textContent="リンクから"+got.join("と")+"を受け取りました。"; toast("リンクから"+got.join("と")+"を入れました"); }
+    else if(!loc){ n2.style.display="none"; }   /* 調べられなかった時は黙って引き下がる */
+    else n2.textContent="リンクには住所も座標も入っていませんでした。";
+  })();
   const shOcr=document.getElementById("shOcr");
   if(shOcr) shOcr.onclick=()=>{
     ocrPick((lat,lng,addr,nm)=>{
