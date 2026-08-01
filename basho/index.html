@@ -178,8 +178,9 @@
   .sub{font-size:12.5px;color:var(--soft);word-break:break-all}
   /* 電話番号が入っているカードだけ、その行の右端に☎（タップで発信）。
      住所が無いカードでは名前のすぐ下の行になる */
-  .subrow{display:flex;align-items:flex-start;gap:8px}
-  .subrow .sub{flex:1;min-width:0}
+  .metarow{display:flex;align-items:center;gap:8px;margin-top:5px}
+  .metarow .pill{margin-top:0}
+  .metarow .telmk{margin-left:auto}
   .telmk{flex:0 0 auto;border:1.5px solid var(--line);background:var(--paper);color:var(--route);
     border-radius:999px;padding:2px 10px;font-size:15px;line-height:1.35;cursor:pointer}
   .telmk:active{background:rgba(27,36,34,.06)}
@@ -742,7 +743,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.34.0";
+const VER = "0.34.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1817,8 +1818,10 @@ function _renderBody(){
           '<div class="name">'+esc(p.name)+'</div>'+
           /* 電話番号があれば、この行（距離／住所／メモ）の右端に☎を置く。
              住所も距離もメモも無いカードでは、名前のすぐ下に☎だけの行になる */
-          ((sub||p.tel)?'<div class="subrow"><div class="sub">'+esc(sub)+'</div>'+
-            (p.tel?'<button class="telmk" aria-label="電話をかける">☎</button>':'')+'</div>':'')+pill+
+          (sub?'<div class="sub">'+esc(sub)+'</div>':'')+
+          /* 電話番号があれば、住所の下（±◯mの行）の右端に☎を置く */
+          ((pill||p.tel)?'<div class="metarow">'+pill+
+            (p.tel?'<button class="telmk" aria-label="電話をかける">☎</button>':'')+'</div>':'')+
         '</div>'+
         '<div class="phbox">'+
           '<div class="phstrip"></div>'+
