@@ -730,7 +730,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.31.0";
+const VER = "0.32.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3693,6 +3693,15 @@ function ocrRecLines(rec){
       if(s)raw.push({t:s,x0:0,x1:0,y0:0,y1:0,h:0,conf:(typeof d.conf==="number"?d.conf:null)});
     });
   }
+  /* ★指で四角く囲って指定された時は、その四角に「中心が入っている行」だけを判断に使う（v0.32.0）。
+     読む範囲には薄い余白を足してあるが、それは文字の上下が切れて別の字に化けるのを防ぐためのもの。
+     余白にかすった隣の行まで判断に混ぜると、住所の末尾が汚れたり、崩れた読みが名前として競り勝つ。
+     ＝「読むのは余白込み・判断は囲いの中だけ」。囲っていない（タップ）時は素通り。 */
+  const cr=d.core;
+  if(cr&&raw.length){
+    const inside=raw.filter(o=>{const c=(o.y0+o.y1)/2;return c>=cr.t&&c<=cr.b;});
+    if(inside.length)return inside;   /* 1つも入らない＝囲いが細すぎた時だけ、従来どおり全部使う */
+  }
   return raw;
 }
 /* 2つの行が「同じかたまりの折り返し」か。true=折り返し / false=別のもの / null=位置が無くて判断不能 */
@@ -3770,13 +3779,18 @@ function ocrParseAddr(rec){
   let out=lines[head].slice(cut);
   /* 折り返しの続きを繋ぐ。★カードが狭いと3行になる（実測「〒389-0111 長野県北／佐久郡軽井沢町長倉7／48-5」）
      ので続きは3行まで見る。行間が空いた所で必ず止まるので、伸ばしても別の項目は拾わない */
+  /* ★指で囲って指定された時は、囲いそのものが答え（v0.32.0）。
+     2行ぶん囲ったのなら2行つながりに決まっているので、行間の広さで推測し直さない。
+     （囲いの外の行は ocrRecLines の時点でもう除かれている＝ここに残っているのは囲った行だけ）
+     タップの時は従来どおり行間で判断する */
+  const boxed=!!(rec&&rec.core);
   for(let i=head+1;i<lines.length&&i<=head+3;i++){
     const w=ocrAddrCont(src[i-1],src[i]);
-    if(w===false)break;                              /* 行間が空いた＝別の項目（「1 階」電話 など） */
+    if(!boxed&&w===false)break;                      /* 行間が空いた＝別の項目（「1 階」電話 など） */
     if(src[i].conf!=null&&src[i].conf<35)break;      /* 行ごと読めていない＝ボタンの並びなど（実測 conf 0） */
     if(OCR_ADDR_NG.test(lines[i]))break;
     /* 位置が取れない版のTesseractでは、従来どおり「数字だけの行」に限って続きとみなす */
-    if(w===null&&!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
+    if(w===null&&!boxed&&!/^[0-9\-\s]{1,12}$/.test(lines[i]))break;
     /* ★混じったゴミ文字はその字だけ落とす（行ごと捨てると番地が丸ごと消える＝いちばん困る） */
     const L=lines[i].replace(OCR_ADDR_DROP,"").trim();
     if(!L)break;
@@ -3948,7 +3962,7 @@ function ocrText(lang,nx,ny,nw,nh,psm,invert,wl){
     const r=await wk.recognize(c);
     /* linesは1行ごとの文字＋枠（bbox）。折り返しの判定に使う（無い版でもtextだけで動く） */
     return {text:r.data.text||"",conf:(typeof r.data.confidence==="number"?r.data.confidence:null),
-            lines:r.data.lines||null,blocks:r.data.blocks||null};
+            lines:r.data.lines||null,blocks:r.data.blocks||null,ch:c.height};
   });
 }
 /* 指定範囲を「座標？住所？名前？」の順に自動判定して読む。
@@ -3959,8 +3973,12 @@ function ocrText(lang,nx,ny,nw,nh,psm,invert,wl){
    ★住所が読めた帯からは名前を採らない: 帯には評価や営業時間の行も入り、その崩れた読み
    （実測「4Se エ っ7二日折記る」）が名前として入ってくると、せっかくの名前を汚す。
    名前はユーザーが名前のあたりをタップした時＝住所も座標も無い帯の時だけ拾う */
-async function ocrScanAuto(nx,ny,nw,nh,psm){
+async function ocrScanAuto(nx,ny,nw,nh,psm,core){
   const im=OCR.img;
+  /* core＝ユーザーが囲った四角（読む範囲に対する上下の割合0〜1）。
+     囲いの中に中心がある行だけを判断に使うために、認識のたびに結果へ持たせる */
+  const setCore=r=>{ if(r&&core&&r.ch)r.core={t:core.t*r.ch,b:core.b*r.ch}; return r; };
+  const coreText=r=>{ const ls=ocrRecLines(r); return ls.length?ls.map(o=>o.t).join("\n"):(r.text||""); };
   const dark=ocrRegionIsDark(nx,ny,nw,nh);
   const passes=[dark,!dark];
   /* 都道府県名が入っていれば「ちゃんと読めた住所」とみなす。
@@ -3971,12 +3989,12 @@ async function ocrScanAuto(nx,ny,nw,nh,psm){
      コストは「認識の回数」で決まる。2エンジンの同時実行も競合で逆に遅くなった（13秒）ので、
      英語→ダメなら日本語 の順に1回ずつ動かす。座標は1回(約4秒)、住所と名前は2回目(約8秒)で確定する */
   for(let i=0;i<passes.length;i++){
-    const rc=await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL);
+    const rc=setCore(await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL));
     if(OCR.img!==im)return null;
-    const c=ocrParseCoords(rc.text);
+    const c=ocrParseCoords(core?coreText(rc):rc.text);
     if(c)return {coord:c};   /* 座標が読めた帯＝数字だけ。名前は混ざらない */
     if(i===0)ocrStatus("日本語（住所・名前）としても読んでいます…");
-    const rj=await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],"");
+    const rj=setCore(await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],""));
     if(OCR.img!==im)return null;
     const a=ocrParseAddr(rj);
     if(good(a))return {addr:a};
@@ -4129,9 +4147,9 @@ function ocrOpen(file,cb){
        日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
     const kept=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);   /* チェックが入っている＝採用中のものだけ */
     ocrStatus((kept.length
-      ? "<b>"+kept.join("・")+"</b>は前のスクショの分を残しています。足りないもののあたりを<b>指でトンとタップ</b>"
-      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを<b>指でトンとタップ</b>（だいたいでOK・なぞってもOK）")
-      +"<br>スクショは<b>2本指で広げると大きく</b>できます（動かすのも2本指）");
+      ? "<b>"+kept.join("・")+"</b>は前のスクショの分を残しています。足りないものを<b>指で四角く囲む</b>"
+      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>を<b>指で四角く囲む</b>（囲ったところだけを読みます・トンとタップでもOK）")
+      +"<br>スクショは<b>2本指で広げると大きく</b>できます（大きくするほど囲みやすく、読み違いも減ります）");
     ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
     });
@@ -4335,8 +4353,12 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
              認識の時間は帯の広さでは変わらない＝広く取っても遅くならない）
            ★外しても読めるように、空振りしたら黙って倍近くまで広げてもう一度探す */
         const cy=Math.min(H,Math.max(0,((r.y1+r.y2)/2-ir.top)*fy));
+        /* ★拡大している時は帯も同じだけ狭める（v0.32.0）。
+           帯の広さは元画像に対する割合なので、拡大したまま等倍と同じ割合で取ると
+           「画面に見えているより ずっと広い範囲」を読むことになり、狙ったつもりが外れる */
+        const z=Math.max(1,Z.s);
         const band=async ratio=>{
-          const h=Math.min(H,Math.max(110,Math.round(H*ratio)));
+          const h=Math.min(H,Math.max(Math.round(110/z),Math.round(H*ratio/z)));
           const y=Math.max(0,Math.min(H-h,Math.round(cy-h/2)));
           return await ocrScanAuto(0,y,W,h,6);
         };
@@ -4347,21 +4369,21 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
           c=await band(0.34);
         }
       }else{
-        /* なぞり＝囲みは「だいたい」でよい：自動でひと回り広げて読む */
+        /* ★囲みは「囲ったとおり」に読む（v0.32.0）。2本指で拡大できるようになったので、
+           こちらが範囲を決めた方が余計な行が混ざらず読み違いも減る（コーイチさん判断）。
+           足すのは「文字の上下が切れて別の字に化けないぶん」だけの薄い余白。
+           ★欠けると読めなくなるのではなく“別の字に化ける”のが怖い＝
+             数字は化けても形が通ってしまい、間違った座標が黙って入る。
+           余白に隣の行がかすっても、判断に使うのは囲いの中に中心がある行だけ（ocrRecLines）。
+           旧・自動でひと回り広げて再挑戦は廃止＝空振りの待ち時間が半分になる（囲い直す方が速い） */
         let nx=Math.max(0,(r.x1-ir.left)*fx),ny=Math.max(0,(r.y1-ir.top)*fy);
         let nx2=Math.min(W,(r.x2-ir.left)*fx),ny2=Math.min(H,(r.y2-ir.top)*fy);
         if(nx2-nx<10||ny2-ny<6)return;
-        const padX=Math.max(24,(nx2-nx)*0.5),padY=Math.max(20,(ny2-ny)*1.0);
+        const padX=Math.max(6,(nx2-nx)*0.04),padY=Math.max(8,(ny2-ny)*0.15);
         const ex=Math.max(0,nx-padX),ey=Math.max(0,ny-padY);
         const ew=Math.min(W,nx2+padX)-ex,eh=Math.min(H,ny2+padY)-ey;
-        ocrStatus("囲んだあたりを読み取り中…");
-        c=await ocrScanAuto(ex,ey,ew,eh,6);
-        if(!c&&OCR.img===im){
-          /* 囲み損ね・端切れ対策：横は端から端まで、縦も上下に広げてもう一度読む */
-          ocrStatus("見つからないので<b>もっと広げて</b>探しています…");
-          const ey2=Math.max(0,ey-eh*0.5),eh2=Math.min(H,ny2+padY+eh*0.5)-ey2;
-          c=await ocrScanAuto(0,ey2,W,eh2,6);
-        }
+        ocrStatus("囲んだところを読み取り中…");
+        c=await ocrScanAuto(ex,ey,ew,eh,6,{t:(ny-ey)/eh,b:(ny2-ey)/eh});
       }
       if(OCR.img!==im)return;
       const got=[];
@@ -4370,8 +4392,8 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
       if(c&&c.addr &&ocrPut("addr", c.addr )) got.push("住所");
       if(got.length) ocrSync(got.join("と")+"を読み取りました。");
       else if(c) ocrSync("");   /* 前のスクショの分を守った＝トーストの「〜にする」で差し替えられる */
-      else ocrStatus("読めませんでした。読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>のあたりを、もう一度なぞるかタップしてみてください");
-    }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度なぞるかタップしてみてください");}
+      else ocrStatus("読めませんでした。<b>2本指で大きく</b>してから、読みたい部分を<b>少し広めに囲って</b>みてください");
+    }catch(x){if(OCR.img)ocrStatus("読み取りに失敗しました。もう一度囲ってみてください");}
     finally{ocrBusy(false);}
   });
   st.addEventListener("pointercancel",e=>{
