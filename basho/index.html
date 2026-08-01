@@ -176,6 +176,13 @@
   .preftag{color:var(--soft);font-weight:400}
   .name{font-family:var(--mincho);font-size:21px;font-weight:600;margin:2px 0 3px;line-height:1.35}
   .sub{font-size:12.5px;color:var(--soft);word-break:break-all}
+  /* 電話番号が入っているカードだけ、その行の右端に☎（タップで発信）。
+     住所が無いカードでは名前のすぐ下の行になる */
+  .subrow{display:flex;align-items:flex-start;gap:8px}
+  .subrow .sub{flex:1;min-width:0}
+  .telmk{flex:0 0 auto;border:1.5px solid var(--line);background:var(--paper);color:var(--route);
+    border-radius:999px;padding:2px 10px;font-size:15px;line-height:1.35;cursor:pointer}
+  .telmk:active{background:rgba(27,36,34,.06)}
   .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;
     border:1px solid var(--line);border-radius:999px;padding:2px 8px;margin-top:5px;color:var(--soft)}
   .pill.warn{border-color:rgba(163,58,42,.4);color:var(--danger)}
@@ -422,7 +429,9 @@
   body.nearon .fab,body.nearon .fab2,body.nearon .fab3{display:none}   /* 表示中はFAB全部隠す */
   .near-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
     padding:calc(8px + env(safe-area-inset-top)) 12px 8px;border-bottom:1.5px solid var(--line)}
-  .near-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em}
+  /* 施設中心の時は名前が入るので、長い名前は詰めて…にする（距離ボタンを押し出さない） */
+  .near-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em;
+    max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .near-r{display:flex;gap:5px;margin-left:auto}
   .near-r button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
     border-radius:999px;padding:6px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer}
@@ -599,13 +608,13 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 
 <button class="fab" id="addBtn">ここを登録<small>GPSで今の位置を記録</small></button>
 <button class="fab2" id="parkBtn">🚩 足あと<small>戻りたい場所に旗を立てる</small></button>
-<button class="fab3" id="nearBtn">📍<span>近く</span></button>
+<button class="fab3" id="nearBtn">📍<span>周辺</span></button>
 
-<!-- 📍近くビュー: 現在地からの距離で絞った場所を「カード列+地図」で同時に見る -->
+<!-- 📍周辺ビュー: 中心（現在地 or 選んだ場所）からの距離で絞った場所を「カード列+地図」で同時に見る -->
 <div class="nearov" id="nearov">
   <div class="near-top">
     <button class="nv-back" id="nearBack">← 戻る</button>
-    <div class="near-tt">📍 近くの場所</div>
+    <div class="near-tt" id="nearTt">📍 周辺の場所</div>
     <div class="near-r" id="nearRads">
       <button data-r="500">500m</button><button data-r="1000">1km</button><button data-r="2000" class="on">2km</button><button data-r="5000">5km</button>
     </div>
@@ -715,6 +724,9 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <div class="ocr-item" id="ocrAddrItem" style="display:none">
         <label class="ocr-chk"><input type="checkbox" id="ocrAddrChk" checked></label>
         <span class="ocr-addr ocr-ed" id="ocrAddr" contenteditable="true" enterkeyhint="done"></span></div>
+      <div class="ocr-item" id="ocrTelItem" style="display:none">
+        <label class="ocr-chk"><input type="checkbox" id="ocrTelChk" checked></label>
+        <span class="ocr-tel ocr-ed" id="ocrTel" contenteditable="true" enterkeyhint="done"></span></div>
       <div class="ocr-status" id="ocrStatus"></div>
     </div>
     <div class="ocr-btns">
@@ -730,7 +742,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.33.0";
+const VER = "0.34.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1803,7 +1815,10 @@ function _renderBody(){
         '<div class="cm-text">'+
           (p.cat?'<div class="cat">'+esc(p.cat)+(multiPref&&p.pref?'<span class="preftag">　'+esc(p.pref)+'</span>':'')+'</div>':'')+
           '<div class="name">'+esc(p.name)+'</div>'+
-          (sub?'<div class="sub">'+esc(sub)+'</div>':'')+pill+
+          /* 電話番号があれば、この行（距離／住所／メモ）の右端に☎を置く。
+             住所も距離もメモも無いカードでは、名前のすぐ下に☎だけの行になる */
+          ((sub||p.tel)?'<div class="subrow"><div class="sub">'+esc(sub)+'</div>'+
+            (p.tel?'<button class="telmk" aria-label="電話をかける">☎</button>':'')+'</div>':'')+pill+
         '</div>'+
         '<div class="phbox">'+
           '<div class="phstrip"></div>'+
@@ -1816,16 +1831,23 @@ function _renderBody(){
       '</div>'+
       '<button class="star'+(p.fav?" on":"")+'" aria-label="よく行く">'+(p.fav?"★":"☆")+'</button>'+
       /* ボタンの赤=頼る位置情報が未確定のサイン（初見ユーザーへの視覚的な案内）。
-         経路・周辺=正確な座標（±80m以内 or 手動ピン）が無ければ赤。
+         経路・近く=正確な座標（±80m以内 or 手動ピン）が無ければ赤。
+         周辺=中心を置くだけなので座標さえあれば足りる（粗くても俯瞰の役には立つ）。
          地図を開く=URL・座標・住所のどれも無い時だけ赤。全部そろえば全ボタン白 */
       '<div class="actions">'+
         '<button data-a="map"'+(hasSpot(p)?'':' class="warn"')+'>地図を開く</button>'+
         '<button data-a="route"'+(goodPin(p)?'':' class="warn"')+'>経路</button>'+
-        (p.tel?'<button data-a="tel">電話</button>':'')+
-        '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>周辺</button>'+
+        /* 電話はこの並びから外して、上の行の☎に移した（4つのボタンの幅を守るため） */
+        /* 周辺=この場所を真ん中にして、まわりに登録した場所を見る（v0.34.0）
+           近く=着いてからの最後の100m（拡大地図の歩き案内）。旧「周辺」がこれ */
+        '<button data-a="area"'+((p.lat&&p.lng)?'':' class="warn"')+'>周辺</button>'+
+        '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>近く</button>'+
       '</div>';
     /* カード本体タップ＝編集（地図は「地図を開く」ボタンから） */
     el.querySelector(".card-main").onclick=()=>form(p);
+    /* ☎はカード本体の中にあるので、押した時に編集が開かないよう止める */
+    const tb=el.querySelector(".telmk");
+    if(tb) tb.onclick=e=>{e.stopPropagation(); location.href="tel:"+p.tel.replace(/[^\d+]/g,"");};
     /* 写真ボックス: サムネ列(新しい順)+下の固定2ボタン。タップ=ライトボックス/長押し=削除 */
     const strip=el.querySelector(".phstrip");
     if(!((p.ph&&p.ph.length)||(p.att&&p.att.length))) strip.style.display="none";
@@ -1891,7 +1913,15 @@ function _renderBody(){
         }
         else openRoute(p);
       }
-      else if(a==="tel") location.href="tel:"+p.tel.replace(/[^\d+]/g,"");
+      else if(a==="area"){
+        /* この場所を真ん中にして周辺ビューを開く。座標が無ければリンクから拾い直す */
+        if(!(p.lat&&p.lng)){
+          const c=pickCoords(p.url);
+          if(c){p.lat=c.lat;p.lng=c.lng;p.acc=null;updatePref(p);save();}
+        }
+        if(p.lat&&p.lng){ bump(p); nearOpen(p); }
+        else dlgOpen("位置が入っていません。\n編集の「🗺 地図で位置を決める」でピンを置いてください。",false);
+      }
       else if(a==="nav"){
         /* 座標が無ければリンクからの抽出をもう一度試す（フルURLなら取れる） */
         if(!(p.lat&&p.lng)){
@@ -2374,6 +2404,8 @@ function shareAdd(name,url,c,addr){
     '<label>リンク</label><input type="text" id="f_url" value="'+esc(url)+'">'+
     '<label>住所（任意）</label>'+
     '<input type="text" id="f_addr" value="'+esc(addr||"")+'" placeholder="コピペでOK（〒や建物名付きでも大丈夫）">'+
+    /* 共有には電話番号は入らない（Googleが送っていない）。スクショから読めた時の受け皿 */
+    '<label>電話番号（任意）</label><input type="tel" id="f_tel" value="" placeholder="スクショから読み取れます">'+
     /* 座標がすでに入っている共有でも出す＝住所をスクショから入れたい場面が多いため（旧: 座標なしの時だけ表示） */
     '<button class="subbtn" id="shOcr">🔢 スクショから読み取る（名前・住所・座標）</button>'+
     '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 住所・カテゴリは選び漏れ防止で最初から表に出す */
@@ -2421,12 +2453,13 @@ function shareAdd(name,url,c,addr){
   })();
   const shOcr=document.getElementById("shOcr");
   if(shOcr) shOcr.onclick=()=>{
-    ocrPick((lat,lng,addr,nm)=>{
+    ocrPick((lat,lng,addr,nm,tel)=>{
       const got=[];
       const nr=ocrNameApply(nm);
       if(nr.filled) got.push("名前");
       if(lat&&lng){ cc={lat:String(lat),lng:String(lng)}; shSync(); got.push("座標"); }
       if(addr){ document.getElementById("f_addr").value=addr; got.push("住所"); }
+      if(tel){ document.getElementById("f_tel").value=tel; got.push("電話"); }
       const msg=got.length?(got.join("と")+"を入れました"):"";
       /* 入れ替えの確認は「はい／いいえ」のダイアログ（トーストだと数秒で消えて名前が失われる） */
       if(msg) toast(msg+"。「登録する」で確定");
@@ -2452,7 +2485,8 @@ function shareAdd(name,url,c,addr){
       memo:document.getElementById("f_memo").value.trim(),
       lat:cc?cc.lat:"", lng:cc?cc.lng:"", acc:null,
       addr:document.getElementById("f_addr").value.trim(),
-      url:document.getElementById("f_url").value.trim(), tel:"",
+      url:document.getElementById("f_url").value.trim(),
+      tel:document.getElementById("f_tel").value.trim(),
       fav:false, count:0, created:Date.now(), updated:Date.now()
     };
     if(homeTab==="shelf"&&shelfSub&&rec.cat===shelfCat) rec.sf=shelfSub;
@@ -2491,7 +2525,7 @@ function form(d){
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
     '<div class="hint">「地図を開く」は<b>住所があれば住所（＋名前）</b>で開き、住所が無いときにこのリンクを使います'+
     '（ピン長押しの共有リンクは、開くと名称欄に緯度経度が出てしまうため）。ただし短縮リンクには座標が入っていないため、'+
-    '<b>周辺モード</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
+    '<b>「近く」（歩きの案内）</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
     '名前・住所・座標が写ったスクショがあれば「🔢 スクショから読み取る」でまとめて取り込めます。</div>'+
     '<details><summary>住所・電話・メモ・座標を直接いじる</summary>'+
       '<label>住所</label><input type="text" id="f_addr" value="'+esc(d.addr)+'">'+
@@ -2551,7 +2585,7 @@ function form(d){
     toast("住所のあたりを表示します。＋印を合わせて「この位置にする」");
   };
   document.getElementById("ocrBtn").onclick=()=>{
-    ocrPick((lat,lng,addr,nm)=>{
+    ocrPick((lat,lng,addr,nm,tel)=>{
       const got=[];
       const nr=ocrNameApply(nm);
       if(nr.filled) got.push("名前");
@@ -2568,6 +2602,11 @@ function form(d){
         /* 住所欄は「直接いじる」の中に畳まれている＝入れたのに見えないと不安なので開く */
         const dt=sheet.querySelector("details"); if(dt)dt.open=true;
         got.push("住所");
+      }
+      if(tel){
+        document.getElementById("f_tel").value=tel;
+        const dt=sheet.querySelector("details"); if(dt)dt.open=true;   /* 電話欄も同じ畳みの中 */
+        got.push("電話");
       }
       const msg=got.length?(got.join("と")+"を入れました"):"";
       /* 入れ替えの確認は「はい／いいえ」のダイアログ（トーストだと数秒で消えて名前が失われる） */
@@ -2593,7 +2632,7 @@ function form(d){
     }
     /* 短縮リンク＝座標なしの案内（貼り付け時のみ） */
     if(/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl)\//.test(v.trim()))
-      toast("短縮リンクには座標が入っていません。周辺モードを使うには「地図で位置を決める」を");
+      toast("短縮リンクには座標が入っていません。「近く」を使うには「地図で位置を決める」を");
   });
   document.getElementById("cancel").onclick=closeSheet;
   document.getElementById("del").onclick=()=>{
@@ -3807,6 +3846,22 @@ function ocrFixMuni(addr){
   if(cands.some(c=>c!==b0&&c.d===b0.d))return t;   /* 同じくらい似たものが複数＝決められない */
   return t.slice(0,i)+b0.m+rest.slice(b0.L);
 }
+/* OCR結果テキスト→電話番号。★形が決まっているので座標より確実に拾える。
+   市外局番の切り方は 0X-XXXX-XXXX / 0XX-XXX-XXXX / 0XXX-XX-XXXX、携帯は 0X0-XXXX-XXXX。
+   ★郵便番号（〒201-8601）は塊が2つなので当たらない＝住所と取り違えない */
+function ocrParseTel(text){
+  const t=String(text||"")
+    .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
+    .replace(/[ー−―–—‐－]/g,"-").replace(/[　\s]+/g," ");
+  const m=t.match(/0\d{1,4}\s?-\s?\d{1,4}\s?-\s?\d{3,4}/);
+  if(m){
+    const s=m[0].replace(/\s/g,""),d=s.replace(/-/g,"");
+    if(d.length>=10&&d.length<=11)return s;
+  }
+  /* 区切りなしで書かれている場合（0334801151） */
+  const m2=t.match(/(?:^|\D)(0\d{9,10})(?!\d)/);
+  return m2?m2[1]:null;
+}
 function ocrParseAddr(rec){
   const norm=s=>String(s||"")
     .replace(/[０-９]/g,ch=>String.fromCharCode(ch.charCodeAt(0)-0xFEE0))
@@ -4050,8 +4105,11 @@ async function ocrScanAuto(nx,ny,nw,nh,psm,core){
   for(let i=0;i<passes.length;i++){
     const rc=setCore(await ocrText("eng",nx,ny,nw,nh,psm,passes[i],OCR_WL));
     if(OCR.img!==im)return null;
-    const c=ocrParseCoords(core?coreText(rc):rc.text);
+    const engT=core?coreText(rc):rc.text;
+    const c=ocrParseCoords(engT);
     if(c)return {coord:c};   /* 座標が読めた帯＝数字だけ。名前は混ざらない */
+    const tl=ocrParseTel(engT);
+    if(tl)return {tel:tl};   /* 電話番号も数字だけの帯＝ここで確定（日本語で読み直す必要がない） */
     if(i===0)ocrStatus("日本語（住所・名前）としても読んでいます…");
     const rj=setCore(await ocrText("jpn",nx,ny,nw,nh,psm,passes[i],""));
     if(OCR.img!==im)return null;
@@ -4076,7 +4134,10 @@ function ocrBusy(on){ocrEl("ocrBusy").classList.toggle("on",!!on);}
    正しく読めた残りまで捨てなくて済む＝足りない分は「別のスクショ」から読み足せる */
 const OCR_KIND={name:{item:"ocrNameItem",chk:"ocrNameChk",el:"ocrName",label:"名前"},
                 coord:{item:"ocrResItem", chk:"ocrResChk", el:"ocrRes", label:"座標"},
-                addr:{item:"ocrAddrItem",chk:"ocrAddrChk",el:"ocrAddr",label:"住所"}};
+                addr:{item:"ocrAddrItem",chk:"ocrAddrChk",el:"ocrAddr",label:"住所"},
+                tel: {item:"ocrTelItem", chk:"ocrTelChk", el:"ocrTel", label:"電話"}};
+/* 読み取り対象の並び（上から表示・この順で「◯◯と◯◯を使う」に並ぶ） */
+const OCR_KINDS=["name","addr","coord","tel"];
 function ocrHas(kind){
   const r=OCR.res||{};
   return kind==="coord"?!!(r.lat&&r.lng):!!r[kind];
@@ -4090,7 +4151,7 @@ function ocrText2(kind){   /* 画面に出す文字 */
 }
 function ocrSync(msg){
   const foc=document.activeElement;
-  ["name","coord","addr"].forEach(k=>{
+  OCR_KINDS.forEach(k=>{
     const K=OCR_KIND[k],el=ocrEl(K.el);
     /* ★編集中の欄は書き換えない（打っている文字が消える・カーソルが飛ぶ） */
     if(el!==foc&&el.textContent!==ocrText2(k))el.textContent=ocrText2(k);
@@ -4098,13 +4159,13 @@ function ocrSync(msg){
     /* 編集中に空にした瞬間に行ごと消えないよう、フォーカス中は出しっぱなしにする */
     ocrEl(K.item).style.display=(ocrHas(k)||el===foc)?"":"none";
   });
-  const use=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);
+  const use=OCR_KINDS.filter(ocrOn).map(k=>OCR_KIND[k].label);
   ocrEl("ocrCopy").disabled=!use.length;
   ocrEl("ocrUse").disabled=!use.length;
   ocrEl("ocrUse").textContent=
     use.length?((use.length===1?"この":"")+use.join("と")+"を使う"):"使うものにチェック";
   if(msg!==undefined){
-    const miss=["name","addr","coord"].filter(k=>!ocrHas(k)).map(k=>OCR_KIND[k].label);
+    const miss=OCR_KINDS.filter(k=>!ocrHas(k)).map(k=>OCR_KIND[k].label);
     ocrStatus(msg+(miss.length
       ? "<b>"+miss.join("・")+"</b>も読むなら、そのあたりをタップ（<b>別のスクショ</b>からでもOK）"
       : (OCR.bad.coord
@@ -4167,11 +4228,11 @@ function ocrEdited(kind,quiet){
    イベント頼みをやめ、押された瞬間に画面から読み直す */
 function ocrPullEdits(){
   let ch=false;
-  ["name","coord","addr"].forEach(k=>{if(ocrEdited(k,true))ch=true;});
+  OCR_KINDS.forEach(k=>{if(ocrEdited(k,true))ch=true;});
   if(ch)ocrSync();
   return ch;
 }
-["name","coord","addr"].forEach(k=>{
+OCR_KINDS.forEach(k=>{
   const el=ocrEl(OCR_KIND[k].el);
   el.addEventListener("input",()=>ocrEdited(k));
   el.addEventListener("compositionend",()=>ocrEdited(k));   /* 日本語入力の確定 */
@@ -4195,8 +4256,8 @@ function ocrOpen(file,cb){
     /* ★2枚目以降は、それまでに読めた分をそのまま残す（別のスクショから足りないものだけ読み足す）。
        残っているものは「前のスクショ由来」として鍵をかけ、勝手に上書きされないようにする */
     const keep=!!OCR.res;
-    if(!keep){OCR.res={lat:null,lng:null,addr:null,name:null};OCR.bad={};}
-    OCR.lock=keep?{name:true,coord:true,addr:true}:{};
+    if(!keep){OCR.res={lat:null,lng:null,addr:null,name:null,tel:null};OCR.bad={};}
+    OCR.lock=keep?{name:true,coord:true,addr:true,tel:true}:{};
     ocrEl("ocrImg").src=OCR.url;
     if(OCR.zreset)OCR.zreset();       /* 新しい絵は必ず等倍から */
     ocrSync();
@@ -4204,10 +4265,10 @@ function ocrOpen(file,cb){
     /* 全面自動スキャンはしない＝ユーザーが読みたい場所をタップで教えてくれる方が速くて確実。
        狙いを定めている間に裏でエンジンだけ温めておく（初回の待ちを吸収）。
        日本語（住所用）は英語の後ろで静かに続けて温める＝住所タップの初回待ちも吸収 */
-    const kept=["name","addr","coord"].filter(ocrOn).map(k=>OCR_KIND[k].label);   /* チェックが入っている＝採用中のものだけ */
+    const kept=OCR_KINDS.filter(ocrOn).map(k=>OCR_KIND[k].label);   /* チェックが入っている＝採用中のものだけ */
     ocrStatus((kept.length
       ? "<b>"+kept.join("・")+"</b>は前のスクショの分を残しています。足りないものを<b>指で四角く囲む</b>"
-      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>を<b>指で四角く囲む</b>（囲ったところだけを読みます・トンとタップでもOK）")
+      : "読みたい<b>名前</b>・<b>住所</b>・<b>座標</b>・<b>電話</b>を<b>指で四角く囲む</b>（囲ったところだけを読みます・トンとタップでもOK）")
       +"<br>スクショは<b>2本指で広げると大きく</b>できます（大きくするほど囲みやすく、読み違いも減ります）");
     ocrWorker("eng").then(()=>ocrWorker("jpn")).catch(()=>{
       if(OCR.img===im)ocrStatus("読み取りエンジンを読み込めませんでした。電波のある場所で一度だけ開き直してください（以後はオフラインでも動きます）");
@@ -4265,7 +4326,8 @@ ocrEl("ocrCopy").onclick=async()=>{
   const r=OCR.res; if(!r)return;
   /* チェックが入っている分だけを上から順に（名前／住所／座標）。1つだけならその1行 */
   const s=[ocrOn("name")?r.name:"",ocrOn("addr")?r.addr:"",
-           ocrOn("coord")?(r.lat+", "+r.lng):""].filter(Boolean).join("\n");
+           ocrOn("coord")?(r.lat+", "+r.lng):"",
+           ocrOn("tel")?r.tel:""].filter(Boolean).join("\n");
   if(!s)return;
   const done=()=>toast(s.indexOf("\n")<0?("コピーしました: "+s):"読み取った分をコピーしました");
   try{await navigator.clipboard.writeText(s);done();}
@@ -4288,15 +4350,16 @@ ocrEl("ocrUse").onclick=()=>{
      渡さなければその欄は触られない＝読み違えた1つのせいで他が消えることはない */
   const useC=ocrOn("coord");
   const out={lat:useC?r.lat:null,lng:useC?r.lng:null,
-             addr:ocrOn("addr")?r.addr:null,name:ocrOn("name")?r.name:null};
-  if(!out.addr&&!out.name&&!(out.lat&&out.lng))return;
+             addr:ocrOn("addr")?r.addr:null,name:ocrOn("name")?r.name:null,
+             tel:ocrOn("tel")?r.tel:null};
+  if(!out.addr&&!out.name&&!out.tel&&!(out.lat&&out.lng))return;
   ocrClose();
-  if(cb)cb(out.lat,out.lng,out.addr,out.name);
+  if(cb)cb(out.lat,out.lng,out.addr,out.name,out.tel);
 };
 /* 「別のスクショ」＝読めた分はそのままに、次の画像を開く（onchangeはocrPickで登録済み） */
 ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
 /* チェックの付け外しでボタンの文言（何を使うか）を追随させる */
-["ocrNameChk","ocrResChk","ocrAddrChk"].forEach(id=>{ocrEl(id).onchange=()=>ocrSync();});
+["ocrNameChk","ocrResChk","ocrAddrChk","ocrTelChk"].forEach(id=>{ocrEl(id).onchange=()=>ocrSync();});
 /* 範囲選択（簡易選択状態）: 画像の上を指でなぞって矩形を囲む→その部分だけOCR
    ＋2本指でスクショそのものを拡大縮小・移動（v0.30.0）
    ・1本指＝今まで通り「タップ＝この辺り」「なぞり＝囲む」
@@ -4449,6 +4512,7 @@ ocrEl("ocrSwapBtn").onclick=()=>{ocrEl("ocrFile").click();};
       if(c&&c.coord&&ocrPut("coord",c.coord)) got.push("座標");
       if(c&&c.name &&ocrPut("name", c.name )) got.push("名前");
       if(c&&c.addr &&ocrPut("addr", c.addr )) got.push("住所");
+      if(c&&c.tel  &&ocrPut("tel",  c.tel  )) got.push("電話");
       if(got.length) ocrSync(got.join("と")+"を読み取りました。");
       else if(c) ocrSync("");   /* 前のスクショの分を守った＝トーストの「〜にする」で差し替えられる */
       else ocrStatus("読めませんでした。<b>2本指で大きく</b>してから、読みたい部分を<b>少し広めに囲って</b>みてください");
@@ -4600,7 +4664,7 @@ document.getElementById("parkBtn").onclick=()=>{
 /* ───── 📍近くビュー: 現在地から一定距離の登録場所を「カード列+地図」で連動表示 ─────
    上=距離順カード(真ん中のカードにフォーカス) / 下=自分中心の地図(フォーカス中の点が赤)。
    カードのスクロール⇄地図の点タップ、双方向で連動する */
-const NEAR={map:null,osm:null,meMk:null,circle:null,dots:{},items:[],r:2000,center:null,focusId:null,raf:0};
+const NEAR={map:null,osm:null,meMk:null,circle:null,dots:{},items:[],r:2000,center:null,at:null,focusId:null,raf:0};
 function nearInitMap(){
   if(NEAR.map) return;
   /* 名前入り地図(OSM)=店・施設の名称が見えるのでこの用途に最適 */
@@ -4610,12 +4674,19 @@ function nearInitMap(){
   NEAR.map.attributionControl.setPosition("topright");
   NEAR.osm.addTo(NEAR.map);
 }
-function nearOpen(){
+/* place を渡すとその場所が真ん中になる（泊まるホテルの周りに何があるかを見る）。
+   渡さなければ従来どおり現在地が真ん中（FABの「周辺」）。v0.34.0 */
+function nearOpen(place){
+  NEAR.at=(place&&place.lat&&place.lng)?place:null;
   document.getElementById("nearov").classList.add("on");
   document.body.classList.add("nearon");                    /* FAB(足あと・ここを登録)を隠す */
   document.documentElement.classList.add("nvon");           /* 引っ張って更新の封じを流用 */
   NEAR.focusId=null;
-  nearLocate();
+  document.getElementById("nearTt").textContent=
+    NEAR.at?("📍 "+NEAR.at.name+" の周辺"):"📍 周辺の場所";
+  /* 場所が真ん中なら現在地は要らない＝GPSを待たずにすぐ出る（電波の悪い場所でも使える） */
+  if(NEAR.at){ NEAR.center={lat:+NEAR.at.lat,lng:+NEAR.at.lng}; nearRender(); }
+  else nearLocate();
 }
 function nearClose(){
   document.getElementById("nearov").classList.remove("on");
@@ -4644,7 +4715,8 @@ function nearLocate(){
 function nearRender(){
   nearInitMap();
   const c=NEAR.center, r=NEAR.r, cards=document.getElementById("nearCards");
-  NEAR.items=places.filter(p=>p.lat&&p.lng)
+  /* 真ん中にした場所そのものは一覧に出さない（真ん中の印として地図に出る） */
+  NEAR.items=places.filter(p=>p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id))
     .map(p=>({p,d:distM(c,{lat:+p.lat,lng:+p.lng})}))
     .filter(x=>x.d<=r).sort((a,b)=>a.d-b.d);
   /* 地図: 先にビューを確定(未設定だとレイヤー追加でエラー)→掃除→自分+円+点 */
@@ -4654,7 +4726,11 @@ function nearRender(){
   if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
   if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
   NEAR.circle=L.circle([c.lat,c.lng],{radius:r,color:"#0B6E5F",weight:1.5,dashArray:"4 6",fill:false}).addTo(NEAR.map);
-  NEAR.meMk=L.circleMarker([c.lat,c.lng],{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
+  /* 真ん中の印: 現在地=青丸／場所を中心にした時=その本の色で一回り大きく（自分と見間違えない） */
+  NEAR.meMk=L.circleMarker([c.lat,c.lng],
+    NEAR.at?{radius:11,color:"#fff",weight:3.5,fillColor:catColor(NEAR.at.cat),fillOpacity:1}
+           :{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
+  if(NEAR.at) NEAR.meMk.bindTooltip(NEAR.at.name,{permanent:true,direction:"top",offset:[0,-6]});
   NEAR.items.forEach(x=>{
     const mk=L.circleMarker([+x.p.lat,+x.p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(x.p.cat),fillOpacity:1});
     mk.on("click",()=>nearJump(x.p.id));
@@ -4677,9 +4753,12 @@ function nearRender(){
     el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(x.p.cat)+'</div>'+
       '<div class="nr-n">'+esc(x.p.name)+'</div></div>'+
       '<div class="nr-d">'+fmtDist(x.d)+'</div>'+
-      '<div class="nr-b"><button data-a="route">経路</button><button data-a="nav">周辺</button></div>';
+      '<div class="nr-b"><button data-a="route">経路</button>'+
+      '<button data-a="area">周辺</button><button data-a="nav">近く</button></div>';
     el.onclick=()=>nearJump(x.p.id);
     el.querySelector('[data-a="route"]').onclick=e=>{e.stopPropagation(); openRoute(x.p);};
+    /* 周辺=この場所を真ん中に置き直す（次々に見て回れる） */
+    el.querySelector('[data-a="area"]').onclick=e=>{e.stopPropagation(); nearOpen(x.p);};
     el.querySelector('[data-a="nav"]').onclick=e=>{e.stopPropagation(); nvOpen("place",x.p);};
     cards.appendChild(el);
   });
