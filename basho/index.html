@@ -730,7 +730,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.32.0";
+const VER = "0.32.1";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3741,7 +3741,13 @@ function ocrAddrWords(o){
   if(!ws||!ws.length)return o.t;
   const kept=ws.filter(w=>{
     if(!w.t)return false;
-    if(w.conf===0)return false;
+    /* ★自信ゼロでも漢字は捨てない（2026-08-01 実測で発覚した「狛江が消える」の真犯人）。
+       元は地図のピンのアイコンの誤読を落とすための行だったが、実測すると
+       ピンは "o"(自信71) のように読まれていて引っかからず、
+       代わりに本物の住所の漢字「江」(自信0) を消して「東京都市」にしていた。
+       日本語の漢字はTesseractが正解していても自信0を返すことがある＝自信は当てにならない。
+       アイコンは住所の頭（〒や都道府県）より前にあり、頭出しのslice()で必ず切り落とされる */
+    if(w.conf===0&&!/[一-鿿々〆ヶ]/.test(w.t))return false;
     /* ★ハイフンだけの単語は残す。番地は「１７−５」のように区切りが単語として切り出されることがあり、
        落とすと「175」になって別の番地になってしまう（実機実測 v0.28.0で修正） */
     if(/^[-－ー―‐−–—]+$/.test(w.t))return true;
@@ -3924,7 +3930,14 @@ function ocrParseName(rec){
    同じ帯でも「神奈川県足柄下郡箱根町仙石原」→「神奈足柄下町人石原」のように
    小さな文字が壊れる。読み取りは1回しかgetImageDataしないので既定(GPU)のままでよい */
 function ocrCropCanvas(nx,ny,nw,nh,invert){
-  const scale=Math.max(1,Math.min(nh<90?3:2,1600/nw));
+  /* ★読む直前に内部で拡大する（指でのピンチとは別物＝あちらは見た目だけ）。ここが精度を決める。
+     実物のスクショで実測（2026-08-01・狛江市の住所）:
+       倍率2(旧)=「狛」が読まれず「江」も自信ゼロ／倍率3=「衝江」で両方自信ゼロ
+       倍率4=「江」が自信89で確定・時間は+13%だけ（1102→1243ミリ秒）
+       倍率5以上=他の字（4丁）が崩れて逆効果
+     時間はほぼ固定費で、面積にゆるく比例するだけ。そこで「面積の予算」で倍率を決める
+     ＝狭く囲うほど自動で大きく引き伸ばす（上限4倍）。 */
+  const scale=Math.max(1,Math.min(4,Math.sqrt(2000000/Math.max(1,nw*nh))));
   const c=document.createElement("canvas");
   c.width=Math.max(1,Math.round(nw*scale));c.height=Math.max(1,Math.round(nh*scale));
   const g=c.getContext("2d");
