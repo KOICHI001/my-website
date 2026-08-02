@@ -746,7 +746,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.34.2";
+const VER = "0.35.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1084,7 +1084,7 @@ function attCard(p,a){
     ic.textContent=""; ic.style.backgroundImage="url("+du+")";
   });
   bookLongPress(el,()=>attMenu(p,a));
-  el.onclick=e=>{e.stopPropagation(); if(el.longFired){el.longFired=false;return;} attOpen(a);};
+  el.onclick=e=>{e.stopPropagation(); if(el.longFired){el.longFired=false;return;} if(flickSwiped) return; attOpen(a);};   /* v0.35.0: 右フリックで閉じた直後は開かない */
   return el;
 }
 function attOpen(a){
@@ -1247,6 +1247,9 @@ function lbOpen(p,id){ lbList=(p.ph||[]).slice(); lbIdx=Math.max(0,lbList.indexO
    2本指ピンチ=写真の拡大縮小（v0.7.10でアプリ全体のページズームを禁止したため専用実装）
    拡大中=1本指でパン・タップで等倍に戻す */
 let lbSwiped=false, lbTx=0, lbTy=0;
+/* v0.35.0: 右フリック（戻る）の直後に、指を離した所のボタンが押されたことにならないための番人。
+   lbSwiped と同じ作法＝時間で自動解除（clickが来ない端末もあるため） */
+let flickSwiped=false;
 const LZ={s:1,x:0,y:0,d0:0,s0:1,mx:0,my:0,x0:0,y0:0,pinch:false};
 function lbApply(){
   const im=lb.querySelector("img");
@@ -1333,7 +1336,7 @@ function pvOpen(p,id){
     const a=atMap.get(tok);
     if(a){ const el=attCard(p,a); body.appendChild(el); elMap.set(tok,el); return; }
     const im=document.createElement("img"); im.alt="";
-    im.onclick=()=>{ lbList=[tok]; lbIdx=0; lbShow(); };
+    im.onclick=()=>{ if(flickSwiped) return; lbList=[tok]; lbIdx=0; lbShow(); };   /* v0.35.0: 右フリックで閉じた直後は開かない */
     body.appendChild(im); elMap.set(tok,im); imgs.push({tok,im});
   });
   pv.classList.add("on"); pv.scrollTop=0;
@@ -4613,24 +4616,40 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay();
 /* 本の中・フォルダの中（カード一覧の画面）だけ: 右フリックで1つ戻る（フォルダ→本→本棚）。
    戻るボタンは左⇐＝本棚は左にある心象。画面を右へよけて左の本棚へ帰る＝右フリックが自然（コーイチさん指摘で左→右に修正）。
    Androidナビバーを隠して使う場合、戻るボタンの呼び出しがもどかしいため（コーイチさん要望）。
-   地図・写真・周辺など他の面には付けない。写真サムネの横スクロール(.phstrip)とは衝突させない */
+   写真サムネの横スクロール(.phstrip)とは衝突させない。
+   ★v0.35.0: 受け口を main.wrap から document へ移した。
+     .wrap は中身のぶんしか高さが無いので、カードが1枚しか無い時の「下の余白」は .wrap の外＝
+     指が触れても届いていなかった（カードの上でしか効かない、の正体）。document で受ければ
+     余白でもヘッダーの上でも同じように効く。
+   ★v0.35.0: 写真の縦閲覧(pv)でも右フリックで閲覧終了。
+     それ以外の面（地図・周辺・OCR・ライトボックス・シート等）は横方向の操作と衝突するので付けない。 */
 (function(){
-  const el=document.querySelector("main.wrap");
-  let sx=0,sy=0,st=0,ok=false;
-  el.addEventListener("touchstart",e=>{
+  let sx=0,sy=0,st=0,ok=false,mode="";
+  const on=id=>{ const e=document.getElementById(id); return !!(e&&e.classList.contains("on")); };
+  /* 今この右フリックで何をすべきか。前面に別の面が出ている時は "" ＝何もしない */
+  function mode4(){
+    if(dlg.classList.contains("on")||on("cvcrop")||on("cpick")||lb.classList.contains("on")||veil.classList.contains("on")) return "";
+    if(pv.classList.contains("on")) return "pv";                  /* 写真の縦閲覧＝閲覧終了 */
+    if(on("ocrov")||on("nvov")||on("helpov")||on("nearov")) return "";
+    if(homeTab==="shelf"&&shelfCat) return "shelf";               /* 本の中/フォルダの中＝1つ戻る */
+    return "";
+  }
+  document.addEventListener("touchstart",e=>{
     ok=false;
-    if(homeTab!=="shelf"||!shelfCat) return;   /* 対象=本の中/フォルダの中のみ */
     if(e.touches.length!==1) return;
-    if(e.target.closest(".phstrip")) return;
+    if(e.target&&e.target.closest&&e.target.closest(".phstrip")) return;
+    mode=mode4(); if(!mode) return;
     ok=true; sx=e.touches[0].clientX; sy=e.touches[0].clientY; st=Date.now();
   },{passive:true});
-  el.addEventListener("touchend",e=>{
+  document.addEventListener("touchend",e=>{
     if(!ok) return; ok=false;
-    if(homeTab!=="shelf"||!shelfCat) return;
+    if(mode4()!==mode) return;                                           /* 途中で面が変わったら何もしない */
     const t=e.changedTouches[0]; if(!t) return;
     const dx=t.clientX-sx, dy=t.clientY-sy;
     if(Date.now()-st>600) return;                                        /* フリック=素早い動きだけ */
     if(dx<70||Math.abs(dy)>60||Math.abs(dx)<Math.abs(dy)*1.5) return;    /* 右向き・横優勢のみ=縦スクロール誤爆なし */
+    flickSwiped=true; setTimeout(()=>{flickSwiped=false;},400);          /* 指を離した所のボタンを押したことにしない */
+    if(mode==="pv"){ pvClose(); return; }
     if(shelfSub){ shelfSub=null; renderTop(); }
     else { shelfCat=null; shelfSub=null; renderTop(); }
   },{passive:true});
