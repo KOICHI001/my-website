@@ -89,6 +89,9 @@
     overflow:hidden;position:relative}
   .card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
   .card::after{content:"";position:absolute;right:0;top:0;bottom:0;width:7px;background:var(--catcolor,#6B7280)}
+  /* v0.36.0: 周辺ビューから戻ってきた場所のカードを一瞬だけ光らせる（どれのことか一目で分かるように） */
+  .card.justcame,.tile.justcame{animation:justcame 1.9s ease-out 1}
+  @keyframes justcame{0%,55%{box-shadow:inset 0 0 0 3px var(--catcolor,#6B7280)}100%{box-shadow:inset 0 0 0 3px rgba(0,0,0,0)}}
   .card-main{padding:13px 44px 11px 18px;cursor:pointer;display:flex;align-items:center;gap:10px;
     width:100%;text-align:left;border:0;background:none;font-family:inherit;color:inherit}
   .card-main:active{background:rgba(11,110,95,.05)}
@@ -746,7 +749,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.35.0";
+const VER = "0.36.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1644,6 +1647,34 @@ function showInBook(cat){
   shelfCat=nc;
   renderTop();
 }
+/* v0.36.0: その場所のカードの所まで連れて行く（周辺ビューで見つけた店の情報がすぐ見られるように）。
+   ★絞り込みや検索が効いているとカードが出てこないので、その場所が隠れる条件だけを外す
+     （関係ない絞り込みはそのまま＝画面が勝手に変わりすぎないように）。
+   本棚にいる時は、その場所が入っている本（＋小フォルダ）を開く＝カテゴリが違っても迷子にならない */
+function revealPlace(p){
+  if(!p||!places.some(x=>x&&x.id===p.id)) return;
+  const cat=(p.cat&&CATS.some(x=>x.n===p.cat))?p.cat:CAT_OTHER.n;
+  const qi=document.getElementById("q");
+  if(qi&&qi.value){ qi.value=""; }                       /* 検索語は必ず解除（一致判定が複雑なので） */
+  if(nearFilter) nearFilter=false;                       /* 📍2km以内: 遠い場所だと消えてしまう */
+  if(filterPref&&filterPref!==p.pref) filterPref="";
+  if(filterRegion&&prefRegion(p.pref||"")!==filterRegion) filterRegion="";
+  if(homeTab==="shelf"){
+    if(shelfCat!==cat) shelfSub=null;
+    shelfCat=cat;
+    shelfSub=p.sf||null;                                 /* 小フォルダに入っているならその中を開く */
+  }else{
+    if(onlyFix&&hasSpot(p)&&!(p.acc&&p.acc>80)) onlyFix=false;
+    if(filterCat&&filterCat!==p.cat) filterCat="";
+    if(filterSub&&filterSub!==p.sf) filterSub="";
+  }
+  renderTop();
+  const el=document.querySelector('#list .card[data-id="'+p.id+'"], #list .tile[data-id="'+p.id+'"]');
+  if(!el) return;
+  el.scrollIntoView({block:"center"});
+  el.classList.add("justcame");                          /* どれか一目で分かるよう一瞬だけ光らせる */
+  setTimeout(()=>el.classList.remove("justcame"),1900);
+}
 function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
@@ -1795,7 +1826,7 @@ function _renderBody(){
   if(viewMode==="tile"){
     rows.forEach(p=>{
       const el=document.createElement("div");
-      el.className="tile"; el.style.setProperty("--catcolor",catColor(p.cat));
+      el.className="tile"; el.dataset.id=p.id; el.style.setProperty("--catcolor",catColor(p.cat));   /* v0.36.0: 戻ってくる時の目印 */
       const dm=(sortMode==="near")?placeDist(p):null;
       const sub=[dm!=null?fmtDist(dm):"",p.cat||""].filter(Boolean).join(" ／ ");
       el.innerHTML=
@@ -1810,7 +1841,7 @@ function _renderBody(){
   }
   rows.forEach(p=>{
     const el=document.createElement("div");
-    el.className="card"; el.style.setProperty("--catcolor",catColor(p.cat));
+    el.className="card"; el.dataset.id=p.id; el.style.setProperty("--catcolor",catColor(p.cat));   /* v0.36.0: 戻ってくる時の目印 */
     const dm=(sortMode==="near")?placeDist(p):null;
     const sub=[dm!=null?fmtDist(dm):"",p.addr,p.memo].filter(Boolean).join(" ／ ");
     let pill="";
@@ -4722,6 +4753,11 @@ function nearClose(){
   document.body.classList.remove("nearon");
   if(!document.getElementById("nvov").classList.contains("on"))
     document.documentElement.classList.remove("nvon");
+  /* v0.36.0: 戻り先は「今この画面の真ん中にしている場所」のカード。
+     周辺→周辺と渡り歩いて見つけた店は、戻った先にその店のカードが無いと探し直しになるため
+     （カテゴリが違えば本も違う＝なおさら見つけにくい）。現在地が真ん中の時(FABの周辺)は何もしない */
+  const at=NEAR.at; NEAR.at=null;
+  if(at) revealPlace(places.find(x=>x&&x.id===at.id)||at);
 }
 function nearLocate(){
   const cards=document.getElementById("nearCards");
