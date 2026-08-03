@@ -405,11 +405,40 @@
     box-shadow:0 4px 14px rgba(27,36,34,.16);cursor:pointer}
   .fab3 span{display:block;font-size:11px;letter-spacing:.04em}
   /* ───── 📍近くビュー（上=カード列 / 下=地図・連動フォーカス） ───── */
-  /* ヘルプ（使い方）: ⋯メニュー最下部から。同梱の説明画像を縦に連ねてスクロール閲覧 */
+  /* ヘルプ（使い方）: ⋯メニュー最下部から。v0.37.0=画像をやめてHTML本文に刷新
+     （目次タップで各章へ・右下の「▲目次」で先頭へ・オフラインで開ける点は従来どおり） */
   .helpov{position:fixed;inset:0;z-index:57;display:none;overflow-y:auto;overscroll-behavior:contain;
     -webkit-overflow-scrolling:touch;--pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
   .helpov.on{display:block}
-  .helpov .pv-body img{cursor:default}
+  .helpov .pv-body{font-size:15.5px;line-height:1.8;padding-top:10px}
+  .hp-lead{font-size:13px;color:var(--soft);margin:0 0 10px}
+  .hp-toc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;margin:0 0 26px}
+  .hp-toc button{display:flex;gap:4px;align-items:baseline;width:100%;text-align:left;border:0;
+    border-bottom:1px solid var(--line);background:transparent;font-family:var(--gothic);
+    font-size:15px;color:var(--ink);padding:11px 2px;cursor:pointer}
+  .hp-toc button:last-child{border-bottom:0}
+  .hp-toc .num{flex:0 0 2em;color:var(--route);font-weight:700;font-family:var(--mono);font-size:13px}
+  .hp-sec{scroll-margin-top:54px}   /* 目次から飛んだ時、上の固定バーに章タイトルが隠れないように */
+  .hp-sec h3{display:flex;gap:7px;align-items:baseline;font-size:17px;font-weight:700;letter-spacing:.03em;
+    margin:34px 0 12px;padding:9px 11px;background:var(--card);border-left:5px solid var(--route);
+    border-radius:0 10px 10px 0}
+  .hp-sec h3 .num{color:var(--route);font-family:var(--mono);font-size:13px}
+  .hp-sec p{margin:0 0 12px}
+  .hp-sec ul{margin:0 0 12px;padding-left:19px}
+  .hp-sec li{margin:0 0 8px}
+  .hp-note{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:9px 12px;
+    font-size:13.5px;color:var(--soft);margin:0 0 12px;line-height:1.7}
+  .hp-note.warn{border-color:rgba(163,58,42,.45);color:var(--danger)}
+  /* 本文中でアプリのボタンを指す時の小さな「ボタン風」表記 */
+  .hp-btn{display:inline-block;border:1px solid var(--line);background:var(--card);border-radius:8px;
+    padding:0 7px;font-size:.92em;white-space:nowrap}
+  .hp-top{position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:58;display:none;
+    border:0;border-radius:999px;background:var(--ink);color:#F8F9F5;font-family:var(--gothic);
+    font-size:13.5px;padding:12px 17px;box-shadow:0 4px 14px rgba(27,36,34,.3);cursor:pointer}
+  .hp-top.on{display:block}
+  #hpBottomToc{width:100%;margin-top:26px}
+  .hp-foot{margin:26px 0 46px;padding-top:14px;border-top:1px solid var(--line);
+    font-size:12px;color:var(--soft);text-align:center;line-height:1.9}
   /* 表紙の位置調整: 枠=本と同じ3:4。ドラッグで移動・ピンチ/ホイールで拡縮（cover方式=枠内に余白を出さない） */
   .cvcrop{position:fixed;inset:0;z-index:72;background:rgba(18,22,21,.78);display:none;
     align-items:center;justify-content:center;padding:20px}
@@ -628,13 +657,14 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="near-map" id="nearMap"></div>
 </div>
 
-<!-- ヘルプ（使い方）: ⋯メニュー最下部のボタンから。help01〜04.pngを縦スクロールで読む -->
+<!-- ヘルプ（使い方）: ⋯メニュー最下部のボタンから。目次つきのHTML本文（v0.37.0で画像から刷新） -->
 <div class="helpov" id="helpov">
   <div class="pv-head">
     <button class="pv-back" id="helpBack" aria-label="戻る">←</button>
     <div class="pv-title">使い方</div>
   </div>
   <div class="pv-body" id="helpBody"></div>
+  <button class="hp-top" id="helpTop">▲ 目次</button>
 </div>
 
 <!-- 表紙の位置調整: 本の長押し→「表紙の画像を選ぶ」→画像選択→ここで位置決め・拡縮→決定 -->
@@ -749,7 +779,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.36.0";
+const VER = "0.37.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3216,20 +3246,188 @@ function nvSearchGo(autoJump){
 }
 
 /* ───── ヘルプ（使い方） ─────
-   ⋯メニュー最下部から。同梱の説明画像(help01〜04.png)を縦に連ねて読むだけの面＝オフラインでも開ける */
-const HELP_PAGES=["help01.png","help02.png","help03.png","help04.png"];
+   ⋯メニュー最下部から。v0.37.0: 同梱画像(help01〜04.png)をやめてHTML本文に刷新＝
+   目次から各章へ飛べる・文章の直しが画像の作り直しなしで済む。オフラインで開ける点は従来どおり */
+const HELP_SECS=[
+{id:"about",t:"このアプリでできること",h:
+ '<p>「場所帳」は、<b>行った場所・行きたい場所を名前で貯めておくノート</b>です。次からはカードのボタンひとつで地図や経路が開きます。</p>'+
+ '<ul>'+
+ '<li>今いる場所をワンタップで登録（GPS）</li>'+
+ '<li>Googleマップの「共有」からも登録できる</li>'+
+ '<li>カードから「地図を開く」「経路」がすぐ出せる</li>'+
+ '<li>着いてからの<b>最後の100m</b>は「近く」の拡大地図で</li>'+
+ '<li>駐車場所などに旗を立てて戻れる「足あと」</li>'+
+ '<li>写真・リンク・PDFをカードに貼って場所のノートに</li>'+
+ '<li>カテゴリごとに「本棚」で整理</li>'+
+ '</ul>'+
+ '<div class="hp-note">データはすべて<b>この端末の中だけ</b>に保存されます。どこにも送信されません（そのぶん、バックアップはご自身で。→「バックアップ」の章へ）。</div>'},
+{id:"screen",t:"画面の見かた（メイン画面）",h:
+ '<p>上のバーには次のものが並んでいます。</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> … 表示の切り替えタブ</li>'+
+ '<li>検索欄 … 名前・住所・メモ・電話で探せます（→「検索と絞り込み」）</li>'+
+ '<li><span class="hp-btn">よく行く順</span> … タップするたびに 五十音順 → 近い順 と切り替わる並び順ボタン</li>'+
+ '<li><span class="hp-btn">タイル</span>/<span class="hp-btn">一覧</span> … カードの大きさ切り替え</li>'+
+ '<li><span class="hp-btn">⋯</span> … 設定メニュー（追加・カテゴリ編集・バックアップ・取り込み・このヘルプ）</li>'+
+ '<li>カテゴリなどの丸いチップ … タップで絞り込み</li>'+
+ '</ul>'+
+ '<p>下の3つの大きなボタンは、左から</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">🚩 足あと</span> … 戻りたい場所に旗を立てる</li>'+
+ '<li><span class="hp-btn">📍 周辺</span> … 現在地のまわりの登録場所を地図つきで見る</li>'+
+ '<li><span class="hp-btn">ここを登録</span> … 今いる場所をその場で登録</li>'+
+ '</ul>'},
+{id:"card",t:"カードの見かた（各ボタンの意味）",h:
+ '<ul>'+
+ '<li><b>カード本体をタップ＝編集画面</b>が開きます（名前・位置・住所・電話・メモなど全部ここ）。</li>'+
+ '<li>名前の下に住所・メモ・<b>±◯m</b>（登録したときのGPSの精度）。電話番号がある場所は<span class="hp-btn">☎</span>から直接かけられます。</li>'+
+ '<li><span class="hp-btn">☆</span>は「よく行く」印。タップで★になり、一覧の上のほうに並びます。</li>'+
+ '<li>写真の段：<span class="hp-btn">📷写真</span> <span class="hp-btn">📁保存画像</span> <span class="hp-btn">🔗リンクPDF</span> <span class="hp-btn">⇅並び順</span>（→「写真・リンク・PDF」）。</li>'+
+ '<li>下の4ボタン：<span class="hp-btn">地図を開く</span>＝Googleマップでその場所を表示 / <span class="hp-btn">経路</span>＝そこまでの道順 / <span class="hp-btn">周辺</span>＝その場所のまわりの登録場所 / <span class="hp-btn">近く</span>＝着いてからの歩き案内。</li>'+
+ '</ul>'+
+ '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で位置を決める」でピンを置くと白になります。</div>'},
+{id:"reg1",t:"登録① 「ここを登録」ボタン",h:
+ '<p>今いる場所を記録する、いちばん基本の登録です。</p>'+
+ '<ul>'+
+ '<li>ボタンを押した瞬間からGPSが位置を取り始めます。<b>名前を入れて「登録する」を押すだけ</b>で完了です。</li>'+
+ '<li>「±◯m」は位置の精度。屋内などで取れなくても登録でき、位置はあとから編集で入れられます。</li>'+
+ '<li>カテゴリ・メモは折りたたみの中（あとからでも直せます）。</li>'+
+ '<li>本棚で本やフォルダを開いた状態で登録すると、<b>そのままその本・フォルダに入ります</b>。</li>'+
+ '<li>登録直後に出る「取り消す」で、間違えた登録をすぐ消せます。</li>'+
+ '</ul>'},
+{id:"reg2",t:"登録② Googleマップの「共有」から",h:
+ '<p>お店や施設は、Googleマップから送るのが確実できれいに入ります。</p>'+
+ '<ul>'+
+ '<li>Googleマップでその場所を開く →「<b>共有</b>」→ アプリ一覧から「<b>場所帳</b>」を選ぶ。</li>'+
+ '<li>名前とリンクが自動で入ります。<b>リンクに位置情報が含まれていれば</b>座標や住所も自動で補われます（リンクの中身を数秒調べて、空いている欄だけ埋めます）。</li>'+
+ '<li>住所が入らなかったときは：「🔢 スクショから読み取る」（→登録④）か、Googleマップのカードの住所を<b>長押しコピー</b>して貼り付け。</li>'+
+ '<li>座標が入らないまま登録すると、そのまま「地図で位置を決める」が開きます（あとで入れるなら戻るでスキップ）。</li>'+
+ '</ul>'+
+ '<div class="hp-note">ピンを長押しして共有した場合は、名前ではなく座標が届きます。場所帳が自動で見分けて座標欄に入れるので、そのまま名前だけ書き足せば大丈夫です。</div>'},
+{id:"reg3",t:"登録③ 名前だけで追加（位置はあとで）",h:
+ '<p>旅行の計画など、まだ行っていない場所は<span class="hp-btn">⋯</span>メニュー →「<b>名前だけで追加する</b>」。</p>'+
+ '<p>位置はあとから編集画面で入れられます。入れ方は4つ：</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">🗺 地図で位置を決める</span> … 地図の＋印を合わせて「この位置にする」。住所や地名の検索つきでいちばん確実。</li>'+
+ '<li><span class="hp-btn">🏠 住所から座標を入れる</span> … 住所が入っていれば自動で座標に。</li>'+
+ '<li><span class="hp-btn">🔢 スクショから読み取る</span> … →登録④。</li>'+
+ '<li><span class="hp-btn">今いる場所で上書きする</span> … その場に立っているならこれ。</li>'+
+ '</ul>'},
+{id:"reg4",t:"登録④ スクショから読み取る（OCR）",h:
+ '<p>Googleマップの画面を<b>スクショして、そこから文字を読み取る</b>機能です。編集画面と共有の画面にある「🔢 スクショから読み取る」から使います。</p>'+
+ '<ul>'+
+ '<li>スクショを選ぶ → <b>読みたいところをタップ</b>（指で四角く囲ってもOK）。</li>'+
+ '<li>名前・住所・座標・電話番号が読めます。読んだ分はたまっていくので、順にタップすれば1枚から全部そろいます。</li>'+
+ '<li>読めた文字はその場で直せます。「別のスクショ」で足りない分だけ読み直しもできます。</li>'+
+ '<li>座標は、Googleマップで<b>ピンを長押し→上に出る数字</b>をスクショすると確実です。</li>'+
+ '</ul>'+
+ '<div class="hp-note">読み取りはすべて端末の中で処理します（画像も文字も外に送りません）。市区町村名は全国の名簿と照らして自動で直します。</div>'},
+{id:"cat",t:"カテゴリ",h:
+ '<ul>'+
+ '<li>場所は1つのカテゴリに入ります。カテゴリ＝本棚の「<b>本</b>」で、カードの色分けにもなります。</li>'+
+ '<li><span class="hp-btn">⋯</span>メニュー →「<b>カテゴリを編集する</b>」で、名前の変更・色変え・追加・削除ができます（「その他」だけは受け皿として残ります）。</li>'+
+ '<li>一覧の上のチップをタップすると、そのカテゴリだけに絞り込めます。</li>'+
+ '</ul>'},
+{id:"shelf",t:"本棚モード",h:
+ '<p>「📚 本棚」タブでは、カテゴリが本になって並びます。<b>本をタップで開く／長押しで表紙の設定</b>です。</p>'+
+ '<ul>'+
+ '<li>長押しメニューの「📁 表紙の画像を選ぶ」で好きな写真を表紙に。ドラッグと2本指で位置・大きさを調整できます。</li>'+
+ '<li>同じメニューで、表紙の上の<b>カテゴリ名の帯（黒帯）を重ねるかどうか</b>も選べます。</li>'+
+ '<li><b>フォルダ</b>（本の中の小分け）：編集画面の「フォルダ」欄で作れます。フォルダはタップで開く／長押しで名前変更・解除・削除。</li>'+
+ '<li>本やフォルダを開いた状態で「ここを登録」すると、そのままそこに入ります。</li>'+
+ '</ul>'},
+{id:"area",t:"「周辺」ボタン",h:
+ '<p>登録した場所を「まわり」から眺める画面です。<b>上＝近い順のカード列、下＝地図</b>で、カードをスクロールすると地図の赤い点も動きます（地図の点をタップしてもOK）。</p>'+
+ '<ul>'+
+ '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>のまわりの登録場所。500m／1km／2km／5kmで範囲を変えられます。</li>'+
+ '<li><b>カードの</b><span class="hp-btn">周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
+ '</ul>'},
+{id:"nav",t:"「近く」ボタン（最後の100mの歩き案内）",h:
+ '<p>目的地に<b>ほぼ着いてから</b>使う拡大地図です。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
+ '<ul>'+
+ '<li>目的地が画面の外にあるときは、画面のふちに🏁と残り距離が出ます（タップで目的地へジャンプ）。</li>'+
+ '<li><span class="hp-btn">北上</span>⇄<span class="hp-btn">向き上</span> … 自分の向いている方向を上にして地図を回せます。</li>'+
+ '<li><span class="hp-btn">写真</span> … 航空写真に切り替え。<span class="hp-btn">追従</span> … 自分を常に真ん中に。</li>'+
+ '</ul>'+
+ '<div class="hp-note">この機能だけは<b>正確な座標</b>が必要です。ボタンが赤いときは、編集画面の「🗺 地図で位置を決める」でピンを置いてから使ってください。</div>'},
+{id:"foot",t:"「足あと」ボタン",h:
+ '<p>「あとでここに戻ってくる」場所に旗を立てる機能です。駐車場所・ホテル・集合場所・広い施設の入口などに。</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">🚩 足あと</span>を押すと今いる場所に旗が立ち、ボタンが「<b>🚩 旗へ戻る</b>」に変わります。</li>'+
+ '<li>開くと、旗までの距離と方向、自分が歩いてきた足あとが地図に出ます。</li>'+
+ '<li>写真を3枚まで残せます（駐車場の柱の番号などに便利）。</li>'+
+ '<li>「解除」で旗を下ろします（写真も一緒に消えます）。旗は1本だけの使い切りです。</li>'+
+ '</ul>'},
+{id:"search",t:"検索と絞り込み",h:
+ '<ul>'+
+ '<li>検索欄は<b>名前・住所・メモ・電話番号</b>のどれでも探せます。ローマ字のままでも大丈夫（yakkyoku→やっきょく）。</li>'+
+ '<li>読み方が特殊な場所は、編集画面の「よみ」欄に読みがなを入れておくと確実です。</li>'+
+ '<li>並び順ボタン：<b>よく行く順</b>（★と使う回数が上に）→<b>五十音順</b>→<b>近い順</b>（距離つき）。</li>'+
+ '<li>チップで絞り込み：カテゴリ／<span class="hp-btn">📍 2km以内</span>（現在地の近くだけ）／地域（都道府県）。</li>'+
+ '<li>本の中で検索すると、その本の中だけを探します。</li>'+
+ '</ul>'},
+{id:"attach",t:"写真・リンク・PDF",h:
+ '<p>カードは場所の「ノート」としても使えます。</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">📷写真</span>＝その場で撮る／<span class="hp-btn">📁保存画像</span>＝ギャラリーから選ぶ。</li>'+
+ '<li>サムネイルをタップすると縦に連ねて閲覧、<b>長押しで削除</b>。</li>'+
+ '<li><span class="hp-btn">🔗リンクPDF</span> … URLを貼るとリンクカードに（タップでそのページが開く）。お店の公式サイト・食べログ・PDFのパンフレットなど。長押しで名前の変更・削除。</li>'+
+ '<li><span class="hp-btn">⇅並び順</span> … 写真とリンク・PDFを好きな順に並べ替え。</li>'+
+ '<li>写真もPDFもバックアップに丸ごと入ります。</li>'+
+ '</ul>'+
+ '<div class="hp-note warn">📷で撮った写真は<b>アプリの中だけ</b>に保存され、端末のギャラリーには残りません。ギャラリーにも残したいときは、ふだんのカメラで撮ってから📁で取り込んでください。</div>'},
+{id:"gmi",t:"Googleマップのお気に入りを取り込む",h:
+ '<p>Googleマップに貯めてきた「お気に入り」「行きたい場所」「スター付き」を、まとめて場所帳に入れられます。<span class="hp-btn">⋯</span>メニュー →「<b>Googleマップのお気に入りを取り込む</b>」。</p>'+
+ '<ul>'+
+ '<li>①「Googleからデータをもらう」… 開いた画面で選択はそのまま「次のステップ」→「エクスポートを作成」。</li>'+
+ '<li>しばらくするとGmailにダウンロードリンクが届くので、zipをスマホに保存。</li>'+
+ '<li>②「保存したzipを読み込む」… 中身を確認してから取り込めます。</li>'+
+ '</ul>'+
+ '<div class="hp-note">今ある場所は消えません。処理はすべて端末の中で行います。</div>'},
+{id:"backup",t:"バックアップ（機種変更・データの安心）",h:
+ '<p>場所帳のデータは<b>この端末の中だけ</b>にあります。どこにも送信されない安心の裏返しで、<b>端末が壊れるとデータも一緒に消えます</b>。ときどき書き出しておいてください。</p>'+
+ '<ul>'+
+ '<li><span class="hp-btn">⋯</span>メニュー →「<b>バックアップを書き出す</b>」… 場所も写真もリンク・PDFも表紙も自作カテゴリも、丸ごと1ファイルになります。</li>'+
+ '<li>「<b>バックアップを読み込む</b>」… 追加方式です。今あるものは消えず、同じものは二重になりません。</li>'+
+ '<li><b>機種変更</b>：旧端末で書き出す → ファイルを新端末に移す → 新端末で読み込む。これだけです。</li>'+
+ '</ul>'},
+{id:"tips",t:"操作のコツ",h:
+ '<ul>'+
+ '<li><b>右フリックで1つ戻る</b> … 本の中・フォルダの中・写真の縦閲覧で使えます。</li>'+
+ '<li>Androidの<b>戻るボタン</b>は、開いている画面を1つずつ閉じます（アプリが勝手に終了することはありません）。</li>'+
+ '<li><b>長押し</b>に小さなメニューが隠れています … 本（表紙の設定）・フォルダ・写真（削除）・リンクとPDF。迷ったら長押ししてみてください。</li>'+
+ '<li>カードの<b>ボタンが赤い</b>のは位置情報が足りない印。編集の「🗺 地図で位置を決める」で白になります。</li>'+
+ '</ul>'}
+];
 function helpOpen(){
   const b=document.getElementById("helpBody");
-  if(!b.childElementCount)
-    HELP_PAGES.forEach((f,i)=>{
-      const im=document.createElement("img");
-      im.alt="使い方 "+(i+1)+"ページ目"; im.src=f;
-      b.appendChild(im);
+  if(!b.dataset.built){
+    b.dataset.built="1";
+    b.innerHTML=
+      '<div class="hp-lead">読みたい項目をタップすると、その説明へ飛びます。</div>'+
+      '<div class="hp-toc">'+HELP_SECS.map((s,i)=>
+        '<button data-go="'+s.id+'"><span class="num">'+(i+1)+'</span><span>'+s.t+'</span></button>').join("")+'</div>'+
+      HELP_SECS.map((s,i)=>
+        '<section class="hp-sec" id="hp_'+s.id+'"><h3><span class="num">'+(i+1)+'.</span><span>'+s.t+'</span></h3>'+s.h+'</section>').join("")+
+      '<button class="btn" id="hpBottomToc">▲ 目次に戻る</button>'+
+      '<div class="hp-foot">場所帳 v'+VER+'<br>このヘルプの文章・画像の無断転載はご遠慮ください。</div>';
+    b.querySelectorAll("[data-go]").forEach(el=>el.onclick=()=>{
+      const sec=document.getElementById("hp_"+el.dataset.go);
+      if(sec) sec.scrollIntoView({block:"start"});
     });
+    document.getElementById("hpBottomToc").onclick=hpToTop;
+    document.getElementById("helpTop").onclick=hpToTop;
+  }
   const ov=document.getElementById("helpov");
   ov.classList.add("on"); ov.scrollTop=0;
+  document.getElementById("helpTop").classList.remove("on");
   document.documentElement.classList.add("pvon");   /* 背面スクロール封じ（縦閲覧と同じ流儀） */
 }
+function hpToTop(){ document.getElementById("helpov").scrollTop=0; }
+/* 右下の「▲目次」: 目次より下まで読み進めたら出す */
+document.getElementById("helpov").addEventListener("scroll",function(){
+  document.getElementById("helpTop").classList.toggle("on",this.scrollTop>400);
+});
 function helpClose(){
   document.getElementById("helpov").classList.remove("on");
   if(!pv.classList.contains("on")) document.documentElement.classList.remove("pvon");
