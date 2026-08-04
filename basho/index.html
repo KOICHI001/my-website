@@ -435,6 +435,29 @@
   .gp-foot{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
     background:var(--pvh);border-top:1px solid rgba(27,36,34,.12)}
   .gp-foot .btn:disabled{opacity:.4;cursor:default}
+  /* ⚙追加機能（上級者向け）: 🔍写真取得の説明・手順書・キー登録 */
+  .advov{position:fixed;inset:0;z-index:57;display:none;overflow-y:auto;overscroll-behavior:contain;
+    -webkit-overflow-scrolling:touch;--pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
+  .advov.on{display:block}
+  .advov .pv-body{font-size:15px;line-height:1.75;padding-top:10px}
+  .advov h3{font-size:15.5px;margin:26px 0 8px;padding-top:6px;border-top:1px solid var(--line)}
+  .advov h3:first-of-type{border-top:0;margin-top:8px}
+  .advov p{margin:0 0 10px}
+  .advov ul{margin:0 0 10px;padding-left:20px}
+  .adv-note{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+    padding:10px 12px;font-size:13.5px;margin:0 0 14px}
+  .adv-warn{border-color:rgba(163,58,42,.45);background:#F7EFEA}
+  .adv-key{background:var(--card);border:1.5px solid var(--line);border-radius:var(--r);
+    padding:12px;margin:14px 0 6px}
+  .adv-key input{width:100%;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;
+    background:#fff;color:var(--ink);font-family:var(--mono);font-size:13px}
+  .adv-btns{display:flex;gap:8px;margin-top:10px}
+  .adv-btns .btn{padding:12px;font-size:14px}
+  .adv-btns .btn:disabled{opacity:.4;cursor:default}
+  .adv-res{font-size:13.5px;margin-top:10px;min-height:1.2em;white-space:pre-wrap}
+  .adv-res.ok{color:var(--route);font-weight:700}
+  .adv-res.ng{color:var(--danger);font-weight:700}
+  .adv-st{font-size:13px;color:var(--soft);margin:4px 0 0}
   .hp-lead{font-size:13px;color:var(--soft);margin:0 0 10px}
   .hp-toc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;margin:0 0 26px}
   .hp-toc button{display:flex;gap:4px;align-items:baseline;width:100%;text-align:left;border:0;
@@ -710,6 +733,16 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   </div>
 </div>
 
+<!-- ⚙追加機能（上級者向け）: ⋯メニューから。🔍写真取得の説明・Google Cloud手順書・キー登録＋接続テスト。
+     自分のAPIキーを持ち込む方式（BYOK）＝アプリ側にキーは無く、費用と権限は各ユーザーのGoogle契約に属する -->
+<div class="advov" id="advov">
+  <div class="pv-head">
+    <button class="pv-back" id="advBack" aria-label="戻る">←</button>
+    <div class="pv-title">⚙ 追加機能（上級者向け）</div>
+  </div>
+  <div class="pv-body" id="advBody"></div>
+</div>
+
 <!-- 表紙の位置調整: 本の長押し→「表紙の画像を選ぶ」→画像選択→ここで位置決め・拡縮→決定 -->
 <div class="cvcrop" id="cvcrop">
   <div class="cvcrop-box">
@@ -822,7 +855,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.38.0";
+const VER = "0.39.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1156,6 +1189,147 @@ async function gpImport(){
   document.getElementById("gpQ").addEventListener("keydown",e=>{
     if(e.key==="Enter"){ e.target.blur(); gpSearch(); }
   });
+})();
+
+/* ───── ⚙追加機能（上級者向け）: 🔍写真取得の説明・手順書・キー登録（v0.39.0） ─────
+   誰でも入口は見えるが、最初に「Google Cloud登録（カード必要）」を正直に説明し、納得した人だけ進む建付け。
+   手順書はGoogleの画面変更に耐えるよう「ボタン名」でなく「目的」で書く。ストアの説明文では宣伝しない方針 */
+function advOpen(){
+  const b=document.getElementById("advBody");
+  if(!b.dataset.built){
+    b.dataset.built="1";
+    b.innerHTML=
+      '<div class="adv-note adv-warn"><b>はじめにお読みください</b><br>'+
+      'ここで設定する「🔍写真取得」は、<b>Googleの無料枠</b>を使ってGoogleマップの投稿写真をカードへ取り込む機能です。'+
+      'ご自身で<b>Google Cloudの登録（クレジットカードが必要）</b>を行える方向けです。'+
+      'この手順書のとおり「回数の上限」まで設定すれば、通常の使い方で費用はかかりませんが、'+
+      'Googleとの契約と管理はご自身のものになります。</div>'+
+
+      '<h3>1. どんな機能？</h3>'+
+      '<p>カードの📷の隣に「🔍探す」ボタンが現れ、押すと<b>その場所の投稿写真が最大10枚</b>並びます。'+
+      '選んでタップするだけでカードに取り込めます。</p>'+
+      '<ul><li>写真の種類（メニューだけ等）は選べません（Googleの仕組み上）</li>'+
+      '<li>投稿が少ない場所は数枚しか出ないこともあります</li>'+
+      '<li>🔍を押した時だけ、そのカードの<b>名前と位置</b>がGoogleに送られます（それ以外は今までどおり何も送りません）</li></ul>'+
+
+      '<h3>2. 必要なもの</h3>'+
+      '<ul><li>Googleアカウント</li><li>クレジットカード（<b>Googleへの登録に必要</b>。このアプリがカード情報に触れることはありません）</li>'+
+      '<li>パソコンでの作業を推奨・所要20〜40分</li></ul>'+
+
+      '<h3>3. Google Cloud に入る</h3>'+
+      '<p>パソコンのブラウザで <b>console.cloud.google.com</b> を開き、Googleアカウントでログインして規約に同意します。</p>'+
+
+      '<h3>4. プロジェクトを作る</h3>'+
+      '<p>画面上部のプロジェクト名のボタン →「新しいプロジェクト」。名前は自由（例: basho-photos）。'+
+      '作成後、そのプロジェクトに切り替わっていることを確認します。</p>'+
+
+      '<h3>5. お支払いを登録する</h3>'+
+      '<p>メニューの「お支払い」から請求先アカウントを作成し、住所とカードを登録します。'+
+      '無料トライアルの案内が出たら、そのまま進めて大丈夫です。</p>'+
+
+      '<h3>6. Places API (New) を有効にする</h3>'+
+      '<p>上部の検索窓で「<b>Places API (New)</b>」を探して「有効にする」。'+
+      '<b>「(New)」が付いている方</b>を選びます（無印は旧版）。'+
+      '途中でAPIキーが表示されたら、コピーして控えてください。</p>'+
+
+      '<h3>7. キーに柵をかける</h3>'+
+      '<p>「キーと認証情報」でキーを編集し、「APIの制限」を<b>Places API (New) だけ</b>にして保存します。'+
+      '「アプリケーションの制限」は「なし」のままで大丈夫です。</p>'+
+
+      '<h3>8. 回数の上限（いちばん大事）</h3>'+
+      '<p>Places API (New) の「割り当て」画面で、<b>per day（1日あたり）</b>の項目を小さくします。</p>'+
+      '<ul><li><b>SearchTextRequest per day → 100</b></li>'+
+      '<li><b>GetPhotoMediaRequest per day → 1000</b></li>'+
+      '<li>その他の per day も 10 程度に</li></ul>'+
+      '<p>これで<b>1日約100か所まで</b>。万一キーが他人に知られても、被害が出ない仕組みです。'+
+      'ここを飛ばしての利用はおすすめしません。</p>'+
+
+      '<h3>9. 予算の見張り（おすすめ）</h3>'+
+      '<p>「お支払い」→「予算とアラート」で月500円の予算を作っておくと、'+
+      '万一費用が発生した時にメールで知らせてくれます。</p>'+
+
+      '<h3>10. キーを登録する</h3>'+
+      '<p>控えたキーを下の欄に貼り付け、「接続テスト」で✅を確認してから「保存」してください。'+
+      'カードに「🔍探す」が現れたら完了です。</p>'+
+
+      '<div class="adv-key">'+
+        '<input id="advKey" type="text" placeholder="APIキー（AIza… で始まる文字列）" autocomplete="off" autocapitalize="off" spellcheck="false">'+
+        '<div class="adv-btns">'+
+          '<button class="btn" id="advTest">接続テスト</button>'+
+          '<button class="btn primary" id="advSave">保存</button>'+
+          '<button class="btn del" id="advOff">OFF</button>'+
+        '</div>'+
+        '<div class="adv-res" id="advRes"></div>'+
+        '<div class="adv-st" id="advSt"></div>'+
+      '</div>'+
+
+      '<h3>11. うまくいかない時</h3>'+
+      '<ul><li>❌「キーの文字列が違う」→ コピーし直し（前後の空白・改行に注意）</li>'+
+      '<li>❌「権限がない」→ 6の有効化と7の制限を確認（<b>(New)の方</b>になっていますか）</li>'+
+      '<li>設定の反映に<b>最大5分</b>ほどかかることがあります</li>'+
+      '<li>Googleの画面は時々変わります。ボタン名が違っても「目的」で探してください</li></ul>';
+    document.getElementById("advTest").onclick=advTest;
+    document.getElementById("advSave").onclick=advSave;
+    document.getElementById("advOff").onclick=advOff;
+  }
+  document.getElementById("advKey").value=gpKey();
+  advSync(); advRes("","");
+  const ov=document.getElementById("advov");
+  ov.classList.add("on"); ov.scrollTop=0;
+  document.documentElement.classList.add("pvon");
+}
+function advClose(){
+  document.getElementById("advov").classList.remove("on");
+  document.documentElement.classList.remove("pvon");
+}
+function advSync(){
+  const st=document.getElementById("advSt"); if(!st) return;
+  st.textContent=gpKey()?"現在: 🔍写真取得 ON（カードに🔍探すが出ています）":"現在: OFF（キー未登録）";
+}
+function advRes(cls,msg){
+  const r=document.getElementById("advRes"); if(!r) return;
+  r.className="adv-res"+(cls?" "+cls:""); r.textContent=msg;
+}
+let advBusy=false;
+async function advTest(){
+  if(advBusy) return;
+  const k=(document.getElementById("advKey").value||"").trim();
+  if(!k){ advRes("ng","❌ キーを入力してください"); return; }
+  advBusy=true; document.getElementById("advTest").disabled=true;
+  advRes("","接続テスト中…");
+  try{
+    const t0=Date.now();
+    /* 東京駅を1件だけ検索（ユーザー自身の割り当てを1回消費） */
+    const r=await fetch("https://places.googleapis.com/v1/places:searchText",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Goog-Api-Key":k,
+        "X-Goog-FieldMask":"places.displayName"},
+      body:JSON.stringify({textQuery:"東京駅",languageCode:"ja",pageSize:1})});
+    if(r.ok){
+      advRes("ok","✅ このキーは使えます（応答 "+(Date.now()-t0)+"ms）。「保存」を押してください。");
+    }else{
+      let m=""; try{ m=(await r.json()).error.message||""; }catch(e){}
+      if(r.status===400&&/API key not valid/i.test(m)) advRes("ng","❌ キーの文字列が違うようです。コピーし直してください。");
+      else if(r.status===403) advRes("ng","❌ 権限がありません。手順6（有効化）と7（キーの制限）を確認してください。\n（設定直後は反映に最大5分かかります）");
+      else if(r.status===429) advRes("ng","❌ 今日の回数上限に達しています（明日また使えます）。");
+      else advRes("ng","❌ 使えませんでした（HTTP "+r.status+(m?(" / "+m.slice(0,80)):"")+"）");
+    }
+  }catch(e){ advRes("ng","❌ 通信できませんでした。ネット接続を確認してください。"); }
+  advBusy=false; document.getElementById("advTest").disabled=false;
+}
+function advSave(){
+  const k=(document.getElementById("advKey").value||"").trim();
+  if(!k){ advRes("ng","❌ キーを入力してください（OFFにするには「OFF」ボタン）"); return; }
+  gpKeySet(k); advSync(); advRes("ok","✅ 保存しました。カードに「🔍探す」が出ています。");
+}
+function advOff(){
+  if(!gpKey()){ advRes("","もともとOFFです。"); return; }
+  if(!confirm("🔍写真取得をOFFにします（キーを削除）。\nまた使う時はキーを入れ直してください。よろしいですか？")) return;
+  gpKeySet(""); document.getElementById("advKey").value="";
+  advSync(); advRes("","OFFにしました。");
+}
+(function(){
+  const b=document.getElementById("advBack"); if(b) b.onclick=advClose;
 })();
 
 /* ───── 添付（URLカード・PDF） ─────
@@ -3591,16 +3765,6 @@ function helpOpen(){
     });
     document.getElementById("hpBottomToc").onclick=hpToTop;
     document.getElementById("helpTop").onclick=hpToTop;
-    /* 隠し設定（私用）: 末尾の「場所帳 vX.Y.Z」を素早く7回タップ→🔍Gマップ写真取得のAPIキー登録 */
-    const ft=b.querySelector(".hp-foot");
-    let gpN=0, gpT=0;
-    ft.onclick=()=>{
-      const now=Date.now(); gpN=(now-gpT<1200)?gpN+1:1; gpT=now;
-      if(gpN<7) return;
-      gpN=0;
-      const v=prompt("🔍Gマップ写真取得のAPIキー\n（空のまま決定＝機能OFF）",gpKey());
-      if(v!==null) gpKeySet(v);
-    };
   }
   const ov=document.getElementById("helpov");
   ov.classList.add("on"); ov.scrollTop=0;
@@ -3628,6 +3792,7 @@ function menu(){
     '<button class="menu-item" id="m_imp">バックアップを読み込む</button>'+
     '<button class="menu-item" id="m_gmi">Googleマップのお気に入りを取り込む</button>'+
     '<button class="menu-item" id="m_help">❓ 使い方（ヘルプ）</button>'+
+    '<button class="menu-item" id="m_adv">⚙ 追加機能（上級者向け）</button>'+
     '<div class="hint" style="margin-top:12px">データはこの端末の中だけに保存されます。'+
     '機種を替える前に書き出しておけば、そのまま引き継げます。<br>場所帳 v'+VER+'</div>'+
     '<div class="sheet-actions"><button class="btn" id="m_close">閉じる</button></div>';
@@ -3641,6 +3806,7 @@ function menu(){
   document.getElementById("m_cats").onclick=catEdit;
   document.getElementById("m_gmi").onclick=gmImport;
   document.getElementById("m_help").onclick=()=>{ closeSheet(); helpOpen(); };
+  document.getElementById("m_adv").onclick=()=>{ closeSheet(); advOpen(); };
   document.getElementById("m_exp").onclick=async()=>{
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
@@ -5021,6 +5187,7 @@ function closeTopOverlay(){
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(document.getElementById("helpov").classList.contains("on")) helpClose();   /* 使い方 */
+  else if(document.getElementById("advov").classList.contains("on")) advClose();   /* ⚙追加機能 */
   else if(document.getElementById("nearov").classList.contains("on")) nearClose();
   else if(veil.classList.contains("on")) closeSheet();
   else if(homeTab==="shelf"&&shelfCat&&shelfSub){ shelfSub=null; renderTop(); }   /* フォルダ→本へ */
@@ -5044,7 +5211,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay();
   function mode4(){
     if(dlg.classList.contains("on")||on("cvcrop")||on("cpick")||lb.classList.contains("on")||veil.classList.contains("on")) return "";
     if(pv.classList.contains("on")) return "pv";                  /* 写真の縦閲覧＝閲覧終了 */
-    if(on("ocrov")||on("nvov")||on("helpov")||on("nearov")||on("gpov")) return "";
+    if(on("ocrov")||on("nvov")||on("helpov")||on("nearov")||on("gpov")||on("advov")) return "";
     if(homeTab==="shelf"&&shelfCat) return "shelf";               /* 本の中/フォルダの中＝1つ戻る */
     return "";
   }
