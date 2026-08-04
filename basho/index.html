@@ -411,6 +411,30 @@
     -webkit-overflow-scrolling:touch;--pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
   .helpov.on{display:block}
   .helpov .pv-body{font-size:15.5px;line-height:1.8;padding-top:10px}
+  /* 🔍Gマップの写真（私用の隠し機能）: 候補グリッド→タップで複数選択→取り込み */
+  .gpov{position:fixed;inset:0;z-index:57;display:none;flex-direction:column;
+    --pvc:#EDEFE8;--pvh:#DDE2D8;background:var(--pvc)}
+  .gpov.on{display:flex}
+  .gp-body{flex:1;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;
+    width:100%;max-width:760px;margin:0 auto;padding:10px 12px 16px}
+  .gp-q{display:flex;gap:8px;margin:0 0 10px}
+  .gp-q input{flex:1;min-width:0;padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;
+    background:var(--card);color:var(--ink);font-family:var(--gothic);font-size:15px}
+  .gp-q button{flex:0 0 auto;padding:11px 14px;border:1.5px solid var(--line);border-radius:10px;
+    background:var(--card);color:var(--route);font-family:var(--gothic);font-size:14px;cursor:pointer}
+  .gp-place{font-size:13px;line-height:1.5;color:var(--soft);margin:0 0 6px}
+  .gp-place b{color:var(--ink);font-size:14px}
+  .gp-status{font-size:13px;color:var(--soft);margin:0 0 10px;min-height:1.2em}
+  .gp-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+  .gp-item{position:relative;aspect-ratio:4/3;border-radius:10px;overflow:hidden;cursor:pointer;
+    background:rgba(255,255,255,.5);border:3px solid transparent}
+  .gp-item img{width:100%;height:100%;object-fit:cover;display:block}
+  .gp-item.sel{border-color:var(--route)}
+  .gp-item.sel::after{content:"✓";position:absolute;top:5px;right:5px;width:24px;height:24px;
+    border-radius:50%;background:var(--route);color:#fff;font-size:15px;line-height:24px;text-align:center}
+  .gp-foot{display:flex;gap:10px;padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+    background:var(--pvh);border-top:1px solid rgba(27,36,34,.12)}
+  .gp-foot .btn:disabled{opacity:.4;cursor:default}
   .hp-lead{font-size:13px;color:var(--soft);margin:0 0 10px}
   .hp-toc{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:4px 10px;margin:0 0 26px}
   .hp-toc button{display:flex;gap:4px;align-items:baseline;width:100%;text-align:left;border:0;
@@ -667,6 +691,25 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <button class="hp-top" id="helpTop">▲ 目次</button>
 </div>
 
+<!-- 🔍Gマップの写真（私用の隠し機能）: APIキーを登録した端末だけカードに🔍ボタンが出る。
+     キー登録＝ヘルプ末尾のバージョン表記を7回タップ。キーはこの端末のlocalStorageのみ＝コードには無い -->
+<div class="gpov" id="gpov">
+  <div class="pv-head">
+    <button class="pv-back" id="gpBack" aria-label="戻る">←</button>
+    <div class="pv-title">🔍 Gマップの写真</div>
+  </div>
+  <div class="gp-body">
+    <div class="gp-q"><input id="gpQ" type="text" placeholder="場所の名前"><button id="gpRe">再検索</button></div>
+    <div class="gp-place" id="gpPlace"></div>
+    <div class="gp-status" id="gpStatus"></div>
+    <div class="gp-grid" id="gpGrid"></div>
+  </div>
+  <div class="gp-foot" id="gpFoot">
+    <button class="btn" id="gpAll">全選択</button>
+    <button class="btn primary" id="gpImport" disabled>取り込む</button>
+  </div>
+</div>
+
 <!-- 表紙の位置調整: 本の長押し→「表紙の画像を選ぶ」→画像選択→ここで位置決め・拡縮→決定 -->
 <div class="cvcrop" id="cvcrop">
   <div class="cvcrop-box">
@@ -779,7 +822,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.37.0";
+const VER = "0.38.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -986,6 +1029,134 @@ function phPurgePlace(p){
   (p.att||[]).forEach(a=>["ic","ref"].forEach(k=>{
     if(a[k]){IDB.del(a[k]).catch(()=>{});phCache.delete(a[k]);}}));
 }
+
+/* ───── 🔍Gマップの写真（私用の隠し機能・v0.38.0） ─────
+   カード名＋カードの座標で Places API (New) に聞き、投稿写真を最大10枚並べて選んで取り込む。
+   APIキーはコードに置かない：ヘルプ末尾のバージョン表記を7回タップ→キーを登録した端末だけ
+   カードに🔍ボタンが出る（一般配布版では存在ごと見えない）。キーは localStorage のみ。
+   通信は places.googleapis.com（検索・写真URL）と lh3.googleusercontent.com（写真本体）へ直接。
+   どちらもCORS許可を実測確認済み（2026-08-04）＝PWA/APK共通で素のfetchで動く。プロキシ不使用。 */
+const GP_LS="basho_gpkey";
+function gpKey(){ try{return (localStorage.getItem(GP_LS)||"").trim();}catch(e){return "";} }
+function gpKeySet(v){
+  try{ v=(v||"").trim(); if(v) localStorage.setItem(GP_LS,v); else localStorage.removeItem(GP_LS); }catch(e){v="";}
+  toast(v?"🔍写真取得: ON":"🔍写真取得: OFF"); render();
+}
+let gpP=null, gpItems=[], gpBusy=false;   /* gpItems=[{uri,sel}] 表示中の候補 */
+function gpOpen(p){
+  gpP=p; gpItems=[];
+  document.getElementById("gpQ").value=p.name||"";
+  document.getElementById("gpov").classList.add("on");
+  document.documentElement.classList.add("pvon");   /* 背面スクロール封じ（縦閲覧と同じ流儀） */
+  gpSearch();
+}
+function gpClose(){
+  document.getElementById("gpov").classList.remove("on");
+  document.documentElement.classList.remove("pvon");
+  document.getElementById("gpGrid").innerHTML="";
+  document.getElementById("gpPlace").textContent="";
+  document.getElementById("gpStatus").textContent="";
+  gpItems=[]; gpP=null; gpFootSync();
+}
+async function gpJson(url,opt){
+  const r=await fetch(url,opt);
+  if(!r.ok){
+    let m=""; try{ m=(await r.json()).error.message||""; }catch(e){}
+    throw new Error("HTTP "+r.status+(m?(" "+m):""));
+  }
+  return r.json();
+}
+async function gpSearch(){
+  if(gpBusy) return;
+  const key=gpKey(), p=gpP; if(!key||!p) return;
+  const q=(document.getElementById("gpQ").value||"").trim()||p.name||"";
+  const grid=document.getElementById("gpGrid"), st=document.getElementById("gpStatus"),
+        pl=document.getElementById("gpPlace");
+  gpBusy=true; gpItems=[]; grid.innerHTML=""; pl.textContent=""; gpFootSync();
+  st.textContent="検索中…";
+  try{
+    const body={textQuery:q,languageCode:"ja",regionCode:"JP",pageSize:1};
+    /* カードの座標を渡す＝同名の店が全国にあっても「このカードの場所」を引き当てる */
+    if(p.lat&&p.lng) body.locationBias={circle:{center:{latitude:+p.lat,longitude:+p.lng},radius:3000}};
+    const d=await gpJson("https://places.googleapis.com/v1/places:searchText",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","X-Goog-Api-Key":key,
+        "X-Goog-FieldMask":"places.displayName,places.formattedAddress,places.photos"},
+      body:JSON.stringify(body)});
+    const hit=(d.places||[])[0];
+    if(!hit){ st.textContent="見つかりませんでした。検索語を変えて再検索してみてください。"; gpBusy=false; return; }
+    pl.innerHTML="<b>"+esc((hit.displayName&&hit.displayName.text)||q)+"</b><br>"+esc(hit.formattedAddress||"");
+    const phs=(hit.photos||[]).slice(0,10);
+    if(!phs.length){ st.textContent="この場所には写真の投稿がありません。"; gpBusy=false; return; }
+    st.textContent="写真を読み込み中… 0/"+phs.length;
+    /* 枠を先に並べておき、届いた順に埋める＝写真の並びが毎回同じになる */
+    const cells=phs.map(()=>{ const c=document.createElement("div"); c.className="gp-item"; grid.appendChild(c); return c; });
+    let done=0;
+    await Promise.all(phs.map(async(ph,i)=>{
+      try{
+        const m=await gpJson("https://places.googleapis.com/v1/"+ph.name+
+          "/media?maxWidthPx=1200&skipHttpRedirect=true&key="+encodeURIComponent(key));
+        if(!(m&&m.photoUri)) throw new Error("no uri");
+        const it={uri:m.photoUri,sel:false};
+        gpItems.push(it);
+        const im=new Image(); im.alt=""; im.draggable=false; im.src=m.photoUri;
+        im.oncontextmenu=e=>e.preventDefault();
+        cells[i].appendChild(im);
+        cells[i].onclick=()=>{ it.sel=!it.sel; cells[i].classList.toggle("sel",it.sel); gpFootSync(); };
+      }catch(e){ cells[i].remove(); }
+      done++; st.textContent="写真を読み込み中… "+done+"/"+phs.length;
+    }));
+    st.textContent=gpItems.length?"タップで選択 → 下の「取り込む」":"写真を読み込めませんでした。";
+  }catch(e){
+    st.textContent="検索できませんでした（"+((e&&e.message)||"通信エラー")+"）";
+  }
+  gpBusy=false;
+}
+function gpFootSync(){
+  const b=document.getElementById("gpImport"); if(!b) return;
+  const n=gpItems.filter(x=>x.sel).length;
+  b.textContent=n?("取り込む（"+n+"枚）"):"取り込む";
+  b.disabled=!n;
+}
+function gpAllToggle(){
+  if(!gpItems.length) return;
+  const on=gpItems.some(x=>!x.sel);   /* 1つでも未選択なら全部ON／全部選択済みなら全部OFF */
+  gpItems.forEach(x=>x.sel=on);
+  document.querySelectorAll("#gpGrid .gp-item").forEach(c=>{ if(c.firstChild) c.classList.toggle("sel",on); });
+  gpFootSync();
+}
+async function gpImport(){
+  if(gpBusy) return;
+  const sel=gpItems.filter(x=>x.sel), p=gpP;
+  if(!sel.length||!p) return;
+  const st=document.getElementById("gpStatus");
+  gpBusy=true; st.textContent="取り込み中… 0/"+sel.length;
+  const ids=[]; let bad=0, done=0;
+  for(const it of sel){
+    try{
+      const r=await fetch(it.uri); if(!r.ok) throw new Error("http");
+      const id=await phProcessFile(await r.blob());   /* 既存の写真経路に合流（圧縮→IndexedDB） */
+      if(id) ids.push(id); else bad++;
+    }catch(e){ bad++; }
+    done++; st.textContent="取り込み中… "+done+"/"+sel.length;
+  }
+  gpBusy=false;
+  if(ids.length){
+    p.ph=(p.ph||[]).concat(ids); p.updated=Date.now(); save();
+    toast(ids.length+"枚を取り込みました"+(bad?"（"+bad+"枚は失敗）":""));
+    gpClose();
+  }else st.textContent="取り込めませんでした。通信状態を確認してください。";
+}
+(function(){
+  const b=document.getElementById("gpBack"); if(!b) return;
+  b.onclick=gpClose;
+  document.getElementById("gpRe").onclick=gpSearch;
+  document.getElementById("gpAll").onclick=gpAllToggle;
+  document.getElementById("gpImport").onclick=gpImport;
+  document.getElementById("gpQ").addEventListener("keydown",e=>{
+    if(e.key==="Enter"){ e.target.blur(); gpSearch(); }
+  });
+})();
 
 /* ───── 添付（URLカード・PDF） ─────
    p.att=[{t:"url",url,host,title,desc,ic} | {t:"pdf",ref,name,sz}]
@@ -1895,6 +2066,8 @@ function _renderBody(){
           '<div class="phbtns">'+
             '<button data-ph="cam">📷写真</button>'+
             '<button data-ph="pick">📁保存画像</button>'+
+            /* 🔍=私用の隠し機能（Gマップの写真取得）。APIキーを登録した端末でだけ現れる */
+            (gpKey()?'<button data-ph="gp">🔍探す</button>':'')+
           '</div>'+
           '<div class="phbtns"><button data-ph="att">🔗リンクPDF</button><button data-ph="ord">⇅並び順</button></div>'+
         '</div>'+
@@ -1925,6 +2098,7 @@ function _renderBody(){
       b.onclick=e=>{e.stopPropagation();
         if(b.dataset.ph==="att") attSheet(p);
         else if(b.dataset.ph==="ord") ordSheet(p);
+        else if(b.dataset.ph==="gp") gpOpen(p);
         else phShoot(p,b.dataset.ph==="pick");};
     });
     /* サムネ列は p.ord の順（写真と添付ミニタイルが混ざって並ぶ）。
@@ -3417,6 +3591,16 @@ function helpOpen(){
     });
     document.getElementById("hpBottomToc").onclick=hpToTop;
     document.getElementById("helpTop").onclick=hpToTop;
+    /* 隠し設定（私用）: 末尾の「場所帳 vX.Y.Z」を素早く7回タップ→🔍Gマップ写真取得のAPIキー登録 */
+    const ft=b.querySelector(".hp-foot");
+    let gpN=0, gpT=0;
+    ft.onclick=()=>{
+      const now=Date.now(); gpN=(now-gpT<1200)?gpN+1:1; gpT=now;
+      if(gpN<7) return;
+      gpN=0;
+      const v=prompt("🔍Gマップ写真取得のAPIキー\n（空のまま決定＝機能OFF）",gpKey());
+      if(v!==null) gpKeySet(v);
+    };
   }
   const ov=document.getElementById("helpov");
   ov.classList.add("on"); ov.scrollTop=0;
@@ -4833,6 +5017,7 @@ function closeTopOverlay(){
   else if(lb.classList.contains("on")) lbClose();
   else if(veil.classList.contains("abovepv")&&veil.classList.contains("on")) closeSheet();   /* 縦閲覧の上の添付メニュー */
   else if(pv.classList.contains("on")) pvClose();   /* ライトボックス→縦閲覧→一覧 の順で1段ずつ */
+  else if(document.getElementById("gpov").classList.contains("on")) gpClose();   /* 🔍Gマップの写真 */
   else if(document.getElementById("ocrov").classList.contains("on")) ocrClose();
   else if(document.getElementById("nvov").classList.contains("on")) nvClose();
   else if(document.getElementById("helpov").classList.contains("on")) helpClose();   /* 使い方 */
@@ -4859,7 +5044,7 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeTopOverlay();
   function mode4(){
     if(dlg.classList.contains("on")||on("cvcrop")||on("cpick")||lb.classList.contains("on")||veil.classList.contains("on")) return "";
     if(pv.classList.contains("on")) return "pv";                  /* 写真の縦閲覧＝閲覧終了 */
-    if(on("ocrov")||on("nvov")||on("helpov")||on("nearov")) return "";
+    if(on("ocrov")||on("nvov")||on("helpov")||on("nearov")||on("gpov")) return "";
     if(homeTab==="shelf"&&shelfCat) return "shelf";               /* 本の中/フォルダの中＝1つ戻る */
     return "";
   }
