@@ -753,7 +753,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="cvcrop-box">
     <div class="cvcrop-tt">表紙の位置を調整</div>
     <div class="cvcrop-vp" id="cvcropVp"><img id="cvcropImg" alt=""></div>
-    <div class="cvcrop-hint">ドラッグで移動／2本指で拡大縮小できます。<br>枠に写っている範囲がそのまま表紙になります。</div>
+    <div class="cvcrop-hint">ドラッグで移動／2本指で拡大縮小できます。<br>枠に写っている範囲がそのまま表紙になり、<br>画像の入らない余白はカテゴリの色で塗られます。</div>
     <div class="cvcrop-acts"><button class="btn" id="cvcropNg">やめる</button><button class="btn primary" id="cvcropOk">これで決定</button></div>
   </div>
 </div>
@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.42.0";
+const VER = "0.43.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2590,12 +2590,16 @@ function cvCropPick(cat){
       if(!iw||!ih){ URL.revokeObjectURL(img.src); toast("画像を読み込めませんでした"); return; }
       const vp=document.getElementById("cvcropVp"), imEl=document.getElementById("cvcropImg");
       vp.style.setProperty("--catcolor",cat.c);   /* 左端の背表紙ラインも実物どおり見せる */
+      vp.style.background=cat.c;                  /* 画像の入らない余白はカテゴリ色（焼き込みと同じ見た目） */
       document.getElementById("cvcrop").classList.add("on");
       requestAnimationFrame(()=>{                  /* 表示後でないと枠サイズが取れない */
         const r=vp.getBoundingClientRect();
         const cover=Math.max(r.width/iw,r.height/ih);
+        const fit=Math.min(r.width/iw,r.height/ih);
+        /* v0.43.0: 縮小の下限を「枠いっぱい(cover)」から「全体が入る大きさの1/4」まで解放。
+           開始位置は従来どおり枠いっぱい＝今まで通りの使い方は何も変わらない */
         CVC={cat:cat,img:img,iw:iw,ih:ih,vw:r.width,vh:r.height,
-             sc:cover,min:cover,max:cover*4,tx:0,ty:0,
+             sc:cover,min:fit*0.25,max:cover*4,tx:0,ty:0,
              ptr:new Map(),lx:0,ly:0,pd:null,ps:0,ptx:0,pty:0,pmx:0,pmy:0,pcx:0,pcy:0};
         imEl.src=img.src;
         imEl.style.width=iw+"px"; imEl.style.height=ih+"px";
@@ -2614,7 +2618,10 @@ function cvCropApply(){
     "translate("+(-w/2+CVC.tx)+"px,"+(-h/2+CVC.ty)+"px) scale("+CVC.sc+")";
 }
 function cvCropClamp(){
-  const mx=Math.max(0,(CVC.iw*CVC.sc-CVC.vw)/2), my=Math.max(0,(CVC.ih*CVC.sc-CVC.vh)/2);
+  /* v0.43.0: 自由配置。枠の外へも動かせるが、画像が完全に消えて迷子にならないよう
+     最低30pxは枠の中に残す（旧: 常に枠いっぱいを画像で埋めるクランプだった） */
+  const w=CVC.iw*CVC.sc, h=CVC.ih*CVC.sc, K=30;
+  const mx=CVC.vw/2+w/2-K, my=CVC.vh/2+h/2-K;
   CVC.tx=Math.min(mx,Math.max(-mx,CVC.tx));
   CVC.ty=Math.min(my,Math.max(-my,CVC.ty));
 }
@@ -2683,12 +2690,15 @@ function cvCropCancel(){
 }
 function cvCropOk(){
   if(!CVC){ cvCropCancel(); return; }
-  /* 枠に写っている範囲を600×800(3:4)に焼く＝表紙の表示幅は最大でも300px程度なので十分な解像度 */
-  const OW=600, OH=800, s=CVC.sc, sw=CVC.vw/s, sh=CVC.vh/s;
-  let sx=CVC.iw/2-CVC.tx/s-sw/2, sy=CVC.ih/2-CVC.ty/s-sh/2;
-  sx=Math.min(Math.max(0,sx),CVC.iw-sw); sy=Math.min(Math.max(0,sy),CVC.ih-sh);
+  /* 枠に写っている範囲を600×800(3:4)に焼く＝表紙の表示幅は最大でも300px程度なので十分な解像度。
+     v0.43.0: 先にカテゴリ色で塗る＝画像が枠より小さい・枠からはみ出た余白はカテゴリ色になる */
+  const OW=600, OH=800, k=OW/CVC.vw;
+  const w=CVC.iw*CVC.sc, h=CVC.ih*CVC.sc;
+  const X=(CVC.vw-w)/2+CVC.tx, Y=(CVC.vh-h)/2+CVC.ty;   /* 枠左上から見た画像左上（枠内プレビューと同じ座標系） */
   const cv=document.createElement("canvas"); cv.width=OW; cv.height=OH;
-  cv.getContext("2d").drawImage(CVC.img,sx,sy,sw,sh,0,0,OW,OH);
+  const g=cv.getContext("2d");
+  g.fillStyle=CVC.cat.c; g.fillRect(0,0,OW,OH);
+  g.drawImage(CVC.img,0,0,CVC.iw,CVC.ih,X*k,Y*k,w*k,h*k);
   const du=cv.toDataURL("image/jpeg",.85);
   const cat=CVC.cat;
   cvCropCancel();   /* blob URLの後片付け（drawImage済みなので安全） */
