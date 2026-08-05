@@ -855,7 +855,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.39.0";
+const VER = "0.40.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -2338,7 +2338,17 @@ function _renderBody(){
           if(c){p.lat=c.lat;p.lng=c.lng;p.acc=null;updatePref(p);save();}
         }
         if(p.lat&&p.lng){ bump(p); nearOpen(p); }
-        else dlgOpen("位置が入っていません。\n編集の「🗺 地図で位置を決める」でピンを置いてください。",false);
+        /* v0.40.0: 「置いてください」で突き放さず、その場で地図に進むか選べる2択に。
+           地図で決めたらそのまま周辺を開く＝押した目的を最後まで果たす */
+        else dlgOpen("「周辺」を使うには、この場所の位置（座標）が必要です。\n地図の＋印を合わせて、位置を設定しますか？",true,
+          ok=>{ if(!ok) return;
+            nvOpenPick(null,(lat,lng)=>{
+              p.lat=String(lat); p.lng=String(lng); p.acc=null;
+              updatePref(p); save();
+              toast("位置を設定しました");
+              bump(p); nearOpen(p);
+            },p.addr||p.name);
+          },{yes:"🗺 地図で位置を決める",no:"今回はやめる"});
       }
       else if(a==="nav"){
         /* 座標が無ければリンクからの抽出をもう一度試す（フルURLなら取れる） */
@@ -2355,7 +2365,16 @@ function _renderBody(){
           }
           bump(p);nvOpen("place",p);
         }
-        else dlgOpen("位置が入っていません。\n編集の「🗺 地図で位置を決める」でピンを置いてください。",false);
+        /* v0.40.0: 周辺と同じ2択方式。地図で決めたらそのまま「近く」を開く */
+        else dlgOpen("「近く」（歩きの案内）には正確な位置が必要ですが、この場所にはまだ入っていません。\n地図の＋印を合わせて、位置を設定しますか？",true,
+          ok=>{ if(!ok) return;
+            nvOpenPick(null,(lat,lng)=>{
+              p.lat=String(lat); p.lng=String(lng); p.acc=null;
+              updatePref(p); save();
+              toast("位置を設定しました");
+              bump(p); nvOpen("place",p);
+            },p.addr||p.name);
+          },{yes:"🗺 地図で位置を決める",no:"今回はやめる"});
       }
       else form(p);
     });
@@ -2836,7 +2855,7 @@ function shareAdd(name,url,c,addr){
         'カードの住所を長押しコピーで貼り付けてください。'
       : '<div class="hint">住所は共有では受け取れません。マップのカードを写したスクショがあれば'+
         '「🔢 スクショから読み取る」で名前も住所も入れられます（カードの住所を長押しコピーでもOK）。')+
-      (c?'':'座標が入っていない時は、登録後にそのまま「地図で位置を決める」が開きます（不要なら戻るでスキップ）。')+'</div>'+
+      (c?'':'座標が入らなくても登録できます（「近く」「周辺」を使う時に、その場で位置を設定できます）。')+'</div>'+
     '<div class="sheet-actions">'+
       '<button class="btn" id="cancel">やめる</button>'+
       '<button class="btn primary" id="ok">登録する</button>'+
@@ -2910,14 +2929,10 @@ function shareAdd(name,url,c,addr){
     if(homeTab==="shelf"&&shelfSub&&rec.cat===shelfCat) rec.sf=shelfSub;
     updatePref(rec); places.push(rec); save(); closeSheet();
     showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
-    if(rec.lat&&rec.lng){ toast("「"+nm+"」を登録しました"); return; }
-    /* 座標なし → そのままピン置きへ（住所があれば住所で・なければ名前で自動検索してジャンプ） */
-    nvOpenPick(null,(lat,lng)=>{
-      rec.lat=String(lat); rec.lng=String(lng); rec.acc=null;
-      updatePref(rec); save();
-      toast("「"+nm+"」の位置も設定しました");
-    },rec.addr||nm);
-    toast("＋印を合わせて「この位置にする」（あとで入れるなら戻る）");
+    /* v0.40.0: 座標なしでもピン置きは自動で開かない（自動検索が外れて「全然違う場所」が
+       出ることが多く混乱のもと＝コーイチさん実使用FB）。位置が要る「近く」「周辺」を
+       押した時に、その場で設定するか選んでもらう方式へ */
+    toast("「"+nm+"」を登録しました"+((rec.lat&&rec.lng)?"":"（位置はまだ未設定です）"));
   };
 }
 
@@ -3649,7 +3664,7 @@ const HELP_SECS=[
  '<li>Googleマップでその場所を開く →「<b>共有</b>」→ アプリ一覧から「<b>場所帳</b>」を選ぶ。</li>'+
  '<li>名前とリンクが自動で入ります。<b>リンクに位置情報が含まれていれば</b>座標や住所も自動で補われます（リンクの中身を数秒調べて、空いている欄だけ埋めます）。</li>'+
  '<li>住所が入らなかったときは：「🔢 スクショから読み取る」（→登録④）か、Googleマップのカードの住所を<b>長押しコピー</b>して貼り付け。</li>'+
- '<li>座標が入らないまま登録すると、そのまま「地図で位置を決める」が開きます（あとで入れるなら戻るでスキップ）。</li>'+
+ '<li>座標が入らなくても登録できます。位置が必要な「近く」「周辺」を押した時に、その場で「地図で位置を決める」に進めます。</li>'+
  '</ul>'+
  '<div class="hp-note">ピンを長押しして共有した場合は、名前ではなく座標が届きます。場所帳が自動で見分けて座標欄に入れるので、そのまま名前だけ書き足せば大丈夫です。</div>'},
 {id:"reg3",t:"登録③ 名前だけで追加（位置はあとで）",h:
