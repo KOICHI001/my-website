@@ -269,6 +269,11 @@
   .cpick-ring{width:14px;height:14px;border-radius:50%;flex:0 0 auto;border:6px solid var(--c);background:#fff}
   .cpick-ring.sel{background:var(--c)}
   .cpick-row.cat{border-radius:12px;margin:3px 0}
+  /* サブカテゴリ行: 選ぶボタン＋右端に🗑＝ピッカーの中で作成も削除も完結（v0.42.0） */
+  .cpick-sub{display:flex;align-items:center}
+  .cpick-sub .cpick-row{flex:1;min-width:0}
+  .cpick-del{flex:0 0 auto;border:0;background:none;font-size:16px;padding:12px 14px;cursor:pointer;opacity:.65}
+  .cpick-del:active{opacity:1}
   /* カテゴリ選択フィールド（ネイティブselectの代替・現在色をうっすら敷く） */
   .catsel{display:flex;align-items:center;gap:10px;width:100%;font-family:var(--gothic);font-size:16px;
     padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;background:var(--card);
@@ -855,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.41.0";
+const VER = "0.42.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -4120,6 +4125,9 @@ function allSubs(){
   places.forEach(p=>{ if(p.sf) m.set(p.sf,(m.get(p.sf)||0)+1); });
   return [...m.entries()].sort((a,b)=>b[1]-a[1]||a[0].localeCompare(b[0],"ja"));
 }
+/* 「＋新しく作る」で作ったばかりでまだどのカードにも保存されていない名前。
+   カードを保存するまで places に現れない＝ピッカーを開き直すと消えて見える問題への受け皿（この起動中だけ持つ） */
+let sfPending=[];
 function sfFieldHTML(cur){
   return '<input type="hidden" id="f_sf" value="'+esc(cur||"")+'">'+
     '<button type="button" class="catsel" id="f_sfBtn">'+
@@ -4132,27 +4140,52 @@ function sfFieldWire(){
     const cur=document.getElementById("f_sf").value;
     const w=document.getElementById("cpickWin");
     w.innerHTML="";
-    const row=(label,val,sel)=>{
+    const pick=v=>{cpickClose();
+      document.getElementById("f_sf").value=v;
+      document.getElementById("f_sfLabel").textContent=v?"📁 "+v:"（なし）";};
+    const none=document.createElement("button");
+    none.className="cpick-row"+(!cur?" cat":"");
+    if(!cur) none.style.background="#0B6E5F18";
+    none.textContent="（なし）"; none.onclick=()=>pick("");
+    w.appendChild(none);
+    /* 候補は全カテゴリ横断（多く使っている順）＋保存前の新規（sfPending・選択中の名前も保険で合流）。
+       各行の右端🗑=その場で削除（全カテゴリのカードから外す。場所は消えない） */
+    const cnt=new Map(allSubs());
+    sfPending.forEach(n=>{ if(!cnt.has(n)) cnt.set(n,0); });
+    if(cur&&!cnt.has(cur)) cnt.set(cur,0);
+    cnt.forEach((c,n)=>{
+      const wr=document.createElement("div"); wr.className="cpick-sub";
       const b=document.createElement("button");
-      b.className="cpick-row"+(sel?" cat":"");
-      if(sel) b.style.background="#0B6E5F18";
-      b.textContent=label;
-      b.onclick=()=>{cpickClose();
-        document.getElementById("f_sf").value=val;
-        document.getElementById("f_sfLabel").textContent=val?"📁 "+val:"（なし）";};
-      w.appendChild(b);
-    };
-    row("（なし）","",!cur);
-    /* 候補は全カテゴリ横断（多く使っている順）＝どのカテゴリのカードでも同じ一覧が出る */
-    allSubs().forEach(([n,cnt])=>row("📁 "+n+"（"+cnt+"件）",n,n===cur));
+      b.className="cpick-row"+(n===cur?" cat":"");
+      if(n===cur) b.style.background="#0B6E5F18";
+      b.textContent="📁 "+n+(c?"（"+c+"件）":"（新規）");
+      b.onclick=()=>pick(n);
+      const d=document.createElement("button");
+      d.className="cpick-del"; d.textContent="🗑"; d.setAttribute("aria-label","削除");
+      d.onclick=()=>{
+        if(!confirm('サブカテゴリ「'+n+'」を削除します。\n'+
+          (c?('全カテゴリのカード '+c+'件 から外れます（場所そのものは消えません）。'):'（まだどのカードにも付いていません）')+
+          '\nよろしいですか？')) return;
+        places.forEach(p=>{ if(p.sf===n) delete p.sf; });
+        sfPending=sfPending.filter(x=>x!==n);
+        save();
+        /* 今この欄で選んでいた名前を消したら「（なし）」へ戻す（ピッカーは開いたまま） */
+        if(document.getElementById("f_sf").value===n){
+          document.getElementById("f_sf").value="";
+          document.getElementById("f_sfLabel").textContent="（なし）";
+        }
+        toast("サブカテゴリ「"+n+"」を削除しました");
+        btn.onclick();   /* 開いたままリストを作り直す */
+      };
+      wr.appendChild(b); wr.appendChild(d); w.appendChild(wr);
+    });
     const nb=document.createElement("button");
     nb.className="cpick-row"; nb.textContent="＋ 新しいサブカテゴリを作る";
     nb.onclick=()=>{
       const nv=(prompt("サブカテゴリの名前（例: 軽井沢周辺）")||"").trim();
       if(!nv) return;
-      cpickClose();
-      document.getElementById("f_sf").value=nv;
-      document.getElementById("f_sfLabel").textContent="📁 "+nv;
+      if(!sfPending.includes(nv)) sfPending.push(nv);   /* 保存前でも次から候補に出す */
+      pick(nv);
     };
     w.appendChild(nb);
     document.getElementById("cpick").classList.add("on");
