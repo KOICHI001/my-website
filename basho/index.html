@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.43.0";
+const VER = "0.44.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1765,7 +1765,8 @@ function mixHex(hex,tgt,f){
 /* 表紙の値を正規化して返す: {id:画像id, t:1=カテゴリ名の帯を重ねる}。旧形式(文字列=idのみ)は帯あり扱い */
 function covOf(n){
   const v=COVERS[n]; if(!v) return null;
-  return (typeof v==="string")?{id:v,t:1}:{id:v.id,t:v.t?1:0};
+  /* src=表紙の元画像(微調整用)・cs=前回の配置{rs,ntx,nty}（v0.44.0） */
+  return (typeof v==="string")?{id:v,t:1}:{id:v.id,t:v.t?1:0,src:v.src||null,cs:v.cs||null};
 }
 let lastPos=null;
 
@@ -2544,6 +2545,7 @@ function coverMenu(cat){
       '<input type="checkbox" id="cv_label" style="width:20px;height:20px"'+(!cur||cur.t?" checked":"")+'>'+
       '表紙にカテゴリ名を入れる</label>'+
     '<button class="menu-item" id="cv_pick">📁 表紙の画像を選ぶ</button>'+
+    (cur&&cur.id&&cur.src?'<button class="menu-item" id="cv_adj">🎛 位置やサイズを調整する</button>':'')+
     (cur&&cur.id?'<button class="menu-item" id="cv_del">表紙の画像を外す</button>':'')+
     (cat.n!==CAT_OTHER.n?'<button class="menu-item" id="cv_delbook" style="color:#B4462F">🗑 この本を削除</button>':'')+
     '<div class="hint">画像の上にカテゴリ名の帯を重ねるかを選べます。'+
@@ -2556,16 +2558,19 @@ function coverMenu(cat){
      ★画像なしの本でも記憶する（id:nullで帯フラグだけ保存）＝デフォルト表紙の文字も消せる */
   chk.onchange=()=>{
     const c=covOf(cat.n);
-    COVERS[cat.n]={id:c?c.id:null,t:chk.checked?1:0};
+    COVERS[cat.n]={id:c?c.id:null,t:chk.checked?1:0,src:(c&&c.src)||null,cs:(c&&c.cs)||null};
     saveCovers(); render();
   };
   /* 画像選択→クロップ画面（位置決め・拡縮）→決定で保存。箱のヘッダー画像と同じ流儀 */
   document.getElementById("cv_pick").onclick=()=>cvCropPick(cat);
+  const adj=document.getElementById("cv_adj");
+  if(adj) adj.onclick=()=>cvCropEdit(cat);
   const del=document.getElementById("cv_del");
   if(del) del.onclick=()=>{
     if(!confirm("表紙の画像を外します。よろしいですか？"))return;
     const old=covOf(cat.n);
     if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
+    if(old&&old.src){IDB.del(old.src).catch(()=>{});phCache.delete(old.src);}
     /* 画像だけ外して帯フラグは残す（チェックOFFの本が外した途端に帯復活しないように） */
     COVERS[cat.n]={id:null,t:old&&old.t?1:0}; saveCovers(); closeSheet(); render();
     toast("表紙を外しました");
@@ -2585,31 +2590,58 @@ function cvCropPick(cat){
   inp.onchange=()=>{
     const f=inp.files&&inp.files[0]; if(!f) return;
     const img=new Image();
-    img.onload=()=>{
-      const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
-      if(!iw||!ih){ URL.revokeObjectURL(img.src); toast("画像を読み込めませんでした"); return; }
-      const vp=document.getElementById("cvcropVp"), imEl=document.getElementById("cvcropImg");
-      vp.style.setProperty("--catcolor",cat.c);   /* 左端の背表紙ラインも実物どおり見せる */
-      vp.style.background=cat.c;                  /* 画像の入らない余白はカテゴリ色（焼き込みと同じ見た目） */
-      document.getElementById("cvcrop").classList.add("on");
-      requestAnimationFrame(()=>{                  /* 表示後でないと枠サイズが取れない */
-        const r=vp.getBoundingClientRect();
-        const cover=Math.max(r.width/iw,r.height/ih);
-        const fit=Math.min(r.width/iw,r.height/ih);
-        /* v0.43.0: 縮小の下限を「枠いっぱい(cover)」から「全体が入る大きさの1/4」まで解放。
-           開始位置は従来どおり枠いっぱい＝今まで通りの使い方は何も変わらない */
-        CVC={cat:cat,img:img,iw:iw,ih:ih,vw:r.width,vh:r.height,
-             sc:cover,min:fit*0.25,max:cover*4,tx:0,ty:0,
-             ptr:new Map(),lx:0,ly:0,pd:null,ps:0,ptx:0,pty:0,pmx:0,pmy:0,pcx:0,pcy:0};
-        imEl.src=img.src;
-        imEl.style.width=iw+"px"; imEl.style.height=ih+"px";
-        cvCropApply();
-      });
-    };
+    img.onload=()=>cvCropShow(cat,img,{file:f});
     img.onerror=()=>{ URL.revokeObjectURL(img.src); toast("画像を読み込めませんでした"); };
     img.src=URL.createObjectURL(f);
   };
   inp.click();
+}
+/* 既存の表紙の微調整（v0.44.0）: 決定時に保存しておいた元画像を、前回の配置(cs)そのままで開き直す。
+   ＝選び直して0からやり直さなくても「少しずらす」ができる。元画像が無い（旧版で作った表紙・
+   バックアップ欠け）時はボタン自体が出ない */
+function cvCropEdit(cat){
+  const cur=covOf(cat.n);
+  if(!(cur&&cur.src)){ toast("調整できる元画像がありません（画像を選び直してください）"); return; }
+  phGet(cur.src).then(du=>{
+    if(!du){ toast("元画像が見つかりません（画像を選び直してください）"); return; }
+    const img=new Image();
+    img.onload=()=>cvCropShow(cat,img,{srcId:cur.src,cs:cur.cs});
+    img.onerror=()=>toast("元画像を読み込めませんでした");
+    img.src=du;
+  });
+}
+function cvCropShow(cat,img,opt){
+  opt=opt||{};
+  const iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  if(!iw||!ih){
+    if(img.src&&img.src.startsWith("blob:")) URL.revokeObjectURL(img.src);
+    toast("画像を読み込めませんでした"); return;
+  }
+  const vp=document.getElementById("cvcropVp"), imEl=document.getElementById("cvcropImg");
+  vp.style.setProperty("--catcolor",cat.c);   /* 左端の背表紙ラインも実物どおり見せる */
+  vp.style.background=cat.c;                  /* 画像の入らない余白はカテゴリ色（焼き込みと同じ見た目） */
+  document.getElementById("cvcrop").classList.add("on");
+  requestAnimationFrame(()=>{                  /* 表示後でないと枠サイズが取れない */
+    const r=vp.getBoundingClientRect();
+    const cover=Math.max(r.width/iw,r.height/ih);
+    const fit=Math.min(r.width/iw,r.height/ih);
+    /* v0.43.0: 縮小の下限を「枠いっぱい(cover)」から「全体が入る大きさの1/4」まで解放。
+       開始位置は従来どおり枠いっぱい＝今まで通りの使い方は何も変わらない */
+    CVC={cat:cat,img:img,iw:iw,ih:ih,vw:r.width,vh:r.height,
+         sc:cover,min:fit*0.25,max:cover*4,tx:0,ty:0,
+         file:opt.file||null,srcId:opt.srcId||null,
+         ptr:new Map(),lx:0,ly:0,pd:null,ps:0,ptx:0,pty:0,pmx:0,pmy:0,pcx:0,pcy:0};
+    /* 微調整＝前回の配置を復元。倍率は「枠いっぱい比」・位置は「枠サイズ比」で保存してあるので、
+       画面サイズが変わっていても同じ見た目から始まる */
+    if(opt.cs&&isFinite(opt.cs.rs)){
+      CVC.sc=Math.min(CVC.max,Math.max(CVC.min,opt.cs.rs*cover));
+      CVC.tx=(opt.cs.ntx||0)*r.width; CVC.ty=(opt.cs.nty||0)*r.height;
+      cvCropClamp();
+    }
+    imEl.src=img.src;
+    imEl.style.width=iw+"px"; imEl.style.height=ih+"px";
+    cvCropApply();
+  });
 }
 function cvCropApply(){
   if(!CVC) return;
@@ -2700,15 +2732,22 @@ function cvCropOk(){
   g.fillStyle=CVC.cat.c; g.fillRect(0,0,OW,OH);
   g.drawImage(CVC.img,0,0,CVC.iw,CVC.ih,X*k,Y*k,w*k,h*k);
   const du=cv.toDataURL("image/jpeg",.85);
-  const cat=CVC.cat;
+  const cat=CVC.cat, file=CVC.file, srcOld=CVC.srcId;
+  /* 微調整用に配置を記憶（倍率=枠いっぱい比・位置=枠サイズ比） */
+  const cover=Math.max(CVC.vw/CVC.iw,CVC.vh/CVC.ih);
+  const cs={rs:+(CVC.sc/cover).toFixed(5),ntx:+(CVC.tx/CVC.vw).toFixed(5),nty:+(CVC.ty/CVC.vh).toFixed(5)};
   cvCropCancel();   /* blob URLの後片付け（drawImage済みなので安全） */
   const id="i"+Date.now()+Math.random().toString(36).slice(2,5);
-  IDB.set(id,du).then(()=>{
+  /* 元画像も保存（新しく選んだ時だけ圧縮して保存・微調整は既存を使い回す）＝「🎛調整」の種 */
+  const pSrc=file?phProcessFile(file):Promise.resolve(srcOld||null);
+  Promise.all([IDB.set(id,du),pSrc]).then(rr=>{
+    const srcId=rr[1]||null;
     phCache.set(id,du);
     const old=covOf(cat.n);
     if(old&&old.id){IDB.del(old.id).catch(()=>{});phCache.delete(old.id);}
+    if(old&&old.src&&old.src!==srcId){IDB.del(old.src).catch(()=>{});phCache.delete(old.src);}
     const chk=document.getElementById("cv_label");   /* 帯フラグはシートの今のチェック状態を引き継ぐ */
-    COVERS[cat.n]={id:id,t:chk?(chk.checked?1:0):1};
+    COVERS[cat.n]={id:id,t:chk?(chk.checked?1:0):1,src:srcId,cs:cs};
     saveCovers(); closeSheet(); render();
     toast("表紙を設定しました");
   }).catch(()=>toast("表紙を保存できませんでした（空き容量を確認）"));
@@ -2742,7 +2781,8 @@ function bookRemove(cat,withPlaces){
   }else{
     places.forEach(p=>{ if(p.cat===cat.n){ p.cat=CAT_OTHER.n; } });   /* サブカテゴリは全カテゴリ共通＝移動しても保持（v0.41.0） */
   }
-  const c=covOf(cat.n); if(c&&c.id){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);}
+  const c=covOf(cat.n);
+  if(c){ ["id","src"].forEach(k=>{ if(c[k]){IDB.del(c[k]).catch(()=>{});phCache.delete(c[k]);} }); }
   delete COVERS[cat.n]; saveCovers();
   CATS=CATS.filter(x=>x.n!==cat.n); saveCats();
   if(filterCat===cat.n) filterCat="";
@@ -3848,7 +3888,9 @@ function menu(){
     /* 添付（URLカードのアイコン・PDF本体）も同梱=機種変更で丸ごと引き継げる */
     for(const p of places) for(const a of (p.att||[])) for(const k of ["ic","ref"]){
       if(a[k]){ const du=await phGet(a[k]); if(du) images[a[k]]=du; } }
-    for(const cn in COVERS){ const c=covOf(cn); if(!c||!c.id)continue; const du=await phGet(c.id); if(du) images[c.id]=du; }   /* 本棚の表紙も同梱 */
+    /* 本棚の表紙も同梱（src=微調整用の元画像も。機種変更後も🎛調整が使える） */
+    for(const cn in COVERS){ const c=covOf(cn); if(!c)continue;
+      for(const k of [c.id,c.src]){ if(!k)continue; const du=await phGet(k); if(du) images[k]=du; } }
     const nImg=Object.keys(images).length;
     const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
       cats:CATS.filter(x=>x.n!==CAT_OTHER.n),covers:COVERS})],{type:"application/json"});
@@ -4266,7 +4308,7 @@ function catEdit(){
       /* 本棚の表紙と開いている本もカテゴリの改名・削除に追随 */
       for(const o in ren){ if(COVERS[o]!=null){COVERS[ren[o]]=COVERS[o];delete COVERS[o];} }
       removed.forEach(cn=>{ const c=covOf(cn);
-        if(c){ if(c.id){IDB.del(c.id).catch(()=>{});phCache.delete(c.id);} delete COVERS[cn]; } });
+        if(c){ ["id","src"].forEach(k=>{ if(c[k]){IDB.del(c[k]).catch(()=>{});phCache.delete(c[k]);} }); delete COVERS[cn]; } });
       saveCovers();
       if(ren[shelfCat]) shelfCat=ren[shelfCat];
       else if(removed.includes(shelfCat)) shelfCat=null;
