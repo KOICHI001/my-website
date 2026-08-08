@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.44.0";
+const VER = "0.45.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -3221,6 +3221,12 @@ function nvInitMap(){
   NV.map.on("dragstart",()=>nvFollow(false));
   NV.map.on("move zoom viewreset resize",nvEdgeSync);
 }
+/* 地理院タイルは日本専用＝日本の外は白紙になる（v0.45.0・海外テスター対策）。
+   緯度20〜46・経度122〜154のざっくり日本範囲かどうかで地理院2種を出すか決める */
+function nvJp(lat,lng){ return lat>=20&&lat<=46&&lng>=122&&lng<=154; }
+function nvJpHere(){
+  try{ const c=NV.map.getCenter(); return nvJp(c.lat,c.lng); }catch(e){ return true; }
+}
 /* レイヤー切替: std(地理院・道が正確) / photo(航空写真) / osm(名前入り) */
 function nvSetLayer(k){
   if(!NV.map||NV.lay===k) return;
@@ -3417,7 +3423,11 @@ function nvOpen(mode,place){
   let lay="osm";
   try{lay=localStorage.getItem("basho_navlay")||"osm";}catch(e){}
   if(lay!=="std"&&lay!=="photo"&&lay!=="osm") lay="osm";
-  nvInitMap(); nvSetLayer(lay);
+  nvInitMap();
+  /* 目的地が日本の外なら地理院は白紙＝名前入り(OSM)で開く（記憶した好みは変えない） */
+  const t0=nvTargetLL();
+  if(t0&&!nvJp(t0[0],t0[1])&&lay!=="osm") lay="osm";
+  nvSetLayer(lay);
   setTimeout(()=>{
     NV.map.invalidateSize();
     /* 前回「向き上」で使っていたら今回もその向きで開く */
@@ -5548,9 +5558,16 @@ document.getElementById("nvUnpark").onclick=()=>{
   parking=null; saveParking(); nvClose(); toast("足あとを解除しました");
 };
 document.getElementById("nvLayer").onclick=()=>{
-  nvSetLayer(NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std"));
-  /* ナビ中の切替は記憶して次回もその地図で開く（ピン置きは常にosm開始なので記憶しない） */
-  if(NV.mode!=="pick"){ try{localStorage.setItem("basho_navlay",NV.lay);}catch(e){} }
+  let next=NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std");
+  /* 地図の中心が日本の外＝地理院2種を飛ばして白紙を見せない（v0.45.0） */
+  if(next!=="osm"&&!nvJpHere()){
+    if(NV.lay==="osm"){ toast("この地域では「名前入り」の地図だけ使えます（地理院の地図は日本専用です）"); return; }
+    next="osm";
+  }
+  nvSetLayer(next);
+  /* ナビ中の切替は記憶して次回もその地図で開く（ピン置きは常にosm開始なので記憶しない）。
+     海外で強制的にosmへ寄せた時は好みを上書きしない＝日本に帰れば前の地図に戻る */
+  if(NV.mode!=="pick"&&nvJpHere()){ try{localStorage.setItem("basho_navlay",NV.lay);}catch(e){} }
 };
 document.getElementById("nvFollow").onclick=()=>nvFollow(!NV.follow);
 document.getElementById("nvHead").onclick=()=>{
