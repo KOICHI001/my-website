@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.46.0";
+const VER = "0.47.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1114,9 +1114,12 @@ async function gpSearch(){
   st.textContent="検索中…";
   try{
     /* v0.46.0: 「稲荷神社」のような同名多数の名前だと、緩いバイアス＋最有力1件では
-       知名度の高い別の場所が勝ってしまう（実使用で発覚）→ 候補を5件取り、
-       カードの座標に最も近いものを選ぶ。座標こそがこのカードの正体という原則 */
-    const body={textQuery:q,languageCode:"ja",regionCode:"JP",pageSize:(p.lat&&p.lng)?5:1};
+       知名度の高い別の場所が勝ってしまう（実使用で発覚）→ 候補を複数取り、
+       カードの座標に最も近いものを選ぶ。座標こそがこのカードの正体という原則。
+       v0.47.0: 5件では足りなかった＝国領町の実測でクチコミ4件の小さな稲荷神社は
+       関連度順の上位5件に入れず圏外（稲荷系だけで周囲に8つ）。API上限の20件まで広げると
+       6m先の本物が入った。料金は件数に関係なく1リクエスト分＝広げ得 */
+    const body={textQuery:q,languageCode:"ja",regionCode:"JP",pageSize:(p.lat&&p.lng)?20:1};
     if(p.lat&&p.lng) body.locationBias={circle:{center:{latitude:+p.lat,longitude:+p.lng},radius:3000}};
     const d=await gpJson("https://places.googleapis.com/v1/places:searchText",{
       method:"POST",
@@ -3078,6 +3081,15 @@ function form(d){
       toast("位置を設定しました。「保存する」を忘れずに");
     });
   };
+  /* 緯度欄に「35.86, 139.65」をカンマごと貼った時は自動で緯度・経度へ振り分ける
+     （v0.47.0・実データで緯度欄に丸ごと入り座標が壊れていた事例の再発防止） */
+  document.getElementById("f_lat").addEventListener("input",e=>{
+    const m=String(e.target.value).match(/^\s*(-?\d{1,2}\.\d{3,})\s*,\s*(-?\d{1,3}\.\d{3,})\s*$/);
+    if(!m) return;
+    e.target.value=m[1];
+    document.getElementById("f_lng").value=m[2];
+    toast("緯度と経度に振り分けました");
+  });
   /* 住所→座標: 住所欄の内容でピン置きを開く（GSI住所検索で自動ジャンプ→＋印で目視確認して確定） */
   document.getElementById("addr2geo").onclick=()=>{
     const ad=document.getElementById("f_addr").value.trim();
