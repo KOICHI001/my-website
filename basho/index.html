@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.47.0";
+const VER = "0.48.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1547,18 +1547,49 @@ function ordSheet(p){
   if(!ordSync(p).length){ toast("写真やリンク・PDFがまだ入っていません"); return; }
   sheet.innerHTML=
     '<h2>⇅ 並び順</h2>'+
-    '<div class="hint">▲▼で入れ替えます。サムネ列も閲覧画面も、この順で表示されます。</div>'+
-    '<div id="ordList" style="max-height:56vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>'+
-    '<div class="sheet-actions"><button class="btn primary" id="ord_done">完了</button></div>';
+    '<div class="hint">▲▼で入れ替えます。左のチェックを付けて、下のボタンでまとめて削除もできます。</div>'+
+    '<div id="ordList" style="max-height:52vh;overflow-y:auto;display:flex;flex-direction:column;gap:6px;margin-top:8px"></div>'+
+    '<div class="sheet-actions"><button class="btn del" id="ord_del" style="flex:1" disabled>🗑 選んで削除</button>'+
+    '<button class="btn primary" id="ord_done">完了</button></div>';
   veil.classList.add("on");
   document.getElementById("ord_done").onclick=closeSheet;
   const atMap=new Map((p.att||[]).map(a=>[a.id,a]));
   const listEl=document.getElementById("ordList");
+  /* 一括削除（v0.48.0）: 長押し1枚ずつ+毎回確認は枚数が多いと大変（実使用FB）
+     →チェックした分を1回の確認でまとめて削除 */
+  const sel=new Set();
+  const delBtn=document.getElementById("ord_del");
+  const delSync=()=>{
+    delBtn.disabled=!sel.size;
+    delBtn.textContent=sel.size?("🗑 "+sel.size+"件を削除"):"🗑 選んで削除";
+  };
+  delBtn.onclick=()=>{
+    if(!sel.size) return;
+    const nPh=(p.ph||[]).filter(id=>sel.has(id)).length;
+    const nAt=(p.att||[]).filter(a=>sel.has(a.id)).length;
+    const what=[nPh?("写真 "+nPh+"枚"):"",nAt?("リンク・PDF "+nAt+"件"):""].filter(Boolean).join("と");
+    dlgOpen(what+"を削除します。\nこのアプリの中にしか無いものは、元に戻せません。よろしいですか？",true,ok=>{
+      if(!ok) return;
+      (p.ph||[]).forEach(id=>{ if(sel.has(id)){IDB.del(id).catch(()=>{});phCache.delete(id);} });
+      p.ph=(p.ph||[]).filter(id=>!sel.has(id));
+      (p.att||[]).forEach(a=>{ if(sel.has(a.id)) ["ic","ref"].forEach(k=>{ if(a[k]){IDB.del(a[k]).catch(()=>{});phCache.delete(a[k]);} }); });
+      p.att=(p.att||[]).filter(a=>!sel.has(a.id));
+      sel.clear(); ordSync(p); p.updated=Date.now(); save();
+      toast((nPh+nAt)+"件を削除しました");
+      if(!p.ord.length){ closeSheet(); return; }
+      delSync(); draw();
+    },{yes:"削除する",no:"やめる"});
+  };
   const draw=()=>{
     listEl.innerHTML="";
     p.ord.forEach((tok,i)=>{
       const row=document.createElement("div");
       row.style.cssText="display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:6px 8px;background:var(--card)";
+      const ck=document.createElement("input");
+      ck.type="checkbox"; ck.checked=sel.has(tok);
+      ck.style.cssText="width:22px;height:22px;flex:0 0 auto";
+      ck.onchange=()=>{ if(ck.checked)sel.add(tok); else sel.delete(tok); delSync(); };
+      row.appendChild(ck);
       const a=atMap.get(tok);
       const th=document.createElement("div");
       th.style.cssText="width:44px;height:44px;border-radius:8px;flex:0 0 auto;border:1px solid var(--line);background:#E9ECE4 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:20px";
