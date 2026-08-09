@@ -40,7 +40,9 @@
   .iconbtn{border:1px solid var(--line);background:var(--card);color:var(--soft);
     border-radius:10px;padding:7px 9px;font-size:13px;font-family:var(--gothic);cursor:pointer;
     white-space:nowrap}
-  .iconbtn svg{display:block;pointer-events:none}
+  /* head-inはbaseline揃え＝SVGだけのボタンは文字の底辺を持たず浮き上がる(v0.49.0実機)→
+     ゼロ幅スペースで文字の底辺を与え、SVGはその行に沈めて重ねる(v0.49.1) */
+  .iconbtn svg{display:inline-block;vertical-align:-4px;pointer-events:none}
   .searchrow{display:flex;gap:8px;padding-bottom:10px}
   #q{flex:1;min-width:0;font-family:var(--gothic);font-size:17px;padding:12px 14px;
     border:1.5px solid var(--line);border-radius:var(--r);background:var(--card);color:var(--ink)}
@@ -862,7 +864,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.49.0";
+const VER = "0.49.1";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -5358,7 +5360,7 @@ document.getElementById("tabShelf").onclick=()=>{
    中身がSVGになったのでクリック先はe.targetでなくボタン本体を掴む */
 const viewBtnEl=document.getElementById("viewBtn");
 function paintViewBtn(){
-  viewBtnEl.innerHTML=viewMode==="tile"?ICON_LIST:ICON_TILE;
+  viewBtnEl.innerHTML=(viewMode==="tile"?ICON_LIST:ICON_TILE)+"\u200B";
   viewBtnEl.setAttribute("aria-label",viewMode==="tile"?"一覧表示に切り替え":"タイル表示に切り替え");
 }
 paintViewBtn();
