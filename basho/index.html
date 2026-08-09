@@ -860,7 +860,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.45.0";
+const VER = "0.46.0";
 
 /* ───── カテゴリ（凡例の色） ───── */
 const DEFAULT_CATS=[
@@ -1113,17 +1113,32 @@ async function gpSearch(){
   gpBusy=true; gpItems=[]; grid.innerHTML=""; pl.textContent=""; gpFootSync();
   st.textContent="検索中…";
   try{
-    const body={textQuery:q,languageCode:"ja",regionCode:"JP",pageSize:1};
-    /* カードの座標を渡す＝同名の店が全国にあっても「このカードの場所」を引き当てる */
+    /* v0.46.0: 「稲荷神社」のような同名多数の名前だと、緩いバイアス＋最有力1件では
+       知名度の高い別の場所が勝ってしまう（実使用で発覚）→ 候補を5件取り、
+       カードの座標に最も近いものを選ぶ。座標こそがこのカードの正体という原則 */
+    const body={textQuery:q,languageCode:"ja",regionCode:"JP",pageSize:(p.lat&&p.lng)?5:1};
     if(p.lat&&p.lng) body.locationBias={circle:{center:{latitude:+p.lat,longitude:+p.lng},radius:3000}};
     const d=await gpJson("https://places.googleapis.com/v1/places:searchText",{
       method:"POST",
       headers:{"Content-Type":"application/json","X-Goog-Api-Key":key,
-        "X-Goog-FieldMask":"places.displayName,places.formattedAddress,places.photos"},
+        "X-Goog-FieldMask":"places.displayName,places.formattedAddress,places.photos,places.location"},
       body:JSON.stringify(body)});
-    const hit=(d.places||[])[0];
-    if(!hit){ st.textContent="見つかりませんでした。検索語を変えて再検索してみてください。"; gpBusy=false; return; }
-    pl.innerHTML="<b>"+esc((hit.displayName&&hit.displayName.text)||q)+"</b><br>"+esc(hit.formattedAddress||"");
+    const cands=d.places||[];
+    if(!cands.length){ st.textContent="見つかりませんでした。検索語を変えて再検索してみてください。"; gpBusy=false; return; }
+    let hit=cands[0], hitD=null;
+    if(p.lat&&p.lng){
+      const dv=(la1,lo1,la2,lo2)=>{const R=6371e3,r=x=>x*Math.PI/180;
+        const a=Math.sin(r(la2-la1)/2)**2+Math.cos(r(la1))*Math.cos(r(la2))*Math.sin(r(lo2-lo1)/2)**2;
+        return 2*R*Math.asin(Math.sqrt(a));};
+      cands.forEach(c=>{
+        if(!(c.location&&isFinite(c.location.latitude))) return;
+        const dm=dv(+p.lat,+p.lng,c.location.latitude,c.location.longitude);
+        if(hitD==null||dm<hitD){ hit=c; hitD=dm; }
+      });
+    }
+    pl.innerHTML="<b>"+esc((hit.displayName&&hit.displayName.text)||q)+"</b><br>"+esc(hit.formattedAddress||"")+
+      /* カードの位置との距離を出す＝「本当にこのカードの場所か」をひと目で確認できる */
+      (hitD!=null?'<br>📍 カードの位置から約 '+esc(fmtDist(hitD))+(hitD>2000?'（遠いかも。検索語で絞り直せます）':''):'');
     const phs=(hit.photos||[]).slice(0,10);
     if(!phs.length){ st.textContent="この場所には写真の投稿がありません。"; gpBusy=false; return; }
     st.textContent="写真を読み込み中… 0/"+phs.length;
