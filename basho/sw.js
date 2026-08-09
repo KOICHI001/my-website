@@ -1,5 +1,5 @@
 /* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.48.0";
+const CACHE = "basho-v0.49.0";
 /* OCRエンジン（ocr/ 約10MB・内容不変）は別キャッシュ＋cache first ＝ 毎回の再DLも版上げ時の再DLもしない */
 const OCR_CACHE = "basho-ocr-v1";
 /* v0.37.0: ヘルプを画像からHTML本文に刷新＝help01〜04.pngは同梱・precacheともに廃止 */
