@@ -219,7 +219,7 @@ body.editing .tile .del{display:flex}
 <div id="bottombar">
   <button id="resetBtn">↺</button>
   <button id="addBtn">➕</button>
-  <button id="editBtn">✏️</button>
+  <button id="editBtn">✕</button>
 </div>
 
 <div id="doneOverlay">
@@ -241,7 +241,7 @@ body.editing .tile .del{display:flex}
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <script>
-const APP_VERSION = '0.4.1';
+const APP_VERSION = '0.4.2';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -350,7 +350,6 @@ function toggle(i){
   }
 }
 function deleteItem(i){
-  if(!confirm(`${i+1}番を削除しますか？`)) return;
   state.items.splice(i,1); save(); render();
 }
 function updateProgress(){
