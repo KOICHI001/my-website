@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a2e">
+<title>タップチェック</title>
+<link rel="manifest" href="manifest.json">
+<style>
+:root{
+  --bg:#1a1a2e; --card:#24243e; --text:#eaeaf2; --sub:#9b9bb0; --accent:#ffb347;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%; overflow:hidden}
+body{
+  background:var(--bg); color:var(--text);
+  font-family:system-ui,-apple-system,"Segoe UI","Hiragino Sans","Yu Gothic UI",sans-serif;
+  overscroll-behavior:none; user-select:none; -webkit-user-select:none;
+  display:flex; flex-direction:column;
+  padding-top:env(safe-area-inset-top);
+}
+header{
+  flex:0 0 auto; display:flex; align-items:center; justify-content:space-between;
+  padding:6px 14px;
+}
+header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
+#progress{
+  font-size:15px; font-weight:700; color:var(--accent);
+  background:var(--card); border-radius:12px; padding:3px 12px;
+}
+
+/* ===== メイン：全写真1画面グリッド（スクロール無し） ===== */
+#stage{flex:1 1 auto; position:relative; overflow:hidden}
+#grid{
+  position:absolute; inset:0;
+  display:flex; flex-wrap:wrap; align-content:center; justify-content:center;
+}
+.tile{
+  position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
+  background:var(--card); border:2px solid transparent;
+}
+.tile img{
+  width:100%; height:100%; object-fit:cover; display:block;
+  filter:grayscale(1) brightness(.7); transition:filter .25s;
+}
+.tile.done{
+  border-color:var(--accent);
+  box-shadow:0 0 10px 2px rgba(255,179,71,.55);
+  animation:glow .5s;
+}
+.tile.done img{filter:none; animation:pop .3s}
+@keyframes glow{
+  0%{box-shadow:0 0 0 0 rgba(255,179,71,0)}
+  40%{box-shadow:0 0 22px 7px rgba(255,179,71,.95)}
+  100%{box-shadow:0 0 10px 2px rgba(255,179,71,.55)}
+}
+.tile .num{
+  position:absolute; top:4%; left:4%;
+  min-width:1.6em; height:1.6em; padding:0 .3em; border-radius:.8em;
+  background:rgba(20,20,40,.75); color:var(--sub);
+  font-weight:700; display:flex; align-items:center; justify-content:center;
+}
+.tile.done .num{background:var(--accent); color:#1a1a2e}
+@keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
+/* 編集モード */
+body.editing .tile img{filter:grayscale(0) brightness(.9)}
+.tile .del{
+  display:none; position:absolute; top:2%; right:2%;
+  width:2em; height:2em; border:none; border-radius:50%;
+  background:rgba(120,30,30,.9); color:#fff; cursor:pointer;
+  align-items:center; justify-content:center;
+}
+body.editing .tile .del{display:flex}
+
+/* ===== 下部バー（親指リーチ・スリム） ===== */
+#bottombar{
+  flex:0 0 auto; display:flex; gap:8px;
+  padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+}
+#bottombar button{
+  flex:1; padding:11px 0; border:none; border-radius:14px;
+  background:var(--card); color:var(--text); font-size:17px; cursor:pointer;
+}
+#editBtn.on{background:var(--accent); color:#1a1a2e}
+
+/* ===== セットアップ（撮影登録）画面 ===== */
+#setup{
+  position:absolute; inset:0; z-index:20; background:var(--bg);
+  display:none; flex-direction:column; align-items:center; justify-content:center; gap:18px;
+  padding:16px;
+}
+#setup.show{display:flex}
+#bigNum{
+  width:min(60vw,340px); height:min(60vw,340px); border-radius:28px;
+  background:var(--card); border:3px dashed #55557a; cursor:pointer;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+}
+#bigNum .n{font-size:110px; font-weight:800; color:var(--accent); line-height:1}
+#bigNum .cam{font-size:34px}
+#shotPrev{
+  width:min(60vw,340px); height:min(60vw,340px); border-radius:28px; overflow:hidden;
+  position:relative; cursor:pointer; display:none;
+}
+#shotPrev img{width:100%; height:100%; object-fit:cover; filter:grayscale(1) brightness(.7)}
+#shotPrev .num{
+  position:absolute; top:10px; left:10px; width:44px; height:44px; border-radius:50%;
+  background:rgba(20,20,40,.75); color:var(--sub); font-size:22px; font-weight:700;
+  display:flex; align-items:center; justify-content:center;
+}
+.hint{font-size:14px; color:var(--sub)}
+#setupBtns{display:flex; gap:12px; width:min(60vw,340px)}
+#setupBtns button{
+  flex:1; padding:14px 0; border:none; border-radius:16px;
+  font-size:17px; font-weight:700; cursor:pointer;
+}
+#nextBtn{background:var(--accent); color:#1a1a2e; display:none}
+#finishBtn{background:var(--card); color:var(--text)}
+
+/* ===== 全部そろったオーバーレイ ===== */
+#doneOverlay{
+  position:fixed; inset:0; z-index:50; display:none;
+  flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  background:rgba(20,40,20,.93); cursor:pointer;
+}
+#doneOverlay.show{display:flex; animation:fadein .3s}
+#doneOverlay .big{font-size:72px; animation:pop .5s}
+#doneOverlay .msg{font-size:24px; font-weight:700; color:#a5d6a7}
+#doneOverlay .sub{font-size:14px; color:#c8e6c9}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>タップチェック</h1>
+  <div id="progress">0/0</div>
+</header>
+
+<div id="stage">
+  <div id="grid"></div>
+  <div id="setup">
+    <div id="bigNum"><div class="n">1</div><div class="cam">📷</div></div>
+    <div id="shotPrev"><img alt=""><div class="num">1</div></div>
+    <div class="hint" id="setupHint">番号をタップして撮影</div>
+    <div id="setupBtns">
+      <button id="finishBtn">✅ 終了</button>
+      <button id="nextBtn">次へ ▶</button>
+    </div>
+  </div>
+</div>
+
+<div id="bottombar">
+  <button id="resetBtn">↺</button>
+  <button id="addBtn">➕</button>
+  <button id="editBtn">✏️</button>
+</div>
+
+<div id="doneOverlay">
+  <div class="big">✨</div>
+  <div class="msg">全部そろった！</div>
+  <div class="sub">いってらっしゃい（タップで閉じる）</div>
+</div>
+
+<input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+
+<script>
+const APP_VERSION = '0.3.0';
+const LS_KEY = 'routine_cho_v1';
+const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
+const GAP = 6, PAD = 6;
+
+let state = load();
+let editing = false;
+let pendingIndex = -1; // 撮影対象のindex（新規=items.length）
+
+function load(){
+  try{
+    const s = JSON.parse(localStorage.getItem(LS_KEY));
+    if(s && Array.isArray(s.items)) return s;
+  }catch(e){}
+  return {items: [], lastTap: 0};
+}
+function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+
+// 起動時オートリセット：全部そろった後の再訪 or 8時間放置なら白黒に戻す
+(function autoReset(){
+  const allDone = state.items.length>0 && state.items.every(i=>i.done);
+  const stale = state.lastTap && (Date.now()-state.lastTap > RESET_AFTER_MS);
+  if(allDone || stale){ state.items.forEach(i=>i.done=false); save(); }
+})();
+
+const grid = document.getElementById('grid');
+const progress = document.getElementById('progress');
+const setup = document.getElementById('setup');
+const bigNum = document.getElementById('bigNum');
+const shotPrev = document.getElementById('shotPrev');
+const setupHint = document.getElementById('setupHint');
+const nextBtn = document.getElementById('nextBtn');
+const finishBtn = document.getElementById('finishBtn');
+const camInput = document.getElementById('camInput');
+const doneOverlay = document.getElementById('doneOverlay');
+
+/* ===== 全写真を必ず1画面に収めるグリッド計算 ===== */
+function bestLayout(n, W, H){
+  let best = {cols:1, size:0};
+  for(let cols=1; cols<=n; cols++){
+    const rows = Math.ceil(n/cols);
+    const size = Math.min(
+      (W - PAD*2 - GAP*(cols-1)) / cols,
+      (H - PAD*2 - GAP*(rows-1)) / rows
+    );
+    if(size > best.size) best = {cols, size};
+  }
+  best.size = Math.floor(best.size);
+  return best;
+}
+
+function render(){
+  const n = state.items.length;
+  grid.innerHTML = '';
+  if(n === 0){ updateProgress(); return; }
+  const W = grid.clientWidth, H = grid.clientHeight;
+  const {cols, size} = bestLayout(n, W, H);
+  grid.style.gap = GAP+'px';
+  grid.style.padding = PAD+'px';
+  // 折返し幅を固定して cols 列に強制
+  grid.style.maxWidth = (cols*size + GAP*(cols-1) + PAD*2) + 'px';
+  grid.style.margin = '0 auto';
+  const fontPx = Math.max(11, Math.min(18, size*0.14));
+  state.items.forEach((it,i)=>{
+    const t = document.createElement('div');
+    t.className = 'tile' + (it.done ? ' done':'');
+    t.style.width = size+'px';
+    t.style.height = size+'px';
+    t.style.fontSize = fontPx+'px';
+    t.innerHTML =
+      `<img src="${it.img}" alt="">` +
+      `<div class="num">${i+1}</div>` +
+      `<button class="del">✕</button>`;
+    t.addEventListener('click', e=>{
+      if(editing){
+        if(e.target.classList.contains('del')){
+          if(confirm(`${i+1}番を削除しますか？`)){
+            state.items.splice(i,1); save(); render();
+          }
+          return;
+        }
+        // 編集モード中：写真タップ＝撮り直し
+        pendingIndex = i;
+        camInput.click();
+        return;
+      }
+      toggle(i);
+    });
+    grid.appendChild(t);
+  });
+  updateProgress();
+}
+
+function toggle(i){
+  state.items[i].done = !state.items[i].done;
+  state.lastTap = Date.now();
+  save();
+  if(navigator.vibrate) navigator.vibrate(state.items[i].done ? 30 : 10);
+  render();
+  if(state.items.length>0 && state.items.every(x=>x.done)){
+    if(navigator.vibrate) navigator.vibrate([40,60,40]);
+    doneOverlay.classList.add('show');
+  }
+}
+function updateProgress(){
+  const d = state.items.filter(i=>i.done).length;
+  progress.textContent = `${d}/${state.items.length}`;
+}
+
+/* ===== セットアップ（撮影登録）フロー ===== */
+function showSetup(){
+  setup.classList.add('show');
+  showBigNum();
+}
+function showBigNum(){
+  bigNum.style.display = 'flex';
+  shotPrev.style.display = 'none';
+  nextBtn.style.display = 'none';
+  bigNum.querySelector('.n').textContent = state.items.length + 1;
+  setupHint.textContent = '番号をタップして撮影';
+}
+function showShot(){
+  const it = state.items[state.items.length-1];
+  bigNum.style.display = 'none';
+  shotPrev.style.display = 'block';
+  shotPrev.querySelector('img').src = it.img;
+  shotPrev.querySelector('.num').textContent = state.items.length;
+  nextBtn.style.display = 'block';
+  setupHint.textContent = '写真をタップで撮り直し';
+}
+function closeSetup(){
+  setup.classList.remove('show');
+  render();
+}
+
+bigNum.addEventListener('click', ()=>{ pendingIndex = state.items.length; camInput.click(); });
+shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
+nextBtn.addEventListener('click', showBigNum);
+finishBtn.addEventListener('click', closeSetup);
+
+camInput.addEventListener('change', ()=>{
+  const f = camInput.files[0];
+  camInput.value = '';
+  if(!f) return;
+  const img = new Image();
+  img.onload = ()=>{
+    // 中央を正方形に切り出して512pxへ圧縮
+    const s = Math.min(img.width, img.height);
+    const sx = (img.width - s)/2, sy = (img.height - s)/2;
+    const OUT = 512;
+    const cv = document.createElement('canvas');
+    cv.width = OUT; cv.height = OUT;
+    cv.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, OUT, OUT);
+    const data = cv.toDataURL('image/jpeg', .82);
+    URL.revokeObjectURL(img.src);
+    if(pendingIndex >= 0 && pendingIndex < state.items.length){
+      state.items[pendingIndex].img = data;       // 撮り直し
+    }else{
+      state.items.push({img: data, done: false}); // 新規
+    }
+    save();
+    if(setup.classList.contains('show')) showShot();
+    else render();
+  };
+  img.src = URL.createObjectURL(f);
+});
+
+/* ===== 下部バー ===== */
+document.getElementById('resetBtn').addEventListener('click', ()=>{
+  state.items.forEach(i=>i.done=false);
+  save(); render();
+});
+document.getElementById('addBtn').addEventListener('click', showSetup);
+document.getElementById('editBtn').addEventListener('click', ()=>{
+  editing = !editing;
+  document.body.classList.toggle('editing', editing);
+  document.getElementById('editBtn').classList.toggle('on', editing);
+  render();
+});
+doneOverlay.addEventListener('click', ()=>doneOverlay.classList.remove('show'));
+window.addEventListener('resize', render);
+
+/* ===== 起動 ===== */
+render();
+if(state.items.length === 0) showSetup(); // 初回は撮影登録から
+
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+</body>
+</html>
