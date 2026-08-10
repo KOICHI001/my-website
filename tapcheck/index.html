@@ -241,7 +241,7 @@ body.editing .tile .del{display:flex}
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <script>
-const APP_VERSION = '0.4.0';
+const APP_VERSION = '0.4.1';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -372,8 +372,10 @@ function commitDataUrl(data){
   else render();
 }
 function cropSquare(img){
-  const s = Math.min(img.width, img.height);
-  const sx = (img.width - s)/2, sy = (img.height - s)/2;
+  // 必ず自然サイズ基準（DOM内imgの.width/.heightはCSS表示サイズ＝切り出しがズレる）
+  const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+  const s = Math.min(w, h);
+  const sx = (w - s)/2, sy = (h - s)/2;
   const OUT = 512;
   const cv = document.createElement('canvas');
   cv.width = OUT; cv.height = OUT;
@@ -394,13 +396,14 @@ camInput.addEventListener('change', ()=>{
   img.src = URL.createObjectURL(f);
 });
 
-/* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要） ===== */
-async function webSearch(term){
+/* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要）
+   同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る） ===== */
+async function webSearch(term, page){
   const enc = encodeURIComponent(term);
   const [wiki, commons] = await Promise.all([
-    fetch(`https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrlimit=6&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
+    fetch(`https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrlimit=6&gsroffset=${page*6}&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
       .then(r=>r.json()).catch(()=>null),
-    fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrnamespace=6&gsrlimit=9&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`)
+    fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrnamespace=6&gsrlimit=9&gsroffset=${page*9}&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`)
       .then(r=>r.json()).catch(()=>null)
   ]);
   const urls = [];
@@ -419,21 +422,31 @@ async function webSearch(term){
 }
 
 let searching = false;
+let lastTerm = '', searchPage = 0, seenUrls = new Set();
 async function doWebSearch(){
   const term = webInput.value.trim();
   if(!term || searching) return;
+  if(term === lastTerm){ searchPage++; }               // 同じ言葉の再検索＝次の候補セット
+  else { lastTerm = term; searchPage = 0; seenUrls = new Set(); }
   searching = true;
   webResults.innerHTML = '';
   webResults.classList.remove('show');
   setupHint.textContent = '🔍 検索中…';
   let urls = [];
-  try{ urls = await webSearch(term); }catch(e){}
+  try{ urls = (await webSearch(term, searchPage)).filter(u=>!seenUrls.has(u)); }catch(e){}
+  // 候補が尽きた→最初のセットに戻る
+  let wrapped = false;
+  if(urls.length === 0 && searchPage > 0){
+    searchPage = 0; seenUrls = new Set(); wrapped = true;
+    try{ urls = await webSearch(term, 0); }catch(e){}
+  }
   searching = false;
   if(urls.length === 0){
     setupHint.textContent = '見つからなかった…別の言葉か、📷撮影してね';
     return;
   }
-  setupHint.textContent = '画像をタップして登録';
+  urls.forEach(u=>seenUrls.add(u));
+  setupHint.textContent = (wrapped ? '候補が尽きたので最初に戻ったよ' : '画像をタップして登録') + '（🔍でちがう候補）';
   urls.forEach(u=>{
     const d = document.createElement('div');
     d.className = 'wr';
