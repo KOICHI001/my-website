@@ -164,7 +164,7 @@ body.editing .tile .del{display:flex}
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <script>
-const APP_VERSION = '0.3.0';
+const APP_VERSION = '0.3.1';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -219,7 +219,9 @@ function render(){
   const n = state.items.length;
   grid.innerHTML = '';
   if(n === 0){ updateProgress(); return; }
-  const W = grid.clientWidth, H = grid.clientHeight;
+  // 幅・高さは必ずstage基準で測る（gridは前回のmax-widthで縮んでいるため）
+  const stageEl = document.getElementById('stage');
+  const W = stageEl.clientWidth, H = stageEl.clientHeight;
   const {cols, size} = bestLayout(n, W, H);
   grid.style.gap = GAP+'px';
   grid.style.padding = PAD+'px';
