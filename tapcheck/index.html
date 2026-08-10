@@ -61,6 +61,12 @@ header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
   font-weight:700; display:flex; align-items:center; justify-content:center;
 }
 .tile.done .num{background:var(--accent); color:#1a1a2e}
+.tile .label{
+  position:absolute; bottom:0; left:0; right:0;
+  background:rgba(20,20,40,.72); color:#fff;
+  font-size:.85em; padding:.15em .3em; text-align:center;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
 /* 編集モード */
 body.editing .tile img{filter:grayscale(0) brightness(.9)}
@@ -83,35 +89,69 @@ body.editing .tile .del{display:flex}
 }
 #editBtn.on{background:var(--accent); color:#1a1a2e}
 
-/* ===== セットアップ（撮影登録）画面 ===== */
+/* ===== セットアップ（撮影/Web登録）画面 ===== */
 #setup{
   position:absolute; inset:0; z-index:20; background:var(--bg);
-  display:none; flex-direction:column; align-items:center; justify-content:center; gap:18px;
-  padding:16px;
+  display:none; flex-direction:column; align-items:center; gap:14px;
+  padding:14px 16px 20px; overflow-y:auto;
 }
 #setup.show{display:flex}
 #bigNum{
-  width:min(60vw,340px); height:min(60vw,340px); border-radius:28px;
+  flex:0 0 auto;
+  width:min(46vw,240px); height:min(46vw,240px); border-radius:24px;
   background:var(--card); border:3px dashed #55557a; cursor:pointer;
-  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
 }
-#bigNum .n{font-size:110px; font-weight:800; color:var(--accent); line-height:1}
-#bigNum .cam{font-size:34px}
+#bigNum .n{font-size:78px; font-weight:800; color:var(--accent); line-height:1}
+#bigNum .cam{font-size:28px}
+#bigNum .camhint{font-size:12px; color:var(--sub)}
+#webRow{
+  display:flex; gap:8px; width:min(86vw,360px);
+}
+#webInput{
+  flex:1; padding:11px 12px; border-radius:12px; border:1px solid #44446a;
+  background:var(--card); color:var(--text); font-size:16px;
+}
+#webBtn{
+  flex:0 0 auto; width:52px; border:none; border-radius:12px;
+  background:var(--card); color:var(--text); font-size:20px; cursor:pointer;
+  border:1px solid #44446a;
+}
+#webResults{
+  display:none; grid-template-columns:repeat(3,1fr); gap:6px;
+  width:min(86vw,360px);
+}
+#webResults.show{display:grid}
+#webResults .wr{
+  aspect-ratio:1; border-radius:10px; overflow:hidden; cursor:pointer;
+  background:var(--card); border:2px solid transparent;
+}
+#webResults .wr img{width:100%; height:100%; object-fit:cover; display:block}
 #shotPrev{
-  width:min(60vw,340px); height:min(60vw,340px); border-radius:28px; overflow:hidden;
+  flex:0 0 auto;
+  width:min(60vw,300px); height:min(60vw,300px); border-radius:24px; overflow:hidden;
   position:relative; cursor:pointer; display:none;
 }
 #shotPrev img{width:100%; height:100%; object-fit:cover; filter:grayscale(1) brightness(.7)}
 #shotPrev .num{
-  position:absolute; top:10px; left:10px; width:44px; height:44px; border-radius:50%;
-  background:rgba(20,20,40,.75); color:var(--sub); font-size:22px; font-weight:700;
+  position:absolute; top:10px; left:10px; width:42px; height:42px; border-radius:50%;
+  background:rgba(20,20,40,.75); color:var(--sub); font-size:20px; font-weight:700;
   display:flex; align-items:center; justify-content:center;
 }
-.hint{font-size:14px; color:var(--sub)}
-#setupBtns{display:flex; gap:12px; width:min(60vw,340px)}
+#shotPrev .plabel{
+  position:absolute; bottom:0; left:0; right:0;
+  background:rgba(20,20,40,.72); color:#fff; font-size:15px;
+  padding:4px; text-align:center; display:none;
+}
+#labelBtn{
+  display:none; border:none; border-radius:12px; padding:9px 16px;
+  background:var(--card); color:var(--sub); font-size:14px; cursor:pointer;
+}
+.hint{font-size:13px; color:var(--sub); text-align:center}
+#setupBtns{display:flex; gap:12px; width:min(70vw,320px)}
 #setupBtns button{
-  flex:1; padding:14px 0; border:none; border-radius:16px;
-  font-size:17px; font-weight:700; cursor:pointer;
+  flex:1; padding:13px 0; border:none; border-radius:16px;
+  font-size:16px; font-weight:700; cursor:pointer;
 }
 #nextBtn{background:var(--accent); color:#1a1a2e; display:none}
 #finishBtn{background:var(--card); color:var(--text)}
@@ -127,6 +167,23 @@ body.editing .tile .del{display:flex}
 #doneOverlay .msg{font-size:24px; font-weight:700; color:#a5d6a7}
 #doneOverlay .sub{font-size:14px; color:#c8e6c9}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
+
+/* ===== 編集アクションシート ===== */
+#sheetBack{
+  position:fixed; inset:0; z-index:45; display:none;
+  background:rgba(0,0,0,.55); align-items:flex-end;
+}
+#sheetBack.show{display:flex}
+#sheet{
+  width:100%; background:var(--card); border-radius:20px 20px 0 0;
+  padding:14px 14px calc(14px + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:8px;
+}
+#sheet button{
+  padding:13px 0; border:none; border-radius:13px;
+  background:var(--bg); color:var(--text); font-size:16px; cursor:pointer;
+}
+#sheet #shDel{color:#ff9b9b}
 </style>
 </head>
 <body>
@@ -139,9 +196,19 @@ body.editing .tile .del{display:flex}
 <div id="stage">
   <div id="grid"></div>
   <div id="setup">
-    <div id="bigNum"><div class="n">1</div><div class="cam">📷</div></div>
-    <div id="shotPrev"><img alt=""><div class="num">1</div></div>
-    <div class="hint" id="setupHint">番号をタップして撮影</div>
+    <div id="bigNum">
+      <div class="n">1</div>
+      <div class="cam">📷</div>
+      <div class="camhint">タップして撮影</div>
+    </div>
+    <div id="webRow">
+      <input type="text" id="webInput" maxlength="30" placeholder="🌐 Webから探す（例：なす）" enterkeyhint="search">
+      <button id="webBtn">🔍</button>
+    </div>
+    <div id="webResults"></div>
+    <div id="shotPrev"><img alt=""><div class="num">1</div><div class="plabel"></div></div>
+    <button id="labelBtn">✏️ 名前を付ける（任意）</button>
+    <div class="hint" id="setupHint">撮影するか、Webから画像を選んでね</div>
     <div id="setupBtns">
       <button id="finishBtn">✅ 終了</button>
       <button id="nextBtn">次へ ▶</button>
@@ -158,20 +225,33 @@ body.editing .tile .del{display:flex}
 <div id="doneOverlay">
   <div class="big">✨</div>
   <div class="msg">全部そろった！</div>
-  <div class="sub">いってらっしゃい（タップで閉じる）</div>
+  <div class="sub">タップで閉じる</div>
+</div>
+
+<div id="sheetBack">
+  <div id="sheet">
+    <button id="shRetake">📷 撮り直す</button>
+    <button id="shWeb">🌐 Webから選び直す</button>
+    <button id="shLabel">✏️ 名前を変更</button>
+    <button id="shDel">✕ 削除</button>
+    <button id="shCancel">やめる</button>
+  </div>
 </div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <script>
-const APP_VERSION = '0.3.1';
+const APP_VERSION = '0.4.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
 
 let state = load();
 let editing = false;
-let pendingIndex = -1; // 撮影対象のindex（新規=items.length）
+let pendingIndex = -1;   // 画像コミット先index（新規=items.length）
+let pendingLabel = null; // 新規コミット時に付ける名前（Web検索語）
+let replaceMode = false; // 編集からの差し替え（コミット後すぐグリッドへ戻る）
+let sheetIndex = -1;     // 編集シート対象
 
 function load(){
   try{
@@ -181,6 +261,7 @@ function load(){
   return {items: [], lastTap: 0};
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 // 起動時オートリセット：全部そろった後の再訪 or 8時間放置なら白黒に戻す
 (function autoReset(){
@@ -193,12 +274,17 @@ const grid = document.getElementById('grid');
 const progress = document.getElementById('progress');
 const setup = document.getElementById('setup');
 const bigNum = document.getElementById('bigNum');
+const webInput = document.getElementById('webInput');
+const webBtn = document.getElementById('webBtn');
+const webResults = document.getElementById('webResults');
 const shotPrev = document.getElementById('shotPrev');
+const labelBtn = document.getElementById('labelBtn');
 const setupHint = document.getElementById('setupHint');
 const nextBtn = document.getElementById('nextBtn');
 const finishBtn = document.getElementById('finishBtn');
 const camInput = document.getElementById('camInput');
 const doneOverlay = document.getElementById('doneOverlay');
+const sheetBack = document.getElementById('sheetBack');
 
 /* ===== 全写真を必ず1画面に収めるグリッド計算 ===== */
 function bestLayout(n, W, H){
@@ -225,7 +311,6 @@ function render(){
   const {cols, size} = bestLayout(n, W, H);
   grid.style.gap = GAP+'px';
   grid.style.padding = PAD+'px';
-  // 折返し幅を固定して cols 列に強制
   grid.style.maxWidth = (cols*size + GAP*(cols-1) + PAD*2) + 'px';
   grid.style.margin = '0 auto';
   const fontPx = Math.max(11, Math.min(18, size*0.14));
@@ -238,18 +323,12 @@ function render(){
     t.innerHTML =
       `<img src="${it.img}" alt="">` +
       `<div class="num">${i+1}</div>` +
+      (it.label ? `<div class="label">${escapeHtml(it.label)}</div>` : '') +
       `<button class="del">✕</button>`;
     t.addEventListener('click', e=>{
       if(editing){
-        if(e.target.classList.contains('del')){
-          if(confirm(`${i+1}番を削除しますか？`)){
-            state.items.splice(i,1); save(); render();
-          }
-          return;
-        }
-        // 編集モード中：写真タップ＝撮り直し
-        pendingIndex = i;
-        camInput.click();
+        if(e.target.classList.contains('del')){ deleteItem(i); return; }
+        openSheet(i);
         return;
       }
       toggle(i);
@@ -270,41 +349,37 @@ function toggle(i){
     doneOverlay.classList.add('show');
   }
 }
+function deleteItem(i){
+  if(!confirm(`${i+1}番を削除しますか？`)) return;
+  state.items.splice(i,1); save(); render();
+}
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
   progress.textContent = `${d}/${state.items.length}`;
 }
 
-/* ===== セットアップ（撮影登録）フロー ===== */
-function showSetup(){
-  setup.classList.add('show');
-  showBigNum();
+/* ===== 画像コミット（カメラ・Web共通） ===== */
+function commitDataUrl(data){
+  if(pendingIndex >= 0 && pendingIndex < state.items.length){
+    state.items[pendingIndex].img = data;           // 差し替え（名前は維持）
+  }else{
+    state.items.push({img: data, done: false, label: pendingLabel || null});
+  }
+  pendingLabel = null;
+  save();
+  if(replaceMode){ replaceMode = false; closeSetup(); return; }
+  if(setup.classList.contains('show')) showShot();
+  else render();
 }
-function showBigNum(){
-  bigNum.style.display = 'flex';
-  shotPrev.style.display = 'none';
-  nextBtn.style.display = 'none';
-  bigNum.querySelector('.n').textContent = state.items.length + 1;
-  setupHint.textContent = '番号をタップして撮影';
+function cropSquare(img){
+  const s = Math.min(img.width, img.height);
+  const sx = (img.width - s)/2, sy = (img.height - s)/2;
+  const OUT = 512;
+  const cv = document.createElement('canvas');
+  cv.width = OUT; cv.height = OUT;
+  cv.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, OUT, OUT);
+  return cv.toDataURL('image/jpeg', .82);
 }
-function showShot(){
-  const it = state.items[state.items.length-1];
-  bigNum.style.display = 'none';
-  shotPrev.style.display = 'block';
-  shotPrev.querySelector('img').src = it.img;
-  shotPrev.querySelector('.num').textContent = state.items.length;
-  nextBtn.style.display = 'block';
-  setupHint.textContent = '写真をタップで撮り直し';
-}
-function closeSetup(){
-  setup.classList.remove('show');
-  render();
-}
-
-bigNum.addEventListener('click', ()=>{ pendingIndex = state.items.length; camInput.click(); });
-shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
-nextBtn.addEventListener('click', showBigNum);
-finishBtn.addEventListener('click', closeSetup);
 
 camInput.addEventListener('change', ()=>{
   const f = camInput.files[0];
@@ -312,33 +387,171 @@ camInput.addEventListener('change', ()=>{
   if(!f) return;
   const img = new Image();
   img.onload = ()=>{
-    // 中央を正方形に切り出して512pxへ圧縮
-    const s = Math.min(img.width, img.height);
-    const sx = (img.width - s)/2, sy = (img.height - s)/2;
-    const OUT = 512;
-    const cv = document.createElement('canvas');
-    cv.width = OUT; cv.height = OUT;
-    cv.getContext('2d').drawImage(img, sx, sy, s, s, 0, 0, OUT, OUT);
-    const data = cv.toDataURL('image/jpeg', .82);
+    const data = cropSquare(img);
     URL.revokeObjectURL(img.src);
-    if(pendingIndex >= 0 && pendingIndex < state.items.length){
-      state.items[pendingIndex].img = data;       // 撮り直し
-    }else{
-      state.items.push({img: data, done: false}); // 新規
-    }
-    save();
-    if(setup.classList.contains('show')) showShot();
-    else render();
+    commitDataUrl(data);
   };
   img.src = URL.createObjectURL(f);
 });
+
+/* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要） ===== */
+async function webSearch(term){
+  const enc = encodeURIComponent(term);
+  const [wiki, commons] = await Promise.all([
+    fetch(`https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrlimit=6&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
+      .then(r=>r.json()).catch(()=>null),
+    fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrnamespace=6&gsrlimit=9&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`)
+      .then(r=>r.json()).catch(()=>null)
+  ]);
+  const urls = [];
+  if(wiki && wiki.query){
+    Object.values(wiki.query.pages).sort((a,b)=>a.index-b.index)
+      .forEach(p=>{ if(p.thumbnail) urls.push(p.thumbnail.source); });
+  }
+  if(commons && commons.query){
+    Object.values(commons.query.pages).sort((a,b)=>a.index-b.index)
+      .forEach(p=>{
+        const ii = p.imageinfo && p.imageinfo[0];
+        if(ii && ii.thumburl && /\.(jpe?g|png|webp)$/i.test(ii.thumburl)) urls.push(ii.thumburl);
+      });
+  }
+  return [...new Set(urls)].slice(0,9);
+}
+
+let searching = false;
+async function doWebSearch(){
+  const term = webInput.value.trim();
+  if(!term || searching) return;
+  searching = true;
+  webResults.innerHTML = '';
+  webResults.classList.remove('show');
+  setupHint.textContent = '🔍 検索中…';
+  let urls = [];
+  try{ urls = await webSearch(term); }catch(e){}
+  searching = false;
+  if(urls.length === 0){
+    setupHint.textContent = '見つからなかった…別の言葉か、📷撮影してね';
+    return;
+  }
+  setupHint.textContent = '画像をタップして登録';
+  urls.forEach(u=>{
+    const d = document.createElement('div');
+    d.className = 'wr';
+    const im = document.createElement('img');
+    im.crossOrigin = 'anonymous';
+    im.src = u;
+    im.onerror = ()=>d.remove();
+    d.appendChild(im);
+    d.addEventListener('click', ()=>{
+      if(!im.complete || !im.naturalWidth) return;
+      let data;
+      try{ data = cropSquare(im); }
+      catch(e){ setupHint.textContent = 'この画像は使えなかった…別のを選んでね'; return; }
+      if(!replaceMode){ pendingIndex = state.items.length; pendingLabel = term; }
+      webResults.classList.remove('show');
+      webResults.innerHTML = '';
+      webInput.value = '';
+      commitDataUrl(data);
+    });
+    webResults.appendChild(d);
+  });
+  webResults.classList.add('show');
+}
+webBtn.addEventListener('click', doWebSearch);
+webInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); doWebSearch(); } });
+
+/* ===== セットアップ画面の状態遷移 ===== */
+function showSetup(replace){
+  replaceMode = !!replace;
+  setup.classList.add('show');
+  showBigNum();
+}
+function showBigNum(){
+  bigNum.style.display = 'flex';
+  document.getElementById('webRow').style.display = 'flex';
+  shotPrev.style.display = 'none';
+  labelBtn.style.display = 'none';
+  nextBtn.style.display = 'none';
+  webResults.classList.remove('show');
+  webResults.innerHTML = '';
+  const num = replaceMode ? sheetIndex+1 : state.items.length+1;
+  bigNum.querySelector('.n').textContent = num;
+  setupHint.textContent = replaceMode ? '撮影するか、Webから選んで差し替え' : '撮影するか、Webから画像を選んでね';
+}
+function showShot(){
+  const i = state.items.length-1;
+  const it = state.items[i];
+  bigNum.style.display = 'none';
+  document.getElementById('webRow').style.display = 'none';
+  webResults.classList.remove('show');
+  shotPrev.style.display = 'block';
+  shotPrev.querySelector('img').src = it.img;
+  shotPrev.querySelector('.num').textContent = i+1;
+  const pl = shotPrev.querySelector('.plabel');
+  pl.textContent = it.label || '';
+  pl.style.display = it.label ? 'block' : 'none';
+  labelBtn.style.display = 'block';
+  nextBtn.style.display = 'block';
+  setupHint.textContent = '写真をタップで撮り直し';
+}
+function closeSetup(){
+  setup.classList.remove('show');
+  replaceMode = false;
+  render();
+}
+
+bigNum.addEventListener('click', ()=>{
+  pendingIndex = replaceMode ? sheetIndex : state.items.length;
+  camInput.click();
+});
+shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
+labelBtn.addEventListener('click', ()=>{
+  const it = state.items[state.items.length-1];
+  const v = prompt('名前（空欄にすると消えます）', it.label || '');
+  if(v === null) return;
+  it.label = v.trim() || null;
+  save(); showShot();
+});
+nextBtn.addEventListener('click', showBigNum);
+finishBtn.addEventListener('click', closeSetup);
+
+/* ===== 編集アクションシート ===== */
+function openSheet(i){
+  sheetIndex = i;
+  sheetBack.classList.add('show');
+}
+function closeSheet(){ sheetBack.classList.remove('show'); }
+document.getElementById('shRetake').addEventListener('click', ()=>{
+  closeSheet();
+  pendingIndex = sheetIndex; replaceMode = false;
+  camInput.click();
+});
+document.getElementById('shWeb').addEventListener('click', ()=>{
+  closeSheet();
+  pendingIndex = sheetIndex;
+  showSetup(true);
+});
+document.getElementById('shLabel').addEventListener('click', ()=>{
+  closeSheet();
+  const it = state.items[sheetIndex];
+  const v = prompt('名前（空欄にすると消えます）', it.label || '');
+  if(v === null) return;
+  it.label = v.trim() || null;
+  save(); render();
+});
+document.getElementById('shDel').addEventListener('click', ()=>{
+  closeSheet();
+  deleteItem(sheetIndex);
+});
+document.getElementById('shCancel').addEventListener('click', closeSheet);
+sheetBack.addEventListener('click', e=>{ if(e.target===sheetBack) closeSheet(); });
 
 /* ===== 下部バー ===== */
 document.getElementById('resetBtn').addEventListener('click', ()=>{
   state.items.forEach(i=>i.done=false);
   save(); render();
 });
-document.getElementById('addBtn').addEventListener('click', showSetup);
+document.getElementById('addBtn').addEventListener('click', ()=>showSetup(false));
 document.getElementById('editBtn').addEventListener('click', ()=>{
   editing = !editing;
   document.body.classList.toggle('editing', editing);
@@ -350,7 +563,7 @@ window.addEventListener('resize', render);
 
 /* ===== 起動 ===== */
 render();
-if(state.items.length === 0) showSetup(); // 初回は撮影登録から
+if(state.items.length === 0) showSetup(false); // 初回は登録から
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
