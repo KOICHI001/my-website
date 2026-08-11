@@ -105,6 +105,10 @@ body.editing .tile .del{display:flex}
 #bigNum .n{font-size:78px; font-weight:800; color:var(--accent); line-height:1}
 #bigNum .cam{font-size:28px}
 #bigNum .camhint{font-size:12px; color:var(--sub)}
+#galBtn{
+  width:min(86vw,360px); padding:12px 0; border:1px solid #44446a; border-radius:12px;
+  background:var(--card); color:var(--text); font-size:15px; cursor:pointer;
+}
 #webRow{
   display:flex; gap:8px; width:min(86vw,360px);
 }
@@ -201,6 +205,7 @@ body.editing .tile .del{display:flex}
       <div class="cam">📷</div>
       <div class="camhint">タップして撮影</div>
     </div>
+    <button id="galBtn">📁 保存した画像から選ぶ</button>
     <div id="webRow">
       <input type="text" id="webInput" maxlength="30" placeholder="🌐 Webから探す（例：なす）" enterkeyhint="search">
       <button id="webBtn">🔍</button>
@@ -231,6 +236,7 @@ body.editing .tile .del{display:flex}
 <div id="sheetBack">
   <div id="sheet">
     <button id="shRetake">📷 撮り直す</button>
+    <button id="shGallery">📁 保存した画像から選び直す</button>
     <button id="shWeb">🌐 Webから選び直す</button>
     <button id="shLabel">✏️ 名前を変更</button>
     <button id="shDel">✕ 削除</button>
@@ -239,9 +245,10 @@ body.editing .tile .del{display:flex}
 </div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.4.3';
+const APP_VERSION = '0.5.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -382,9 +389,10 @@ function cropSquare(img){
   return cv.toDataURL('image/jpeg', .82);
 }
 
-camInput.addEventListener('change', ()=>{
-  const f = camInput.files[0];
-  camInput.value = '';
+const galInput = document.getElementById('galInput');
+function handleFilePick(inp){
+  const f = inp.files[0];
+  inp.value = '';
   if(!f) return;
   const img = new Image();
   img.onload = ()=>{
@@ -393,7 +401,9 @@ camInput.addEventListener('change', ()=>{
     commitDataUrl(data);
   };
   img.src = URL.createObjectURL(f);
-});
+}
+camInput.addEventListener('change', ()=>handleFilePick(camInput));
+galInput.addEventListener('change', ()=>handleFilePick(galInput));
 
 /* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要）
    同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る） ===== */
@@ -536,6 +546,10 @@ bigNum.addEventListener('click', ()=>{
   pendingIndex = replaceMode ? sheetIndex : state.items.length;
   camInput.click();
 });
+document.getElementById('galBtn').addEventListener('click', ()=>{
+  pendingIndex = replaceMode ? sheetIndex : state.items.length;
+  galInput.click();
+});
 shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
 labelBtn.addEventListener('click', ()=>{
   const it = state.items[state.items.length-1];
@@ -557,6 +571,11 @@ document.getElementById('shRetake').addEventListener('click', ()=>{
   closeSheet();
   pendingIndex = sheetIndex; replaceMode = false;
   camInput.click();
+});
+document.getElementById('shGallery').addEventListener('click', ()=>{
+  closeSheet();
+  pendingIndex = sheetIndex; replaceMode = false;
+  galInput.click();
 });
 document.getElementById('shWeb').addEventListener('click', ()=>{
   closeSheet();
