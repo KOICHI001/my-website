@@ -241,7 +241,7 @@ body.editing .tile .del{display:flex}
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 
 <script>
-const APP_VERSION = '0.4.2';
+const APP_VERSION = '0.4.3';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -397,17 +397,37 @@ camInput.addEventListener('change', ()=>{
 
 /* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要）
    同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る） ===== */
+function toKatakana(s){ return s.replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }
 async function webSearch(term, page){
   const enc = encodeURIComponent(term);
-  const [wiki, commons] = await Promise.all([
+  const kata = toKatakana(term);
+  // page0のみ：題名ドンピシャの記事（リダイレクト解決付き・ひらがな→カタカナ両方）を最優先で引く
+  const titles = term === kata ? encodeURIComponent(term) : encodeURIComponent(term)+'%7C'+encodeURIComponent(kata);
+  const exactQ = page === 0
+    ? fetch(`https://ja.wikipedia.org/w/api.php?action=query&titles=${titles}&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
+        .then(r=>r.json()).catch(()=>null)
+    : Promise.resolve(null);
+  const [exact, wiki, commons] = await Promise.all([
+    exactQ,
     fetch(`https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrlimit=6&gsroffset=${page*6}&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
       .then(r=>r.json()).catch(()=>null),
     fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrnamespace=6&gsrlimit=9&gsroffset=${page*9}&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`)
       .then(r=>r.json()).catch(()=>null)
   ]);
   const urls = [];
+  if(exact && exact.query && exact.query.pages){
+    Object.values(exact.query.pages).forEach(p=>{ if(p.thumbnail) urls.push(p.thumbnail.source); });
+  }
   if(wiki && wiki.query){
-    Object.values(wiki.query.pages).sort((a,b)=>a.index-b.index)
+    // 題名一致を前へ・「なすの (列車)」等のカッコ付き題名（曖昧さ回避っぽい）を後回し
+    const score = p => {
+      let s = p.index;
+      if(p.title === term || p.title === kata) s -= 100;
+      else if(p.title.startsWith(term) || p.title.startsWith(kata)) s -= 5;
+      if(/[（(]/.test(p.title)) s += 50;
+      return s;
+    };
+    Object.values(wiki.query.pages).sort((a,b)=>score(a)-score(b))
       .forEach(p=>{ if(p.thumbnail) urls.push(p.thumbnail.source); });
   }
   if(commons && commons.query){

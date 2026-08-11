@@ -1,4 +1,4 @@
-const CACHE = 'tapcheck-v0.4.2';
+const CACHE = 'tapcheck-v0.4.3';
 const ASSETS = ['.', 'index.html', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
