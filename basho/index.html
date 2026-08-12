@@ -569,6 +569,63 @@
   .nearrow.focus{border-color:var(--nrc,#6B7280);box-shadow:0 0 0 2.5px var(--nrc,#6B7280)}
   .nearrow.focus .nr-d{color:var(--nrc,#6B7280)}
   .near-map{flex:1;position:relative;background:#DDE2D8}
+  /* ───── 🧭経由地モード(v0.52.0) ───── */
+  .rtov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
+  .rtov.on{display:flex}
+  body.rton .fab,body.rton .fab2,body.rton .fab3{display:none}
+  .rt-top{display:flex;align-items:center;gap:8px;
+    padding:calc(8px + env(safe-area-inset-top)) 12px 4px}
+  .rt-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em}
+  .rt-mems{display:flex;gap:5px;margin-left:auto}
+  .rt-mems button{border:1.5px dashed var(--line);background:var(--card);color:var(--soft);
+    border-radius:999px;padding:6px 8px;font-size:11.5px;font-family:var(--gothic);cursor:pointer;
+    -webkit-user-select:none;user-select:none}
+  .rt-mems button.has{border-style:solid;color:var(--ink);border-color:var(--ink)}
+  /* 出発地→①②③→目的地の一本線。各枠は3段固定(上段16/中段30/下段16px)＝
+     両端は名前が上・ラベルが線上、経由地は丸数字が線上・名前が下（コーイチさんスケッチ準拠） */
+  .rt-line{position:relative;display:flex;align-items:flex-start;justify-content:space-between;
+    padding:10px 10px 0;gap:3px}
+  .rt-line::before{content:"";position:absolute;left:20px;right:26px;top:41.5px;height:3px;
+    background:var(--route);border-radius:2px;opacity:.85}
+  .rt-line::after{content:"";position:absolute;right:12px;top:36.5px;
+    border:6.5px solid transparent;border-left:11px solid var(--route);opacity:.85}
+  .rt-stop{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
+    flex:1 1 0;min-width:0;cursor:pointer;border-radius:10px;padding:2px 2px 1px}
+  .rt-stop.sel{box-shadow:0 0 0 2.5px var(--route);background:var(--card)}
+  .rt-pad{height:16px}
+  .rt-mid{height:30px;display:flex;align-items:center;justify-content:center}
+  .rt-lab{font-size:13px;font-weight:700;letter-spacing:.04em;background:var(--paper);padding:0 3px}
+  .rt-stop.sel .rt-lab{background:var(--card)}
+  .rt-num{width:28px;height:28px;border-radius:50%;border:2.5px solid var(--ink);background:var(--paper);
+    font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;font-family:var(--gothic)}
+  .rt-stop.filled .rt-num{background:var(--ink);color:var(--paper)}
+  .rt-name{height:16px;line-height:16px;font-size:10.5px;max-width:100%;overflow:hidden;
+    text-overflow:ellipsis;white-space:nowrap;color:var(--ink);font-weight:600}
+  .rt-name.ph{color:var(--soft);font-weight:400}
+  .rt-hint{min-height:32px;display:flex;align-items:center;justify-content:center;
+    font-size:11.5px;color:var(--soft);padding:3px 10px;text-align:center}
+  .rt-hint button{border:1.5px solid var(--line);background:var(--card);color:#B3261E;
+    border-radius:999px;padding:5px 12px;font-size:12px;font-family:var(--gothic);cursor:pointer;
+    max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rt-gorow{padding:2px 12px 8px}
+  #rtGo{width:100%;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:700;
+    background:var(--line);color:var(--soft);font-family:var(--gothic);cursor:pointer}
+  #rtGo.ready{background:var(--ink);color:var(--paper)}
+  .rt-search{display:flex;gap:6px;padding:7px 12px 4px;border-top:1.5px solid var(--line)}
+  .rt-search input{flex:1;min-width:0;border:1.5px solid var(--line);border-radius:10px;
+    padding:9px 10px;font-size:14px;background:var(--card);color:var(--ink);font-family:var(--gothic)}
+  .rt-cats{display:flex;gap:5px;overflow-x:auto;padding:3px 12px 6px;scrollbar-width:none}
+  .rt-cats::-webkit-scrollbar{display:none}
+  .rt-cats button{flex:0 0 auto;border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:5px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer}
+  .rt-cats button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  .rt-list{flex:1;overflow-y:auto;padding:0 12px 12px;overscroll-behavior:contain}
+  .rtrow{display:flex;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);
+    border-left:6px solid var(--nrc,#6B7280);border-radius:10px;padding:10px 11px;margin:7px 0;cursor:pointer}
+  .rt-rn{font-family:var(--mincho);font-size:14px;font-weight:600;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;flex:0 1 auto}
+  .rt-ra{margin-left:auto;font-size:11px;color:var(--soft);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;text-align:right;flex:1 1 40%}
   /* ───── OCR（スクショから読み取る: 名前・住所・座標） ───── */
   .ocrov{position:fixed;inset:0;z-index:55;background:rgba(10,14,13,.96);display:none;
     flex-direction:column;touch-action:none}
@@ -703,6 +760,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <span class="sp"></span>
       <button class="iconbtn" id="viewBtn" aria-label="表示切り替え"></button>
       <button class="iconbtn" id="sortBtn">よく行く順</button>
+      <button class="iconbtn" id="routeBtn">経由</button>
       <button class="iconbtn" id="menuBtn">⋯</button>
     </div>
     <div class="hometabs">
@@ -736,6 +794,31 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   </div>
   <div class="near-cards" id="nearCards"></div>
   <div class="near-map" id="nearMap"><div class="near-rbig" id="nearRbig"></div></div>
+</div>
+
+<!-- 🧭経由地モード(v0.52.0 コーイチさん発案): Googleマップの「経由地を後から足す」操作は分かりにくい→
+     場所帳側で 出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路でマップを開く。
+     メモリ3枠=いつもの巡回コースをワンタップ再現（長押しで保存） -->
+<div class="rtov" id="rtov">
+  <div class="rt-top">
+    <button class="nv-back" id="rtBack">← 戻る</button>
+    <div class="rt-tt">🧭 経由地</div>
+    <div class="rt-mems" id="rtMems">
+      <button>メモリ1</button><button>メモリ2</button><button>メモリ3</button>
+    </div>
+  </div>
+  <div class="rt-line">
+    <div class="rt-stop rt-end" data-slot="s"><div class="rt-name ph">現在地</div><div class="rt-mid rt-lab">出発地</div><div class="rt-pad"></div></div>
+    <div class="rt-stop rt-wp" data-slot="0"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">①</div></div><div class="rt-name"></div></div>
+    <div class="rt-stop rt-wp" data-slot="1"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">②</div></div><div class="rt-name"></div></div>
+    <div class="rt-stop rt-wp" data-slot="2"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">③</div></div><div class="rt-name"></div></div>
+    <div class="rt-stop rt-end" data-slot="d"><div class="rt-name ph">未選択</div><div class="rt-mid rt-lab">目的地</div><div class="rt-pad"></div></div>
+  </div>
+  <div class="rt-hint" id="rtHint"></div>
+  <div class="rt-gorow"><button id="rtGo">🗺 Googleマップへ</button></div>
+  <div class="rt-search"><input type="text" id="rtQ" placeholder="名前・住所で検索" autocomplete="off"><button class="iconbtn" id="rtQx">✕</button></div>
+  <div class="rt-cats" id="rtCats"></div>
+  <div class="rt-list" id="rtList"></div>
 </div>
 
 <!-- ヘルプ（使い方）: ⋯メニュー最下部のボタンから。目次つきのHTML本文（v0.37.0で画像から刷新） -->
@@ -889,7 +972,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.51.1";
+const VER = "0.52.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3816,6 +3899,7 @@ const HELP_SECS=[
  '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> … 表示の切り替えタブ</li>'+
  '<li>検索欄 … 名前・住所・メモ・電話で探せます（→「検索と絞り込み」）</li>'+
  '<li><span class="hp-btn">よく行く順</span> … タップするたびに 五十音順 → 近い順 と切り替わる並び順ボタン</li>'+
+ '<li><span class="hp-btn">経由</span> … 経由地つきの経路をつくる画面（下の「経由」の項をどうぞ）</li>'+
  '<li><span class="hp-btn">'+ICON_TILE+'</span>/<span class="hp-btn">'+ICON_ROWS+'</span>/<span class="hp-btn">'+ICON_LIST+'</span> … 表示の切り替え。押すたびに カード → タイル → リスト の順に替わります（□4つ=タイル：小さく沢山 / 線3本=リスト：1行ずつボタン付き / バー2本=カード：大きく詳しく）</li>'+
  '<li><span class="hp-btn">⋯</span> … 設定メニュー（追加・カテゴリ編集・バックアップ・取り込み・このヘルプ）</li>'+
  '<li>カテゴリなどの丸いチップ … タップで絞り込み</li>'+
@@ -3892,6 +3976,15 @@ const HELP_SECS=[
  '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>のまわりの登録場所。500m／1km／2km／5kmで範囲を変えられます。</li>'+
  '<li><b>カードの</b><span class="hp-btn">場所周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
  '<li><b>円は自由に伸ばせます</b> … 地図を2本指で広げると円がそのまま広がり、入った場所が上のカード列に増えていきます（5kmの右におおよその半径が出ます）。日本全体まで広げれば、登録した場所が全部並びます。</li>'+
+ '</ul>'},
+{id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
+ '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
+ '<ul>'+
+ '<li>上の枠（<b>出発地・①②③・目的地</b>）をタップ → 下のリストから場所をタップで入ります。<b>順不同でOK</b>・使わない枠は空のままで大丈夫。入っている枠をタップすると「外す」ボタンが出ます。</li>'+
+ '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
+ '<li>下のリストは検索とカテゴリで絞れます（よく行く順に並んでいます）。</li>'+
+ '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
+ '<li><b>メモリ1〜3</b> … <b>長押しで保存</b>・タップで呼び出し。いつもの巡回コースを一発で再現できます。</li>'+
  '</ul>'},
 {id:"nav",t:"「到達距離」ボタン（自分との位置・距離の確認）",h:
  '<p><b>今の自分と目的地の位置・距離</b>を確かめる拡大地図です。遠くで押せば方向と残り距離が分かり、近づいてからは<b>最後の100m</b>の歩き案内になります。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
@@ -5760,6 +5853,153 @@ document.querySelectorAll("#nearRads button[data-r]").forEach(b=>{
 });
 /* 自由チップのタップ＝円全体が見える位置に戻す（ドラッグで覗いた後の帰り道） */
 document.getElementById("nearFree").onclick=()=>{ if(NEAR.center) nearRender(); };
+
+/* ───── 🧭経由地モード（v0.52.0 コーイチさん発案） ─────
+   出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路URLで
+   Googleマップを開く（api=1&waypoints=A|B|C・経由地はGoogle仕様で最大9だがUIは3枠固定）。
+   メモリ3枠=長押しで保存・タップで呼び出し。選択中の枠は赤枠、場所を入れると次の空枠へ自動移動 */
+const RT={cur:{s:null,w:[null,null,null],d:null},sel:null,cat:"",q:""};
+const RT_SLOTS=["s","0","1","2","d"];
+function rtLoad(){
+  try{const s=JSON.parse(localStorage.getItem("basho_route_cur"));
+      if(s&&s.w) RT.cur={s:s.s||null,w:[s.w[0]||null,s.w[1]||null,s.w[2]||null],d:s.d||null};}catch(e){}
+}
+function rtSaveCur(){try{localStorage.setItem("basho_route_cur",JSON.stringify(RT.cur));}catch(e){}}
+function rtMems(){
+  try{const m=JSON.parse(localStorage.getItem("basho_route_mem"));
+      if(Array.isArray(m))return [m[0]||null,m[1]||null,m[2]||null];}catch(e){}
+  return [null,null,null];
+}
+function rtP(id){ return id?(places.find(x=>x&&x.id===id)||null):null; }
+function rtGet(sl){ return sl==="s"?RT.cur.s:sl==="d"?RT.cur.d:RT.cur.w[+sl]; }
+function rtSet(sl,id){ if(sl==="s")RT.cur.s=id; else if(sl==="d")RT.cur.d=id; else RT.cur.w[+sl]=id; rtSaveCur(); }
+function rtSlotName(sl){return sl==="s"?"出発地":sl==="d"?"目的地":"経由地"+["①","②","③"][+sl];}
+function rtNextEmpty(){ for(const sl of ["0","1","2","d"]) if(!rtGet(sl)) return sl; return null; }
+function rtOpen(){
+  rtLoad();
+  RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});   /* 消された場所は静かに外す */
+  document.getElementById("rtov").classList.add("on");
+  document.body.classList.add("rton");
+  document.documentElement.classList.add("nvon");
+  RT.sel=rtNextEmpty();
+  RT.q=""; document.getElementById("rtQ").value="";
+  rtRender(); rtRenderCats(); rtRenderList();
+}
+function rtClose(){
+  document.getElementById("rtov").classList.remove("on");
+  document.body.classList.remove("rton");
+  if(!document.getElementById("nvov").classList.contains("on")&&!document.getElementById("nearov").classList.contains("on"))
+    document.documentElement.classList.remove("nvon");
+}
+function rtRender(){
+  document.querySelectorAll("#rtov .rt-stop").forEach(el=>{
+    const sl=el.dataset.slot, p=rtP(rtGet(sl));
+    el.classList.toggle("sel",RT.sel===sl);
+    el.classList.toggle("filled",!!p);
+    const nm=el.querySelector(".rt-name");
+    if(sl==="s") nm.textContent=p?p.name:"現在地";
+    else if(sl==="d") nm.textContent=p?p.name:"未選択";
+    else nm.textContent=p?p.name:"";
+    nm.classList.toggle("ph",!p);
+  });
+  const selP=RT.sel?rtP(rtGet(RT.sel)):null;
+  document.getElementById("rtHint").innerHTML = RT.sel
+    ? (selP ? '<button id="rtDrop">✕ 「'+esc(selP.name)+'」を外す</button>'
+            : '下のリストをタップ → <b>'+rtSlotName(RT.sel)+'</b> に入ります')
+    : '枠（出発地・①②③・目的地）をタップすると選び直せます';
+  const db=document.getElementById("rtDrop");
+  if(db)db.onclick=e=>{e.stopPropagation(); rtSet(RT.sel,null); rtRender();};
+  const mems=rtMems();
+  document.querySelectorAll("#rtMems button").forEach((b,i)=>b.classList.toggle("has",!!mems[i]));
+  document.getElementById("rtGo").classList.toggle("ready",!!rtGet("d"));
+}
+function rtRenderCats(){
+  const box=document.getElementById("rtCats");
+  box.innerHTML="";
+  const mk=(label,val)=>{
+    const b=document.createElement("button");
+    b.textContent=label;
+    if(RT.cat===val)b.classList.add("on");
+    b.onclick=()=>{RT.cat=(RT.cat===val)?"":val; rtRenderCats(); rtRenderList();};
+    box.appendChild(b);
+  };
+  mk("全部","");
+  CATS.filter(c=>c.n!==CAT_OTHER.n).concat([CAT_OTHER]).forEach(c=>mk(c.n,c.n));
+}
+function rtRenderList(){
+  const list=document.getElementById("rtList");
+  const qq=norm(RT.q||"");
+  /* 経路に使えるのは行き先を渡せる場所だけ（座標か住所がある） */
+  let arr=places.filter(p=>p&&((p.lat&&p.lng)||p.addr));
+  if(RT.cat) arr=arr.filter(p=>(p.cat||CAT_OTHER.n)===RT.cat);
+  if(qq) arr=arr.filter(p=>norm((p.name||"")+" "+(p.addr||"")).includes(qq));
+  arr=arr.slice().sort((a,b)=>(b.count||0)-(a.count||0)||(b.used||0)-(a.used||0));   /* よく行く順 */
+  list.innerHTML=arr.length?"":'<div class="near-empty">この条件の場所がありません</div>';
+  arr.forEach(p=>{
+    const el=document.createElement("div");
+    el.className="rtrow"; el.style.setProperty("--nrc",catColor(p.cat));
+    el.innerHTML='<div class="rt-rn">'+esc(p.name)+'</div><div class="rt-ra">'+esc(p.addr||"")+'</div>';
+    el.onclick=()=>{
+      if(!RT.sel){ toast("上の枠（出発地・①②③・目的地）をタップしてから選んでください"); return; }
+      rtSet(RT.sel,p.id);
+      RT.sel=rtNextEmpty();                      /* 次の空枠へ自動移動＝順にタップするだけで組める */
+      rtRender();
+    };
+    list.appendChild(el);
+  });
+}
+document.getElementById("routeBtn").onclick=rtOpen;
+document.getElementById("rtBack").onclick=rtClose;
+document.querySelectorAll("#rtov .rt-stop").forEach(el=>{
+  el.onclick=()=>{ RT.sel=(RT.sel===el.dataset.slot)?null:el.dataset.slot; rtRender(); };
+});
+document.getElementById("rtQ").addEventListener("input",e=>{RT.q=e.target.value; rtRenderList();});
+document.getElementById("rtQx").onclick=()=>{RT.q=""; document.getElementById("rtQ").value=""; rtRenderList();};
+document.getElementById("rtGo").onclick=()=>{
+  const d=rtP(RT.cur.d);
+  if(!d){ toast("目的地を選んでください（目的地の枠をタップ→下のリストから）"); return; }
+  const s=rtP(RT.cur.s);
+  const ws=RT.cur.w.map(rtP).filter(Boolean);
+  let u="https://www.google.com/maps/dir/?api=1&destination="+q(d);
+  if(s) u+="&origin="+q(s);
+  if(ws.length) u+="&waypoints="+ws.map(q).join("%7C");
+  [s,d].concat(ws).filter(Boolean).forEach(p=>{p.count=(p.count||0)+1;p.used=Date.now();});
+  Store.save(places);
+  openUrl(u);
+};
+/* メモリ: タップ=呼び出し・長押し(600ms)=今の内容を保存（上書きは確認）。
+   タップだけで消える事故を作らない＝deliberate action の流儀 */
+document.querySelectorAll("#rtMems button").forEach((b,i)=>{
+  /* 長押し後にブラウザがclickを発火する/しないは環境で違う（Androidは発火しない）＝
+     フラグ式だと保存直後の最初のタップが食われる。発動時刻から500ms以内のclickだけ無視する */
+  let t=0,longAt=0;
+  const save=()=>{
+    const mems=rtMems();
+    const doSave=()=>{
+      mems[i]={s:RT.cur.s,w:RT.cur.w.slice(),d:RT.cur.d};
+      try{localStorage.setItem("basho_route_mem",JSON.stringify(mems));}catch(e){}
+      rtRender(); toast("メモリ"+(i+1)+"に保存しました");
+    };
+    if(mems[i]) dlgOpen("メモリ"+(i+1)+"を今の経由地リストで上書きしますか？",true,
+      v=>{if(v)doSave();},{title:"💾 メモリ",yes:"上書き"});
+    else doSave();
+  };
+  const down=()=>{t=setTimeout(()=>{longAt=Date.now(); save();},600);};
+  const up=()=>clearTimeout(t);
+  b.addEventListener("touchstart",down,{passive:true});
+  b.addEventListener("touchend",up); b.addEventListener("touchmove",up,{passive:true});
+  b.addEventListener("mousedown",down); b.addEventListener("mouseup",up); b.addEventListener("mouseleave",up);
+  b.addEventListener("contextmenu",e=>e.preventDefault());
+  b.onclick=()=>{
+    if(Date.now()-longAt<500)return;             /* 長押し直後に飛んでくるclickだけ無視 */
+    const m=rtMems()[i];
+    if(!m){ toast("空のメモリです。長押しで今の経由地リストを保存できます"); return; }
+    RT.cur={s:m.s||null,w:[(m.w||[])[0]||null,(m.w||[])[1]||null,(m.w||[])[2]||null],d:m.d||null};
+    RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});
+    rtSaveCur(); RT.sel=null; rtRender();
+    toast("メモリ"+(i+1)+"を呼び出しました");
+  };
+});
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
