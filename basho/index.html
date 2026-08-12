@@ -34,8 +34,9 @@
     background:linear-gradient(180deg,var(--paper) 84%,rgba(237,239,232,0));
     padding-top:env(safe-area-inset-top)}
   .head-in{display:flex;align-items:baseline;gap:10px;padding:14px 0 8px}
-  h1{font-family:var(--mincho);font-size:23px;font-weight:600;margin:0;letter-spacing:.14em}
-  .tally{font-family:var(--mono);font-size:11px;color:var(--soft);letter-spacing:.08em}
+  /* タイトル・件数は絶対に折り返さない（v0.54.0: 経由ボタン追加で「場所帳」が2行に割れた実機FB） */
+  h1{font-family:var(--mincho);font-size:23px;font-weight:600;margin:0;letter-spacing:.14em;white-space:nowrap}
+  .tally{font-family:var(--mono);font-size:11px;color:var(--soft);letter-spacing:.08em;white-space:nowrap}
   .sp{flex:1}
   .iconbtn{border:1px solid var(--line);background:var(--card);color:var(--soft);
     border-radius:10px;padding:7px 9px;font-size:13px;font-family:var(--gothic);cursor:pointer;
@@ -759,7 +760,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <span class="tally" id="tally"></span>
       <span class="sp"></span>
       <button class="iconbtn" id="viewBtn" aria-label="表示切り替え"></button>
-      <button class="iconbtn" id="sortBtn">よく行く順</button>
+      <button class="iconbtn" id="sortBtn">★</button>
       <button class="iconbtn" id="routeBtn">経由</button>
       <button class="iconbtn" id="menuBtn">⋯</button>
     </div>
@@ -973,7 +974,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.53.1";
+const VER = "0.54.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -1910,8 +1911,11 @@ function pvClose(){
   document.documentElement.classList.remove("pvon");
 }
 document.getElementById("pvBack").onclick=pvClose;
-let sortMode=localStorage.getItem("basho_sort")||"use";
-if(sortMode!=="use"&&sortMode!=="kana"&&sortMode!=="near") sortMode="use";
+/* v0.54.0: 「よく行く順」廃止（ボタンが長くヘッダーが崩れる実機FB）→「★」モードに交代。
+   ★=★付きが先頭（★内も残りも五十音）。旧use・未設定は★へ引き継ぐ（=お気に入り優先のまま） */
+let sortMode=localStorage.getItem("basho_sort")||"star";
+if(sortMode==="use") sortMode="star";
+if(sortMode!=="kana"&&sortMode!=="near"&&sortMode!=="star") sortMode="star";
 /* list=カード（詳しい） / tile=タイル（田の字） / row=リスト（1行＋3ボタン・v0.50.0） */
 let viewMode=(v=>v==="tile"||v==="row"?v:"list")(localStorage.getItem("basho_view"));
 /* ホームタブ（一覧⇄本棚）と、開いている本（カテゴリ名） */
@@ -2170,10 +2174,9 @@ function sorted(){
       if((da!=null)!==(db!=null)) return da!=null?-1:1;
       return norm(a.kana||a.name).localeCompare(norm(b.kana||b.name),"ja");
     }
-    if((b.fav?1:0)!==(a.fav?1:0)) return (b.fav?1:0)-(a.fav?1:0);
-    if(sortMode==="kana") return norm(a.kana||a.name).localeCompare(norm(b.kana||b.name),"ja");
-    if((b.count||0)!==(a.count||0)) return (b.count||0)-(a.count||0);
-    return (b.used||b.created||0)-(a.used||a.created||0);
+    /* ★モードだけ★付きを先頭へ。並びはどちらのモードも五十音（★の中も五十音）v0.54.0 */
+    if(sortMode==="star"&&(b.fav?1:0)!==(a.fav?1:0)) return (b.fav?1:0)-(a.fav?1:0);
+    return norm(a.kana||a.name).localeCompare(norm(b.kana||b.name),"ja");
   });
 }
 function render(){
@@ -3899,7 +3902,7 @@ const HELP_SECS=[
  '<ul>'+
  '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> … 表示の切り替えタブ</li>'+
  '<li>検索欄 … 名前・住所・メモ・電話で探せます（→「検索と絞り込み」）</li>'+
- '<li><span class="hp-btn">よく行く順</span> … タップするたびに 五十音順 → 近い順 と切り替わる並び順ボタン</li>'+
+ '<li><span class="hp-btn">五十音</span> … タップするたびに 近い順 → ★ と切り替わる並び順ボタン（★＝★を付けた場所が先頭）</li>'+
  '<li><span class="hp-btn">経由</span> … 経由地つきの経路をつくる画面（下の「経由」の項をどうぞ）</li>'+
  '<li><span class="hp-btn">'+ICON_TILE+'</span>/<span class="hp-btn">'+ICON_ROWS+'</span>/<span class="hp-btn">'+ICON_LIST+'</span> … 表示の切り替え。押すたびに カード → タイル → リスト の順に替わります（□4つ=タイル：小さく沢山 / 線3本=リスト：1行ずつボタン付き / バー2本=カード：大きく詳しく）</li>'+
  '<li><span class="hp-btn">⋯</span> … 設定メニュー（追加・カテゴリ編集・バックアップ・取り込み・このヘルプ）</li>'+
@@ -3983,7 +3986,7 @@ const HELP_SECS=[
  '<ul>'+
  '<li>上の枠（<b>出発地・①②③・目的地</b>）をタップ → 下のリストから場所をタップで入ります。<b>順不同でOK</b>・使わない枠は空のままで大丈夫。入っている枠をタップすると「外す」ボタンが出ます。</li>'+
  '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
- '<li>下のリストは検索とカテゴリで絞れます（よく行く順に並んでいます）。</li>'+
+ '<li>下のリストは検索とカテゴリで絞れます（使う回数が多い場所ほど上に並びます）。</li>'+
  '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
  '<li><span class="hp-btn">クリア</span> … 全部の枠を一度に空にします（直後に出る「取り消す」で戻せます）。一つだけ直したい時は、その枠をタップ→「✕ 外す」。</li>'+
  '<li><span class="hp-btn">💾 メモリに保存</span> … タップで、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。コースの行を<b>長押しすると「名前の変更」「削除」</b>ができます。</li>'+
@@ -4008,7 +4011,7 @@ const HELP_SECS=[
  '<ul>'+
  '<li>検索欄は<b>名前・住所・メモ・電話番号</b>のどれでも探せます。ローマ字のままでも大丈夫（yakkyoku→やっきょく）。</li>'+
  '<li>読み方が特殊な場所は、編集画面の「よみ」欄に読みがなを入れておくと確実です。</li>'+
- '<li>並び順ボタン：<b>よく行く順</b>（★と使う回数が上に）→<b>五十音順</b>→<b>近い順</b>（距離つき）。</li>'+
+ '<li>並び順ボタン：<b>五十音</b>→<b>近い順</b>（距離つき）→<b>★</b>（★を付けた場所が先頭・並びは五十音）。</li>'+
  '<li>チップで絞り込み：カテゴリ／<span class="hp-btn">📍 2km以内</span>（現在地の近くだけ）／地域（都道府県）。</li>'+
  '<li>本の中で検索すると、その本の中だけを探します。</li>'+
  '</ul>'},
@@ -5480,7 +5483,7 @@ document.getElementById("q").addEventListener("input",render);
 document.getElementById("clearq").onclick=()=>{document.getElementById("q").value="";render();document.getElementById("q").focus();};
 document.getElementById("addBtn").onclick=quickAdd;
 document.getElementById("menuBtn").onclick=menu;
-const SORTS=[["use","よく行く順"],["kana","五十音順"],["near","近い順"]];
+const SORTS=[["kana","五十音"],["near","近い順"],["star","★"]];
 const sortLabel=()=>(SORTS.find(s=>s[0]===sortMode)||SORTS[0])[1];
 document.getElementById("sortBtn").textContent=sortLabel();
 document.getElementById("sortBtn").onclick=e=>{
