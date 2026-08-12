@@ -576,11 +576,11 @@
   .rt-top{display:flex;align-items:center;gap:8px;
     padding:calc(8px + env(safe-area-inset-top)) 12px 4px}
   .rt-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em}
-  .rt-mems{display:flex;gap:5px;margin-left:auto}
-  .rt-mems button{border:1.5px dashed var(--line);background:var(--card);color:var(--soft);
-    border-radius:999px;padding:6px 8px;font-size:11.5px;font-family:var(--gothic);cursor:pointer;
-    -webkit-user-select:none;user-select:none}
-  .rt-mems button.has{border-style:solid;color:var(--ink);border-color:var(--ink)}
+  .rt-acts{display:flex;gap:5px;margin-left:auto}
+  .rt-acts button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:6px 9px;font-size:11.5px;font-family:var(--gothic);cursor:pointer;
+    -webkit-user-select:none;user-select:none;white-space:nowrap}
+  .rtrow.mem{border-left-color:#0B6E5F}   /* メモリ行は帳面色の左帯で場所と区別 */
   /* 出発地→①②③→目的地の一本線。各枠は3段固定(上段16/中段30/下段16px)＝
      両端は名前が上・ラベルが線上、経由地は丸数字が線上・名前が下（コーイチさんスケッチ準拠） */
   .rt-line{position:relative;display:flex;align-items:flex-start;justify-content:space-between;
@@ -803,8 +803,9 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
   <div class="rt-top">
     <button class="nv-back" id="rtBack">← 戻る</button>
     <div class="rt-tt">🧭 経由地</div>
-    <div class="rt-mems" id="rtMems">
-      <button>メモリ1</button><button>メモリ2</button><button>メモリ3</button>
+    <div class="rt-acts">
+      <button id="rtClear">クリア</button>
+      <button id="rtSave">💾 メモリに保存</button>
     </div>
   </div>
   <div class="rt-line">
@@ -972,7 +973,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.52.1";
+const VER = "0.53.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3984,7 +3985,8 @@ const HELP_SECS=[
  '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
  '<li>下のリストは検索とカテゴリで絞れます（よく行く順に並んでいます）。</li>'+
  '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
- '<li><b>メモリ1〜3</b> … <b>長押しで保存</b>・タップで呼び出し。いつもの巡回コースを一発で再現できます。</li>'+
+ '<li><span class="hp-btn">クリア</span> … 全部の枠を一度に空にします（直後に出る「取り消す」で戻せます）。一つだけ直したい時は、その枠をタップ→「✕ 外す」。</li>'+
+ '<li><span class="hp-btn">💾 メモリに保存</span> … <b>長押し</b>で、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。いらないコースは<b>長押しで削除</b>。</li>'+
  '</ul>'},
 {id:"nav",t:"「到達距離」ボタン（自分との位置・距離の確認）",h:
  '<p><b>今の自分と目的地の位置・距離</b>を確かめる拡大地図です。遠くで押せば方向と残り距離が分かり、近づいてからは<b>最後の100m</b>の歩き案内になります。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
@@ -5865,11 +5867,44 @@ function rtLoad(){
       if(s&&s.w) RT.cur={s:s.s||null,w:[s.w[0]||null,s.w[1]||null,s.w[2]||null],d:s.d||null};}catch(e){}
 }
 function rtSaveCur(){try{localStorage.setItem("basho_route_cur",JSON.stringify(RT.cur));}catch(e){}}
-function rtMems(){
-  try{const m=JSON.parse(localStorage.getItem("basho_route_mem"));
-      if(Array.isArray(m))return [m[0]||null,m[1]||null,m[2]||null];}catch(e){}
-  return [null,null,null];
+/* v0.53.0: メモリは「名前付き・数の制限なし」(basho_route_mem2)。
+   旧3枠(basho_route_mem・v0.52)が残っていれば初回に名前を付けて移行する */
+const RT_MEMCAT=" mem";   /* カテゴリチップ「💾 メモリ」の内部値（実カテゴリ名と衝突しない） */
+function rtMemsSave(a){try{localStorage.setItem("basho_route_mem2",JSON.stringify(a));}catch(e){}}
+function rtMems2(){
+  try{const m=JSON.parse(localStorage.getItem("basho_route_mem2"));
+      if(Array.isArray(m))return m;}catch(e){}
+  let out=[];
+  try{const old=JSON.parse(localStorage.getItem("basho_route_mem"));
+    if(Array.isArray(old)) old.forEach((m,i)=>{ if(m) out.push(
+      {n:"メモリ"+(i+1),s:m.s||null,w:[(m.w||[])[0]||null,(m.w||[])[1]||null,(m.w||[])[2]||null],d:m.d||null}); });
+  }catch(e){}
+  if(out.length){ rtMemsSave(out); try{localStorage.removeItem("basho_route_mem");}catch(e){} }
+  return out;
 }
+/* メモリ行の右側=行程のあらまし（現在地→①…→目的地の名前をつなぐ） */
+function rtMemSummary(m){
+  const nm=id=>{const p=rtP(id);return p?p.name:null;};
+  return [nm(m.s)||"現在地"].concat((m.w||[]).map(nm).filter(Boolean))
+    .concat([nm(m.d)||"？"]).join("→");
+}
+/* メモリを上のバーへ即反映（タップした瞬間に表示＝同期でレンダリング） */
+function rtApplyMem(m){
+  RT.cur={s:m.s||null,w:[(m.w||[])[0]||null,(m.w||[])[1]||null,(m.w||[])[2]||null],d:m.d||null};
+  RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});
+  rtSaveCur(); RT.sel=null; rtRender();
+}
+/* 長押し(600ms)ヘルパー。発動時刻をel.__longに残す＝直後のclickを呼び出し側で無視できる */
+function rtLong(el,fn){
+  let t=0;
+  const down=()=>{t=setTimeout(()=>{el.__long=Date.now();fn();},600);};
+  const up=()=>clearTimeout(t);
+  el.addEventListener("touchstart",down,{passive:true});
+  el.addEventListener("touchend",up); el.addEventListener("touchmove",up,{passive:true});
+  el.addEventListener("mousedown",down); el.addEventListener("mouseup",up); el.addEventListener("mouseleave",up);
+  el.addEventListener("contextmenu",e=>e.preventDefault());
+}
+function rtLongAte(el){ return el.__long&&Date.now()-el.__long<500; }
 function rtP(id){ return id?(places.find(x=>x&&x.id===id)||null):null; }
 function rtGet(sl){ return sl==="s"?RT.cur.s:sl==="d"?RT.cur.d:RT.cur.w[+sl]; }
 function rtSet(sl,id){ if(sl==="s")RT.cur.s=id; else if(sl==="d")RT.cur.d=id; else RT.cur.w[+sl]=id; rtSaveCur(); }
@@ -5883,6 +5918,8 @@ function rtOpen(){
   document.documentElement.classList.add("nvon");
   RT.sel=rtNextEmpty();
   RT.q=""; document.getElementById("rtQ").value="";
+  /* メモリが1つでもあれば真っ先に「💾 メモリ」を選択した状態で開く＝保存済みコースを即タップできる */
+  RT.cat=rtMems2().length?RT_MEMCAT:"";
   rtRender(); rtRenderCats(); rtRenderList();
 }
 function rtClose(){
@@ -5909,8 +5946,6 @@ function rtRender(){
     : '枠（出発地・①②③・目的地）をタップすると選び直せます';
   const db=document.getElementById("rtDrop");
   if(db)db.onclick=e=>{e.stopPropagation(); rtSet(RT.sel,null); rtRender();};
-  const mems=rtMems();
-  document.querySelectorAll("#rtMems button").forEach((b,i)=>b.classList.toggle("has",!!mems[i]));
   document.getElementById("rtGo").classList.toggle("ready",!!rtGet("d"));
 }
 function rtRenderCats(){
@@ -5923,12 +5958,37 @@ function rtRenderCats(){
     b.onclick=()=>{RT.cat=(RT.cat===val)?"":val; rtRenderCats(); rtRenderList();};
     box.appendChild(b);
   };
+  mk("💾 メモリ",RT_MEMCAT);   /* 先頭=保存済みコースの呼び出し口（v0.53.0） */
   mk("全部","");
   CATS.filter(c=>c.n!==CAT_OTHER.n).concat([CAT_OTHER]).forEach(c=>mk(c.n,c.n));
 }
 function rtRenderList(){
   const list=document.getElementById("rtList");
   const qq=norm(RT.q||"");
+  /* 「💾 メモリ」選択中＝保存済みコースを同じリスト形式で（タップ=即呼び出し・長押し=削除） */
+  if(RT.cat===RT_MEMCAT){
+    const all=rtMems2();
+    const mems=all.filter(m=>!qq||norm(m.n+" "+rtMemSummary(m)).includes(qq));
+    list.innerHTML=mems.length?"":'<div class="near-empty">保存したコースはまだありません。<br>経由地を組んで「💾 メモリに保存」を長押しすると、<br>名前を付けてここに並べられます</div>';
+    mems.forEach(m=>{
+      const el=document.createElement("div");
+      el.className="rtrow mem";
+      el.innerHTML='<div class="rt-rn">💾 '+esc(m.n)+'</div><div class="rt-ra">'+esc(rtMemSummary(m))+'</div>';
+      el.onclick=()=>{
+        if(rtLongAte(el))return;
+        rtApplyMem(m);                      /* タップした瞬間に上のバーへ反映 */
+        toast("「"+m.n+"」を呼び出しました");
+      };
+      rtLong(el,()=>{
+        dlgOpen("メモリ「"+m.n+"」を削除しますか？",true,v=>{
+          if(!v)return;
+          rtMemsSave(all.filter(x=>x!==m)); rtRenderList(); toast("削除しました");
+        },{title:"💾 メモリ",yes:"削除"});
+      });
+      list.appendChild(el);
+    });
+    return;
+  }
   /* 経路に使えるのは行き先を渡せる場所だけ（座標か住所がある） */
   let arr=places.filter(p=>p&&((p.lat&&p.lng)||p.addr));
   if(RT.cat) arr=arr.filter(p=>(p.cat||CAT_OTHER.n)===RT.cat);
@@ -5972,39 +6032,40 @@ document.getElementById("rtGo").onclick=()=>{
   Store.save(places);
   openUrl(u);
 };
-/* メモリ: タップ=呼び出し・長押し(600ms)=今の内容を保存（上書きは確認）。
-   タップだけで消える事故を作らない＝deliberate action の流儀 */
-document.querySelectorAll("#rtMems button").forEach((b,i)=>{
-  /* 長押し後にブラウザがclickを発火する/しないは環境で違う（Androidは発火しない）＝
-     フラグ式だと保存直後の最初のタップが食われる。発動時刻から500ms以内のclickだけ無視する */
-  let t=0,longAt=0;
-  const save=()=>{
-    const mems=rtMems();
-    const doSave=()=>{
-      mems[i]={s:RT.cur.s,w:RT.cur.w.slice(),d:RT.cur.d};
-      try{localStorage.setItem("basho_route_mem",JSON.stringify(mems));}catch(e){}
-      rtRender(); toast("メモリ"+(i+1)+"に保存しました");
-    };
-    if(mems[i]) dlgOpen("メモリ"+(i+1)+"を今の経由地リストで上書きしますか？",true,
-      v=>{if(v)doSave();},{title:"💾 メモリ",yes:"上書き"});
-    else doSave();
+/* クリア: 全枠を一度に空へ（「外す」の一つずつ修正はそのまま残す・v0.53.0）。
+   確認ダイアログは出さず、トーストの「取り消す」で戻せる方式＝軽さと安全の両立 */
+document.getElementById("rtClear").onclick=()=>{
+  if(!RT_SLOTS.some(sl=>rtGet(sl))) return;
+  const prev={s:RT.cur.s,w:RT.cur.w.slice(),d:RT.cur.d};
+  RT.cur={s:null,w:[null,null,null],d:null}; rtSaveCur();
+  RT.sel=rtNextEmpty(); rtRender();
+  toast("クリアしました","取り消す",()=>{RT.cur=prev; rtSaveCur(); RT.sel=null; rtRender();});
+};
+/* 💾 メモリに保存: 長押し→名前を付けて保存（数の制限なし・同名は上書き確認）。
+   タップだけで上書きされる事故を作らない＝deliberate action の流儀 */
+function rtSaveMem(){
+  if(!RT_SLOTS.some(sl=>rtGet(sl))){ toast("先に経由地リストを組んでください"); return; }
+  const d=rtP(RT.cur.d);
+  const nv=(prompt("メモリの名前（例: 実家からの帰り道）",d?d.name:"")||"").trim();
+  if(!nv) return;
+  const all=rtMems2();
+  const dup=all.findIndex(x=>x.n===nv);
+  const rec={n:nv,s:RT.cur.s,w:RT.cur.w.slice(),d:RT.cur.d};
+  const put=()=>{
+    if(dup>=0)all[dup]=rec; else all.unshift(rec);
+    rtMemsSave(all);
+    RT.cat=RT_MEMCAT; rtRenderCats(); rtRenderList();   /* 保存した結果がすぐ見える */
+    toast("「"+nv+"」で保存しました");
   };
-  const down=()=>{t=setTimeout(()=>{longAt=Date.now(); save();},600);};
-  const up=()=>clearTimeout(t);
-  b.addEventListener("touchstart",down,{passive:true});
-  b.addEventListener("touchend",up); b.addEventListener("touchmove",up,{passive:true});
-  b.addEventListener("mousedown",down); b.addEventListener("mouseup",up); b.addEventListener("mouseleave",up);
-  b.addEventListener("contextmenu",e=>e.preventDefault());
-  b.onclick=()=>{
-    if(Date.now()-longAt<500)return;             /* 長押し直後に飛んでくるclickだけ無視 */
-    const m=rtMems()[i];
-    if(!m){ toast("空のメモリです。長押しで今の経由地リストを保存できます"); return; }
-    RT.cur={s:m.s||null,w:[(m.w||[])[0]||null,(m.w||[])[1]||null,(m.w||[])[2]||null],d:m.d||null};
-    RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});
-    rtSaveCur(); RT.sel=null; rtRender();
-    toast("メモリ"+(i+1)+"を呼び出しました");
-  };
-});
+  if(dup>=0) dlgOpen("「"+nv+"」は既にあります。今の内容で上書きしますか？",true,
+    v=>{if(v)put();},{title:"💾 メモリ",yes:"上書き"});
+  else put();
+}
+{
+  const sb=document.getElementById("rtSave");
+  rtLong(sb,rtSaveMem);
+  sb.onclick=()=>{ if(rtLongAte(sb))return; toast("長押しで、今の経由地リストに名前を付けて保存します"); };
+}
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
