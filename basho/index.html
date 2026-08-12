@@ -889,7 +889,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.51.0";
+const VER = "0.51.1";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -5532,9 +5532,11 @@ function nearInitMap(){
     {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
   /* v0.51.0: この画面のピンチは「地図のズーム」ではなく「円の伸縮」に割り当てる。
      地図のズームは円に自動追従（常に円全体が見える）ので、ネイティブのズーム操作は全部切る。
-     ドラッグ（ちょっと横を覗く）だけ残す */
+     ドラッグ（ちょっと横を覗く）だけ残す。
+     v0.51.1: zoomSnap:0=小数ズーム許可（整数刻みだと伸縮中に地図がガクッと段階ジャンプする）・
+     zoomAnimation:false=連続setView中のアニメで円が一瞬消えるのを防ぐ */
   NEAR.map=L.map("nearMap",{zoomControl:false,touchZoom:false,scrollWheelZoom:false,
-    doubleClickZoom:false,boxZoom:false,keyboard:false});
+    doubleClickZoom:false,boxZoom:false,keyboard:false,zoomSnap:0,zoomAnimation:false});
   NEAR.map.attributionControl.setPosition("topright");
   NEAR.osm.addTo(NEAR.map);
 }
@@ -5544,11 +5546,21 @@ function nearInitMap(){
    4択（500m〜5km）と一致しない間は、5kmの右に「≈○km」のおおよそチップが出る。
    PCはホイールでも同じ操作（下に回す=広げる）。 */
 const NEARR_MIN=200, NEARR_MAX=3000000;   /* 200m〜3000km（日本のどこからでも全国を覆える） */
+/* v0.51.1: 円が常に「画面中央・ほぼ同じ大きさ」で見え続けるよう、半径から必要ズームを
+   連続計算して直接セットする（fitBoundsはズームが段階刻みでガクッと飛ぶ＋中心がズレ得る） */
+function nearFitCircle(){
+  const c=NEAR.center; if(!c||!NEAR.map) return;
+  const el=document.getElementById("nearMap");
+  const px=Math.min(el.clientWidth,el.clientHeight)*0.42;      /* 円の画面半径の目標px */
+  const z=Math.max(2,Math.min(19,
+    Math.log2(px*156543.03392*Math.cos(c.lat*Math.PI/180)/NEAR.r)));
+  NEAR.map.setView([c.lat,c.lng],z,{animate:false});
+}
 function nearSetRLive(r){
   NEAR.r=Math.max(NEARR_MIN,Math.min(NEARR_MAX,r));
   if(NEAR.circle){
     NEAR.circle.setRadius(NEAR.r);
-    NEAR.map.fitBounds(NEAR.circle.getBounds(),{padding:[14,14],animate:false});
+    nearFitCircle();
   }
   nearRadsSync();
   const big=document.getElementById("nearRbig");
@@ -5573,7 +5585,11 @@ function nearRadsSync(){
   const pin={on:false,d0:0,r0:0,raf:0,pend:0};
   const dd=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
   el.addEventListener("touchstart",e=>{
-    if(e.touches.length===2){pin.on=true;pin.d0=dd(e.touches);pin.r0=NEAR.r;}
+    if(e.touches.length===2){
+      pin.on=true;pin.d0=dd(e.touches);pin.r0=NEAR.r;
+      /* v0.51.1: ピンチ中はドラッグを切る（1本目の指のパンが混ざると中心が流れて円が画面から消える） */
+      if(NEAR.map){ NEAR.map.dragging.disable(); }
+    }
   },{passive:true});
   el.addEventListener("touchmove",e=>{
     if(!pin.on||e.touches.length!==2)return;
@@ -5585,6 +5601,7 @@ function nearRadsSync(){
   const end=e=>{
     if(!pin.on||e.touches.length>=2)return;
     pin.on=false;
+    if(NEAR.map){ NEAR.map.dragging.enable(); }
     if(pin.raf){cancelAnimationFrame(pin.raf);pin.raf=0;}
     if(pin.pend){nearSetRLive(pin.pend);pin.pend=0;}   /* rAF待ちの最後の動きを捨てない */
     nearPinchEnd();
@@ -5650,7 +5667,7 @@ function nearRender(){
     .filter(x=>x.d<=r).sort((a,b)=>a.d-b.d);
   /* 地図: 先にビューを確定(未設定だとレイヤー追加でエラー)→掃除→自分+円+点 */
   NEAR.map.invalidateSize();
-  NEAR.map.setView([c.lat,c.lng],14);
+  NEAR.map.setView([c.lat,c.lng],14,{animate:false});
   Object.values(NEAR.dots).forEach(m=>NEAR.map.removeLayer(m)); NEAR.dots={};
   if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
   if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
@@ -5666,7 +5683,7 @@ function nearRender(){
     mk.addTo(NEAR.map); NEAR.dots[x.p.id]=mk;
   });
   NEAR.map.invalidateSize();
-  NEAR.map.fitBounds(NEAR.circle.getBounds(),{padding:[14,14]});
+  nearFitCircle();
   /* カード列（距離順） */
   NEAR.focusId=null;
   if(!NEAR.items.length){
