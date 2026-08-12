@@ -542,6 +542,14 @@
   .near-r button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
     border-radius:999px;padding:6px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer}
   .near-r button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  /* v0.51.0: 自由半径チップ＝ピンチで円を広げた時だけ5kmの右に出る（おおよそ表示・破線で「自由」と分かる） */
+  .near-r button.free{border-style:dashed;font-variant-numeric:tabular-nums}
+  /* ピンチ中に地図の上へ大きく半径を出す（チップだけだと指で隠れて見えないため） */
+  .near-rbig{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;
+    background:rgba(10,14,13,.78);color:#F8F9F5;border-radius:999px;padding:7px 16px;
+    font-size:15px;font-weight:700;font-family:var(--gothic);white-space:nowrap;
+    pointer-events:none;opacity:0;transition:opacity .25s}
+  .near-rbig.on{opacity:1}
   .near-cards{flex:0 0 42%;position:relative;overflow-y:auto;padding:0 12px;scrollbar-width:none;overscroll-behavior:contain}
   .near-cards::-webkit-scrollbar{display:none}
   .near-empty{color:var(--soft);font-size:13px;text-align:center;padding:26px 14px;line-height:1.8}
@@ -723,11 +731,11 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <button class="nv-back" id="nearBack">← 戻る</button>
     <div class="near-tt" id="nearTt">📍 周辺の場所</div>
     <div class="near-r" id="nearRads">
-      <button data-r="500">500m</button><button data-r="1000">1km</button><button data-r="2000" class="on">2km</button><button data-r="5000">5km</button>
+      <button data-r="500">500m</button><button data-r="1000">1km</button><button data-r="2000" class="on">2km</button><button data-r="5000">5km</button><button class="free" id="nearFree" hidden></button>
     </div>
   </div>
   <div class="near-cards" id="nearCards"></div>
-  <div class="near-map" id="nearMap"></div>
+  <div class="near-map" id="nearMap"><div class="near-rbig" id="nearRbig"></div></div>
 </div>
 
 <!-- ヘルプ（使い方）: ⋯メニュー最下部のボタンから。目次つきのHTML本文（v0.37.0で画像から刷新） -->
@@ -881,7 +889,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.50.0";
+const VER = "0.51.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3883,6 +3891,7 @@ const HELP_SECS=[
  '<ul>'+
  '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>のまわりの登録場所。500m／1km／2km／5kmで範囲を変えられます。</li>'+
  '<li><b>カードの</b><span class="hp-btn">場所周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
+ '<li><b>円は自由に伸ばせます</b> … 地図を2本指で広げると円がそのまま広がり、入った場所が上のカード列に増えていきます（5kmの右におおよその半径が出ます）。日本全体まで広げれば、登録した場所が全部並びます。</li>'+
  '</ul>'},
 {id:"nav",t:"「到達距離」ボタン（自分との位置・距離の確認）",h:
  '<p><b>今の自分と目的地の位置・距離</b>を確かめる拡大地図です。遠くで押せば方向と残り距離が分かり、近づいてからは<b>最後の100m</b>の歩き案内になります。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
@@ -5521,10 +5530,73 @@ function nearInitMap(){
   /* 名前入り地図(OSM)=店・施設の名称が見えるのでこの用途に最適 */
   NEAR.osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
-  NEAR.map=L.map("nearMap",{zoomControl:false});
+  /* v0.51.0: この画面のピンチは「地図のズーム」ではなく「円の伸縮」に割り当てる。
+     地図のズームは円に自動追従（常に円全体が見える）ので、ネイティブのズーム操作は全部切る。
+     ドラッグ（ちょっと横を覗く）だけ残す */
+  NEAR.map=L.map("nearMap",{zoomControl:false,touchZoom:false,scrollWheelZoom:false,
+    doubleClickZoom:false,boxZoom:false,keyboard:false});
   NEAR.map.attributionControl.setPosition("topright");
   NEAR.osm.addTo(NEAR.map);
 }
+/* ───── v0.51.0: 円を「掴んで伸ばす」 ─────
+   地図の上で2本指を広げる＝円の実半径がそのまま広がる（狭める＝縮む）。
+   広げた先に登録場所があれば上のカード列にも同じ挙動で並ぶ。日本全体まで広げれば全カードが圏内。
+   4択（500m〜5km）と一致しない間は、5kmの右に「≈○km」のおおよそチップが出る。
+   PCはホイールでも同じ操作（下に回す=広げる）。 */
+const NEARR_MIN=200, NEARR_MAX=3000000;   /* 200m〜3000km（日本のどこからでも全国を覆える） */
+function nearSetRLive(r){
+  NEAR.r=Math.max(NEARR_MIN,Math.min(NEARR_MAX,r));
+  if(NEAR.circle){
+    NEAR.circle.setRadius(NEAR.r);
+    NEAR.map.fitBounds(NEAR.circle.getBounds(),{padding:[14,14],animate:false});
+  }
+  nearRadsSync();
+  const big=document.getElementById("nearRbig");
+  big.textContent="半径 ≈ "+fmtDist(NEAR.r); big.classList.add("on");
+}
+function nearPinchEnd(){
+  document.getElementById("nearRbig").classList.remove("on");
+  if(NEAR.center) nearRender();          /* カード列と地図の点はここでまとめて更新（ピンチ中は円と数字だけ） */
+}
+/* 半径チップの点灯を今のNEAR.rに合わせる。4択と一致＝そのボタン点灯、不一致＝自由チップ点灯 */
+function nearRadsSync(){
+  let hit=false;
+  document.querySelectorAll("#nearRads button[data-r]").forEach(b=>{
+    const on=Math.abs(+b.dataset.r-NEAR.r)<1; b.classList.toggle("on",on); if(on)hit=true;
+  });
+  const f=document.getElementById("nearFree");
+  f.hidden=hit; f.classList.toggle("on",!hit);
+  if(!hit) f.textContent="≈"+fmtDist(NEAR.r);
+}
+(function(){
+  const el=document.getElementById("nearMap");
+  const pin={on:false,d0:0,r0:0,raf:0,pend:0};
+  const dd=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
+  el.addEventListener("touchstart",e=>{
+    if(e.touches.length===2){pin.on=true;pin.d0=dd(e.touches);pin.r0=NEAR.r;}
+  },{passive:true});
+  el.addEventListener("touchmove",e=>{
+    if(!pin.on||e.touches.length!==2)return;
+    e.preventDefault();                   /* ブラウザのページズーム・引っ張って更新に渡さない */
+    const d=dd(e.touches); if(!pin.d0||!d)return;
+    pin.pend=pin.r0*(d/pin.d0);
+    if(!pin.raf)pin.raf=requestAnimationFrame(()=>{pin.raf=0;if(pin.pend)nearSetRLive(pin.pend);});
+  },{passive:false});
+  const end=e=>{
+    if(!pin.on||e.touches.length>=2)return;
+    pin.on=false;
+    if(pin.raf){cancelAnimationFrame(pin.raf);pin.raf=0;}
+    if(pin.pend){nearSetRLive(pin.pend);pin.pend=0;}   /* rAF待ちの最後の動きを捨てない */
+    nearPinchEnd();
+  };
+  el.addEventListener("touchend",end); el.addEventListener("touchcancel",end);
+  let wt=0;
+  el.addEventListener("wheel",e=>{
+    e.preventDefault();
+    nearSetRLive(NEAR.r*(e.deltaY>0?1.18:1/1.18));
+    clearTimeout(wt); wt=setTimeout(nearPinchEnd,300);
+  },{passive:false});
+})();
 /* place を渡すとその場所が真ん中になる（泊まるホテルの周りに何があるかを見る）。
    渡さなければ従来どおり現在地が真ん中（FABの「周辺」）。v0.34.0 */
 function nearOpen(place){
@@ -5570,6 +5642,7 @@ function nearLocate(){
 }
 function nearRender(){
   nearInitMap();
+  nearRadsSync();
   const c=NEAR.center, r=NEAR.r, cards=document.getElementById("nearCards");
   /* 真ん中にした場所そのものは一覧に出さない（真ん中の印として地図に出る） */
   NEAR.items=places.filter(p=>p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id))
@@ -5598,7 +5671,7 @@ function nearRender(){
   NEAR.focusId=null;
   if(!NEAR.items.length){
     cards.style.paddingTop=cards.style.paddingBottom="";
-    cards.innerHTML='<div class="near-empty">この距離には登録した場所がありません。<br>上のボタンでもっと広い距離も試せます</div>';
+    cards.innerHTML='<div class="near-empty">この距離には登録した場所がありません。<br>上のボタンのほか、地図を2本指で広げると<br>円ごと遠くまで広げられます</div>';
     return;
   }
   cards.innerHTML="";
@@ -5662,13 +5735,14 @@ document.getElementById("nearCards").addEventListener("scroll",()=>{
   if(NEAR.raf) return;
   NEAR.raf=requestAnimationFrame(()=>{NEAR.raf=0;nearSyncFocus();});
 },{passive:true});
-document.querySelectorAll("#nearRads button").forEach(b=>{
+document.querySelectorAll("#nearRads button[data-r]").forEach(b=>{
   b.onclick=()=>{
-    document.querySelectorAll("#nearRads button").forEach(x=>x.classList.remove("on"));
-    b.classList.add("on"); NEAR.r=+b.dataset.r;
+    NEAR.r=+b.dataset.r; nearRadsSync();
     if(NEAR.center) nearRender();
   };
 });
+/* 自由チップのタップ＝円全体が見える位置に戻す（ドラッグで覗いた後の帰り道） */
+document.getElementById("nearFree").onclick=()=>{ if(NEAR.center) nearRender(); };
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
