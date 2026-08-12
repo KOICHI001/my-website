@@ -972,7 +972,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.52.0";
+const VER = "0.52.1";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -5955,14 +5955,19 @@ document.querySelectorAll("#rtov .rt-stop").forEach(el=>{
 });
 document.getElementById("rtQ").addEventListener("input",e=>{RT.q=e.target.value; rtRenderList();});
 document.getElementById("rtQx").onclick=()=>{RT.q=""; document.getElementById("rtQ").value=""; rtRenderList();};
+/* 経由地・出発地は「その地点ぴったり」が命（裏道の一点など）＝座標を最優先で渡す。
+   名称+住所の文字で渡すとGoogleが検索で当てるため、自作の名前だと別の場所に飛ぶ
+   （v0.52.1 実機FB: 影取町裏道1〜3のA/B/C地点ズレ）。目的地だけは従来どおり
+   名称+住所優先＝お店のカードがちゃんと出る */
+function rtQ(p){ return (p.lat&&p.lng)?(p.lat+","+p.lng):q(p); }
 document.getElementById("rtGo").onclick=()=>{
   const d=rtP(RT.cur.d);
   if(!d){ toast("目的地を選んでください（目的地の枠をタップ→下のリストから）"); return; }
   const s=rtP(RT.cur.s);
   const ws=RT.cur.w.map(rtP).filter(Boolean);
   let u="https://www.google.com/maps/dir/?api=1&destination="+q(d);
-  if(s) u+="&origin="+q(s);
-  if(ws.length) u+="&waypoints="+ws.map(q).join("%7C");
+  if(s) u+="&origin="+rtQ(s);
+  if(ws.length) u+="&waypoints="+ws.map(rtQ).join("%7C");
   [s,d].concat(ws).filter(Boolean).forEach(p=>{p.count=(p.count||0)+1;p.used=Date.now();});
   Store.save(places);
   openUrl(u);
