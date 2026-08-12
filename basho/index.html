@@ -973,7 +973,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.53.0";
+const VER = "0.53.1";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3986,7 +3986,7 @@ const HELP_SECS=[
  '<li>下のリストは検索とカテゴリで絞れます（よく行く順に並んでいます）。</li>'+
  '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
  '<li><span class="hp-btn">クリア</span> … 全部の枠を一度に空にします（直後に出る「取り消す」で戻せます）。一つだけ直したい時は、その枠をタップ→「✕ 外す」。</li>'+
- '<li><span class="hp-btn">💾 メモリに保存</span> … <b>長押し</b>で、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。いらないコースは<b>長押しで削除</b>。</li>'+
+ '<li><span class="hp-btn">💾 メモリに保存</span> … タップで、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。コースの行を<b>長押しすると「名前の変更」「削除」</b>ができます。</li>'+
  '</ul>'},
 {id:"nav",t:"「到達距離」ボタン（自分との位置・距離の確認）",h:
  '<p><b>今の自分と目的地の位置・距離</b>を確かめる拡大地図です。遠くで押せば方向と残り距離が分かり、近づいてからは<b>最後の100m</b>の歩き案内になります。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
@@ -5979,12 +5979,7 @@ function rtRenderList(){
         rtApplyMem(m);                      /* タップした瞬間に上のバーへ反映 */
         toast("「"+m.n+"」を呼び出しました");
       };
-      rtLong(el,()=>{
-        dlgOpen("メモリ「"+m.n+"」を削除しますか？",true,v=>{
-          if(!v)return;
-          rtMemsSave(all.filter(x=>x!==m)); rtRenderList(); toast("削除しました");
-        },{title:"💾 メモリ",yes:"削除"});
-      });
+      rtLong(el,()=>rtMemMenu(m,all));   /* 長押し=名前の変更・削除メニュー（v0.53.1） */
       list.appendChild(el);
     });
     return;
@@ -6041,8 +6036,8 @@ document.getElementById("rtClear").onclick=()=>{
   RT.sel=rtNextEmpty(); rtRender();
   toast("クリアしました","取り消す",()=>{RT.cur=prev; rtSaveCur(); RT.sel=null; rtRender();});
 };
-/* 💾 メモリに保存: 長押し→名前を付けて保存（数の制限なし・同名は上書き確認）。
-   タップだけで上書きされる事故を作らない＝deliberate action の流儀 */
+/* 💾 メモリに保存: タップ→名前を付けて保存（v0.53.1でタップ化＝名前入力自体が確認代わり。
+   数の制限なし・同名だけは上書き確認） */
 function rtSaveMem(){
   if(!RT_SLOTS.some(sl=>rtGet(sl))){ toast("先に経由地リストを組んでください"); return; }
   const d=rtP(RT.cur.d);
@@ -6061,10 +6056,30 @@ function rtSaveMem(){
     v=>{if(v)put();},{title:"💾 メモリ",yes:"上書き"});
   else put();
 }
-{
-  const sb=document.getElementById("rtSave");
-  rtLong(sb,rtSaveMem);
-  sb.onclick=()=>{ if(rtLongAte(sb))return; toast("長押しで、今の経由地リストに名前を付けて保存します"); };
+document.getElementById("rtSave").onclick=rtSaveMem;
+/* メモリ行の長押しメニュー: 名前の変更 / 削除（フォルダ長押しと同じsheet流儀・rtovの上に出すabovepv） */
+function rtMemMenu(m,all){
+  sheet.innerHTML=
+    '<h2>💾「'+esc(m.n)+'」</h2>'+
+    '<div class="hint">'+esc(rtMemSummary(m))+'</div>'+
+    '<button class="menu-item" id="rm_ren">✏️ 名前を変更する</button>'+
+    '<button class="menu-item" id="rm_del" style="color:#B4462F">🗑 このメモリを削除</button>'+
+    '<div class="sheet-actions"><button class="btn" id="rm_close">閉じる</button></div>';
+  veil.classList.add("on","abovepv");
+  document.getElementById("rm_close").onclick=closeSheet;
+  document.getElementById("rm_ren").onclick=()=>{
+    const nv=(prompt("新しい名前",m.n)||"").trim();
+    if(!nv||nv===m.n){ closeSheet(); return; }
+    if(all.some(x=>x!==m&&x.n===nv)){ toast("同じ名前のメモリがあります"); return; }
+    m.n=nv; rtMemsSave(all); closeSheet(); rtRenderList(); toast("名前を変更しました");
+  };
+  document.getElementById("rm_del").onclick=()=>{
+    closeSheet();
+    dlgOpen("メモリ「"+m.n+"」を削除しますか？",true,v=>{
+      if(!v)return;
+      rtMemsSave(all.filter(x=>x!==m)); rtRenderList(); toast("削除しました");
+    },{title:"💾 メモリ",yes:"削除"});
+  };
 }
 document.getElementById("nvClose").onclick=nvClose;
 document.getElementById("nvUnpark").onclick=()=>{
