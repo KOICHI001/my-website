@@ -249,6 +249,10 @@
   .btn.del{border-color:rgba(163,58,42,.4);color:var(--danger);flex:0 0 auto;padding:14px 18px}
   .subbtn{border:1px solid var(--line);background:var(--card);color:var(--route);border-radius:10px;
     padding:9px 12px;font-size:13px;font-family:var(--gothic);cursor:pointer;margin-top:8px}
+  /* 位置ボタン4つは同じ大きさの2×2（v0.55.0 コーイチさんFB=バラバラの長さで崩れて見える） */
+  .posgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px}
+  .posgrid .subbtn{width:100%;margin:0;padding:10px 2px;font-size:12.5px;
+    white-space:nowrap;text-align:center;overflow:hidden}
   .menu-item{display:block;width:100%;text-align:left;padding:15px 8px;border:0;
     border-bottom:1px solid var(--line);background:none;font-family:var(--gothic);font-size:15px;
     color:var(--ink);cursor:pointer}
@@ -929,7 +933,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <div class="ocrov" id="ocrov">
   <div class="ocr-top">
     <button class="nv-back" id="ocrCloseBtn">← 戻る</button>
-    <div class="ocr-tt">スクショから読み取る</div>
+    <div class="ocr-tt">スクショから取り込み</div>
     <!-- 読めた分はそのままに、別のスクショから足りないものだけ読み直せる -->
     <button class="nv-back" id="ocrSwapBtn">別のスクショ</button>
   </div>
@@ -974,7 +978,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.54.0";
+const VER = "0.55.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2529,7 +2533,7 @@ function cardAction(p,a){
             : (p.addr
               ? "正確なピンが未設定です。住所だけを頼りに経路を開きます。"
               : "正確なピンも住所も未記入です。Googleマップのリンクと名前だけを頼りに経路を開きます。");
-          dlgOpen(why+"\n本来の場所とズレることがありますのでご注意ください。\n（編集→「🗺 地図で位置を決める」で確定できます）",true,
+          dlgOpen(why+"\n本来の場所とズレることがありますのでご注意ください。\n（編集→「🗺 地図で座標決め」で確定できます）",true,
             ok=>{ if(ok) openRoute(p); });
         }
         else openRoute(p);
@@ -2551,7 +2555,7 @@ function cardAction(p,a){
               toast("位置を設定しました");
               bump(p); nearOpen(p);
             },p.addr||p.name);
-          },{yes:"🗺 地図で位置を決める",no:"今回はやめる"});
+          },{yes:"🗺 地図で座標決め",no:"今回はやめる"});
       }
       else if(a==="nav"){
         /* 座標が無ければリンクからの抽出をもう一度試す（フルURLなら取れる） */
@@ -2562,7 +2566,7 @@ function cardAction(p,a){
         if(p.lat&&p.lng){
           /* 赤（精度が粗い）は理由つき確認を挟む。押すまで消えない＝読める */
           if(!goodPin(p)){
-            dlgOpen("登録位置の精度が粗いです（おおよそ±"+p.acc+"m）。\nピンが本来の場所とズレていることがあります。\n（編集→「🗺 地図で位置を決める」で確定できます）",true,
+            dlgOpen("登録位置の精度が粗いです（おおよそ±"+p.acc+"m）。\nピンが本来の場所とズレていることがあります。\n（編集→「🗺 地図で座標決め」で確定できます）",true,
               ok=>{ if(ok){bump(p);nvOpen("place",p);} });
             return;
           }
@@ -2577,7 +2581,7 @@ function cardAction(p,a){
               toast("位置を設定しました");
               bump(p); nvOpen("place",p);
             },p.addr||p.name);
-          },{yes:"🗺 地図で位置を決める",no:"今回はやめる"});
+          },{yes:"🗺 地図で座標決め",no:"今回はやめる"});
       }
       else form(p);
 }
@@ -3095,7 +3099,7 @@ function shareAdd(name,url,c,addr){
     /* 共有には電話番号は入らない（Googleが送っていない）。スクショから読めた時の受け皿 */
     '<label>電話番号（任意）</label><input type="tel" id="f_tel" value="" placeholder="スクショから読み取れます">'+
     /* 座標がすでに入っている共有でも出す＝住所をスクショから入れたい場面が多いため（旧: 座標なしの時だけ表示） */
-    '<button class="subbtn" id="shOcr">🔢 スクショから読み取る（名前・住所・座標）</button>'+
+    '<button class="subbtn" id="shOcr">🔢 スクショから取り込み（名前・住所・座標）</button>'+
     '<label>カテゴリ</label>'+catFieldHTML("その他")+   /* 住所・カテゴリは選び漏れ防止で最初から表に出す */
     /* サブカテゴリ（全カテゴリ共通）＝「軽井沢周辺」のような横串を登録の時点で付けられる（v0.41.0） */
     '<label>サブカテゴリ（任意）</label>'+sfFieldHTML(homeTab==="shelf"&&shelfSub?shelfSub:"")+
@@ -3104,10 +3108,10 @@ function shareAdd(name,url,c,addr){
     '</details>'+
     (canExpandShort(url)
       ? '<div class="hint">共有そのものには住所が入っていないため、リンクの中身を調べて住所・座標を補います'+
-        '（空いている欄だけ・数秒）。入らなかった時は「🔢 スクショから読み取る」か、'+
+        '（空いている欄だけ・数秒）。入らなかった時は「🔢 スクショから取り込み」か、'+
         'カードの住所を長押しコピーで貼り付けてください。'
       : '<div class="hint">住所は共有では受け取れません。マップのカードを写したスクショがあれば'+
-        '「🔢 スクショから読み取る」で名前も住所も入れられます（カードの住所を長押しコピーでもOK）。')+
+        '「🔢 スクショから取り込み」で名前も住所も入れられます（カードの住所を長押しコピーでもOK）。')+
       (c?'':'座標が入らなくても登録できます（「到達距離」「場所周辺」を使う時に、その場で位置を設定できます）。')+'</div>'+
     '<div class="sheet-actions">'+
       '<button class="btn" id="cancel">やめる</button>'+
@@ -3193,7 +3197,7 @@ function shareAdd(name,url,c,addr){
 /* 編集：位置の入れ直しはここで */
 function form(d){
   sheet.innerHTML=
-    '<h2>場所を編集</h2>'+
+    '<h2>'+(d.__new?'新規場所登録':'場所を編集')+'</h2>'+
     '<label>名前</label><input type="text" id="f_name" value="'+esc(d.name)+'">'+
     '<div class="two">'+
       '<div><label>よみ（検索用・任意）</label><input type="text" id="f_kana" value="'+esc(d.kana)+'"></div>'+
@@ -3204,16 +3208,18 @@ function form(d){
     '<div class="gps'+((d.lat&&d.lng)?" ok":"")+'" id="gpsbox">'+
       ((d.lat&&d.lng)?'記録あり<span class="mono">'+d.lat+", "+d.lng+(d.acc?" ±"+d.acc+"m":"")+'</span>':'まだ入っていません')+
     '</div>'+
-    '<button class="subbtn" id="here">今いる場所で上書きする</button> '+
-    '<button class="subbtn" id="pickmap">🗺 地図で位置を決める</button> '+
-    '<button class="subbtn" id="ocrBtn">🔢 スクショから読み取る（名前・住所・座標）</button> '+
-    '<button class="subbtn" id="addr2geo">🏠 住所から座標を入れる</button>'+
+    '<div class="posgrid">'+
+      '<button class="subbtn" id="here">🛰 今いる場所で上書き</button>'+
+      '<button class="subbtn" id="pickmap">🗺 地図で座標決め</button>'+
+      '<button class="subbtn" id="ocrBtn">🔢 スクショから取り込み</button>'+
+      '<button class="subbtn" id="addr2geo">🏠 住所から座標決め</button>'+
+    '</div>'+
     '<label>Googleマップのリンク（共有 → リンクをコピー）</label>'+
     '<input type="text" id="f_url" value="'+esc(d.url)+'" placeholder="https://maps.app.goo.gl/... または 35.67, 139.69">'+
     '<div class="hint">「地図を開く」は<b>住所があれば住所（＋名前）</b>で開き、住所が無いときにこのリンクを使います'+
     '（ピン長押しの共有リンクは、開くと名称欄に緯度経度が出てしまうため）。ただし短縮リンクには座標が入っていないため、'+
-    '<b>「到達距離」（歩きの案内）</b>には「地図で位置を決める」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
-    '名前・住所・座標が写ったスクショがあれば「🔢 スクショから読み取る」でまとめて取り込めます。</div>'+
+    '<b>「到達距離」（歩きの案内）</b>には「地図で座標決め」か、Googleマップでピンを長押し→上部の座標をコピーしてここに貼ってください（自動で緯度経度に入ります）。'+
+    '名前・住所・座標が写ったスクショがあれば「🔢 スクショから取り込み」でまとめて取り込めます。</div>'+
     '<details><summary>住所・電話・メモ・座標を直接いじる</summary>'+
       '<label>住所</label><input type="text" id="f_addr" value="'+esc(d.addr)+'">'+
       '<label>電話番号</label><input type="tel" id="f_tel" value="'+esc(d.tel)+'">'+
@@ -3222,7 +3228,7 @@ function form(d){
       '<div><label>経度</label><input type="text" id="f_lng" value="'+esc(d.lng)+'"></div></div>'+
     '</details>'+
     '<div class="sheet-actions">'+
-      '<button class="btn del" id="del">削除</button>'+
+      (d.__new?'':'<button class="btn del" id="del">削除</button>')+   /* 新規はまだ何も無い＝削除は出さない */
       '<button class="btn" id="cancel">やめる</button>'+
       '<button class="btn primary" id="ok">保存する</button>'+
     '</div>';
@@ -3328,10 +3334,11 @@ function form(d){
     }
     /* 短縮リンク＝座標なしの案内（貼り付け時のみ） */
     if(/^https?:\/\/(maps\.app\.goo\.gl|goo\.gl)\//.test(v.trim()))
-      toast("短縮リンクには座標が入っていません。「到達距離」を使うには「地図で位置を決める」を");
+      toast("短縮リンクには座標が入っていません。「到達距離」を使うには「地図で座標決め」を");
   });
   document.getElementById("cancel").onclick=closeSheet;
-  document.getElementById("del").onclick=()=>{
+  const delBtn=document.getElementById("del");
+  if(delBtn)delBtn.onclick=()=>{
     const n=(d.ph||[]).length;
     if(confirm("「"+d.name+"」を削除します。"+(n?"\n中の写真"+n+"枚も一緒に消え、元に戻せません。":"")+"よろしいですか？")){
       phPurgePlace(d);
@@ -3346,6 +3353,7 @@ function form(d){
       url:v("f_url"),lat:la,lng:lo,tel:v("f_tel"),memo:v("f_memo"),
       acc:(la+","+lo===accFor)?accPend:null,updated:Date.now()});
     const sfv=v("f_sf"); if(sfv)d.sf=sfv; else delete d.sf;
+    if(d.__new){ delete d.__new; places.push(d); }   /* 新規はここで初めてリスト入り */
     updatePref(d);
     save(); closeSheet(); toast("保存しました");
   };
@@ -3783,7 +3791,7 @@ function nvOpenPick(initLL,cb,autoQ){
   nvEl("nvov").classList.add("on","pick");
   nvEl("nvov").classList.remove("car");
   nvEl("nvUnpark").style.display="none";
-  nvEl("nvName").textContent="地図で位置を決める";
+  nvEl("nvName").textContent="地図で座標決め";
   nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下ボタンで写真・地理院に切替可）";
   nvEl("nvDist").textContent="";
   nvEl("nvSearch").value=autoQ||""; nvEl("nvCands").innerHTML="";
@@ -3792,13 +3800,26 @@ function nvOpenPick(initLL,cb,autoQ){
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
   ["destMk","trailLn","meMk","accC","gline"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
-  /* 開始位置: 既存座標 → 前回のピン置き地図 → 現在地 → 日本全体 */
+  /* 開始位置（v0.55.0）: 既存座標 → 「今いる場所」 → 前回のピン置き地図 → 日本全体。
+     前回の地図から始めると毎回わけが分からない（実機FB）＝現在地から指で動かして決めるのが自然。
+     手持ちの現在地をまず出し、新しいGPSが来たら「まだ地図を触っていない時だけ」そこへ寄せる。
+     住所検索つき(autoQ)は検索先が主役なので寄せない */
   let pv=null;
   try{pv=JSON.parse(localStorage.getItem("basho_pickview"));}catch(e){}
   if(initLL) NV.map.setView(initLL,17);
-  else if(pv&&isFinite(pv.lat)&&isFinite(pv.lng)) NV.map.setView([pv.lat,pv.lng],pv.z||15);
-  else if(lastPos) NV.map.setView([lastPos.lat,lastPos.lng],14);
-  else NV.map.setView([36.5,137.8],5);
+  else{
+    if(lastPos) NV.map.setView([lastPos.lat,lastPos.lng],16);
+    else if(pv&&isFinite(pv.lat)&&isFinite(pv.lng)) NV.map.setView([pv.lat,pv.lng],pv.z||15);
+    else NV.map.setView([36.5,137.8],5);
+    if(!autoQ&&navigator.geolocation){
+      let moved=false;
+      NV.map.once("dragstart",()=>{moved=true;});
+      navigator.geolocation.getCurrentPosition(p=>{
+        lastPos={lat:p.coords.latitude,lng:p.coords.longitude};
+        if(!moved&&NV.mode==="pick") NV.map.setView([lastPos.lat,lastPos.lng],16);
+      },()=>{},{enableHighAccuracy:false,timeout:6000,maximumAge:30000});
+    }
+  }
   if(autoQ) nvSearchGo(true);   /* 名前で自動検索→最初の候補へジャンプ */
 }
 function nvSearchGo(autoJump){
@@ -3923,7 +3944,7 @@ const HELP_SECS=[
  '<li>下の4ボタン：<span class="hp-btn">地図を開く</span>＝Googleマップでその場所を表示 / <span class="hp-btn">経路</span>＝そこまでの道順 / <span class="hp-btn">場所周辺</span>＝その場所のまわりの登録場所 / <span class="hp-btn">到達距離</span>＝今の自分との位置・距離を拡大地図で。</li>'+
  '<li><b>リスト表示</b>（線3本のボタンで切り替え）では、左の<b>名前タップ＝編集</b>、右の3ボタンで地図・場所周辺・到達距離がすぐ開けます。</li>'+
  '</ul>'+
- '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で位置を決める」でピンを置くと白になります。</div>'},
+ '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で座標決め」でピンを置くと白になります。</div>'},
 {id:"reg1",t:"登録① 「ここを登録」ボタン",h:
  '<p>今いる場所を記録する、いちばん基本の登録です。</p>'+
  '<ul>'+
@@ -3938,21 +3959,21 @@ const HELP_SECS=[
  '<ul>'+
  '<li>Googleマップでその場所を開く →「<b>共有</b>」→ アプリ一覧から「<b>場所帳</b>」を選ぶ。</li>'+
  '<li>名前とリンクが自動で入ります。<b>リンクに位置情報が含まれていれば</b>座標や住所も自動で補われます（リンクの中身を数秒調べて、空いている欄だけ埋めます）。</li>'+
- '<li>住所が入らなかったときは：「🔢 スクショから読み取る」（→登録④）か、Googleマップのカードの住所を<b>長押しコピー</b>して貼り付け。</li>'+
- '<li>座標が入らなくても登録できます。位置が必要な「到達距離」「場所周辺」を押した時に、その場で「地図で位置を決める」に進めます。</li>'+
+ '<li>住所が入らなかったときは：「🔢 スクショから取り込み」（→登録④）か、Googleマップのカードの住所を<b>長押しコピー</b>して貼り付け。</li>'+
+ '<li>座標が入らなくても登録できます。位置が必要な「到達距離」「場所周辺」を押した時に、その場で「地図で座標決め」に進めます。</li>'+
  '</ul>'+
  '<div class="hp-note">ピンを長押しして共有した場合は、名前ではなく座標が届きます。場所帳が自動で見分けて座標欄に入れるので、そのまま名前だけ書き足せば大丈夫です。</div>'},
-{id:"reg3",t:"登録③ 名前だけで追加（位置はあとで）",h:
- '<p>旅行の計画など、まだ行っていない場所は<span class="hp-btn">⋯</span>メニュー →「<b>名前だけで追加する</b>」。</p>'+
+{id:"reg3",t:"登録③ 新規場所登録（位置はあとで）",h:
+ '<p>旅行の計画など、まだ行っていない場所は<span class="hp-btn">⋯</span>メニュー →「<b>新規場所登録</b>」。名前も空の真っさらなカードが開くので、分かるところから入れていけます。</p>'+
  '<p>位置はあとから編集画面で入れられます。入れ方は4つ：</p>'+
  '<ul>'+
- '<li><span class="hp-btn">🗺 地図で位置を決める</span> … 地図の＋印を合わせて「この位置にする」。住所や地名の検索つきでいちばん確実。</li>'+
+ '<li><span class="hp-btn">🗺 地図で座標決め</span> … 地図の＋印を合わせて「この位置にする」。住所や地名の検索つきでいちばん確実。</li>'+
  '<li><span class="hp-btn">🏠 住所から座標を入れる</span> … 住所が入っていれば自動で座標に。</li>'+
- '<li><span class="hp-btn">🔢 スクショから読み取る</span> … →登録④。</li>'+
+ '<li><span class="hp-btn">🔢 スクショから取り込み</span> … →登録④。</li>'+
  '<li><span class="hp-btn">今いる場所で上書きする</span> … その場に立っているならこれ。</li>'+
  '</ul>'},
-{id:"reg4",t:"登録④ スクショから読み取る（OCR）",h:
- '<p>Googleマップの画面を<b>スクショして、そこから文字を読み取る</b>機能です。編集画面と共有の画面にある「🔢 スクショから読み取る」から使います。</p>'+
+{id:"reg4",t:"登録④ スクショから取り込み（OCR）",h:
+ '<p>Googleマップの画面を<b>スクショして、そこから文字を読み取る</b>機能です。編集画面と共有の画面にある「🔢 スクショから取り込み」から使います。</p>'+
  '<ul>'+
  '<li>スクショを選ぶ → <b>読みたいところをタップ</b>（指で四角く囲ってもOK）。</li>'+
  '<li>名前・住所・座標・電話番号が読めます。読んだ分はたまっていくので、順にタップすれば1枚から全部そろいます。</li>'+
@@ -3998,7 +4019,7 @@ const HELP_SECS=[
  '<li><span class="hp-btn">北上</span>⇄<span class="hp-btn">向き上</span> … 自分の向いている方向を上にして地図を回せます。</li>'+
  '<li><span class="hp-btn">写真</span> … 航空写真に切り替え。<span class="hp-btn">追従</span> … 自分を常に真ん中に。</li>'+
  '</ul>'+
- '<div class="hp-note">この機能だけは<b>正確な座標</b>が必要です。ボタンが赤いときは、編集画面の「🗺 地図で位置を決める」でピンを置いてから使ってください。</div>'},
+ '<div class="hp-note">この機能だけは<b>正確な座標</b>が必要です。ボタンが赤いときは、編集画面の「🗺 地図で座標決め」でピンを置いてから使ってください。</div>'},
 {id:"foot",t:"「足あと」ボタン",h:
  '<p>「あとでここに戻ってくる」場所に旗を立てる機能です。駐車場所・ホテル・集合場所・広い施設の入口などに。</p>'+
  '<ul>'+
@@ -4045,7 +4066,7 @@ const HELP_SECS=[
  '<li><b>右フリックで1つ戻る</b> … 本の中・フォルダの中・写真の縦閲覧で使えます。</li>'+
  '<li>Androidの<b>戻るボタン</b>は、開いている画面を1つずつ閉じます（アプリが勝手に終了することはありません）。</li>'+
  '<li><b>長押し</b>に小さなメニューが隠れています … 本（表紙の設定）・フォルダ・写真（削除）・リンクとPDF。迷ったら長押ししてみてください。</li>'+
- '<li>カードの<b>ボタンが赤い</b>のは位置情報が足りない印。編集の「🗺 地図で位置を決める」で白になります。</li>'+
+ '<li>カードの<b>ボタンが赤い</b>のは位置情報が足りない印。編集の「🗺 地図で座標決め」で白になります。</li>'+
  '</ul>'}
 ];
 function helpOpen(){
@@ -4087,7 +4108,7 @@ document.getElementById("helpBack").onclick=helpClose;
 function menu(){
   sheet.innerHTML=
     '<h2>設定</h2>'+
-    '<button class="menu-item" id="m_add">名前だけで追加する（位置はあとで）</button>'+
+    '<button class="menu-item" id="m_add">新規場所登録（空のカードを作る）</button>'+
     '<button class="menu-item" id="m_cats">カテゴリを編集する</button>'+
     '<button class="menu-item" id="m_exp">バックアップを書き出す</button>'+
     '<button class="menu-item" id="m_imp">バックアップを読み込む</button>'+
@@ -4100,9 +4121,11 @@ function menu(){
   veil.classList.add("on");
   document.getElementById("m_close").onclick=closeSheet;
   document.getElementById("m_add").onclick=()=>{
-    const rec={id:"p"+Date.now(),name:"新しい場所",kana:"",cat:"その他",memo:"",lat:"",lng:"",acc:null,
-      addr:"",url:"",tel:"",fav:false,count:0,created:Date.now(),updated:Date.now()};
-    places.push(rec); Store.save(places); form(rec);
+    /* v0.55.0: 名前も空の真っさらなカードで編集フォームを開く。
+       リストへ入れるのは「保存する」を押した時だけ＝「やめる」で幽霊カードを残さない */
+    const rec={id:"p"+Date.now(),name:"",kana:"",cat:"その他",memo:"",lat:"",lng:"",acc:null,
+      addr:"",url:"",tel:"",fav:false,count:0,created:Date.now(),updated:Date.now(),__new:true};
+    form(rec);
   };
   document.getElementById("m_cats").onclick=catEdit;
   document.getElementById("m_gmi").onclick=gmImport;
