@@ -978,7 +978,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.55.1";
+const VER = "0.56.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4002,6 +4002,7 @@ const HELP_SECS=[
  '<li><b>カードの</b><span class="hp-btn">場所周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
  '<li><b>円は自由に伸ばせます</b> … 地図を2本指で広げると円がそのまま広がり、入った場所が上のカード列に増えていきます（5kmの右におおよその半径が出ます）。日本全体まで広げれば、登録した場所が全部並びます。</li>'+
  '<li><b>地図を指でずらすと「ただの地図」になります</b> … 円が引っ込み、ピンチはふつうの拡大縮小に。端に見えた場所へ自由に寄れます。上の距離ボタン（≈の数字含む）を押すと円の表示に戻ります。</li>'+
+ '<li><b>登録した場所は最初から全部、点で見えています</b> … 円の表示中は、円の外の場所が<b>うすい点</b>（＝この距離には入っていない印）。ただの地図になると全部ふつうの色になります。うすい点はタップで名前が出ます。</li>'+
  '</ul>'},
 {id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
  '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
@@ -5654,6 +5655,8 @@ function nearFreeMode(){
   if(NEAR.free||!NEAR.map) return;
   NEAR.free=true;
   if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
+  /* 薄い点は「何km内か」を円と対で見せるための区別＝円が消えたら意味がないので普通の色に戻す(v0.56.0) */
+  (NEAR.outDots||[]).forEach(mk=>{ mk.setRadius(8); mk.setStyle({weight:2,fillOpacity:1}); });
   NEAR.map.touchZoom.enable(); NEAR.map.scrollWheelZoom.enable(); NEAR.map.doubleClickZoom.enable();
 }
 function nearInitMap(){
@@ -5808,6 +5811,7 @@ function nearRender(){
   NEAR.map.invalidateSize();
   NEAR.map.setView([c.lat,c.lng],14,{animate:false});
   Object.values(NEAR.dots).forEach(m=>NEAR.map.removeLayer(m)); NEAR.dots={};
+  (NEAR.outDots||[]).forEach(m=>NEAR.map.removeLayer(m)); NEAR.outDots=[];
   if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
   if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
   NEAR.circle=L.circle([c.lat,c.lng],{radius:r,color:"#0B6E5F",weight:1.5,dashArray:"4 6",fill:false}).addTo(NEAR.map);
@@ -5816,6 +5820,19 @@ function nearRender(){
     NEAR.at?{radius:11,color:"#fff",weight:3.5,fillColor:catColor(NEAR.at.cat),fillOpacity:1}
            :{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
   if(NEAR.at) NEAR.meMk.bindTooltip(NEAR.at.name,{permanent:true,direction:"top",offset:[0,-6]});
+  /* v0.56.0: 円の外の登録地点も最初から「うすい点」で全部出す（コーイチさんFB）。
+     地図をずらせばどこでも登録地点が見える＋「円を広げればあれが入る」が円モードでも一目で分かる。
+     タップで名前だけ出す（カード列には居ないのでジャンプ先が無い）。円内の点より先に描く=重なったら円内が上 */
+  {
+    const inIds=new Set(NEAR.items.map(x=>x.p.id));
+    places.filter(p=>p&&p.lat&&p.lng&&!inIds.has(p.id)&&(!NEAR.at||p.id!==NEAR.at.id)).forEach(p=>{
+      const mk=L.circleMarker([+p.lat,+p.lng],
+        {radius:6,color:"#fff",weight:1.5,fillColor:catColor(p.cat),fillOpacity:.45});
+      mk.bindTooltip(esc(p.name),{direction:"top",offset:[0,-4]});
+      mk.on("click",()=>mk.openTooltip());
+      mk.addTo(NEAR.map); NEAR.outDots.push(mk);
+    });
+  }
   NEAR.items.forEach(x=>{
     const mk=L.circleMarker([+x.p.lat,+x.p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(x.p.cat),fillOpacity:1});
     mk.on("click",()=>nearJump(x.p.id));
