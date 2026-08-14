@@ -612,8 +612,13 @@
   .rt-hint button{border:1.5px solid var(--line);background:var(--card);color:#B3261E;
     border-radius:999px;padding:5px 12px;font-size:12px;font-family:var(--gothic);cursor:pointer;
     max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .rt-gorow{padding:2px 12px 8px}
-  #rtGo{width:100%;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:700;
+  .rt-gorow{padding:2px 12px 8px;display:flex;gap:7px}
+  /* ⇆逆転=帰り道モード(v0.57.0)。文字でなく記号ボタン（コーイチさん指定）。
+     ヘッダーに置くとタイトルが2行に折れる(v0.54.0と同じ崩れ)＝マップへボタンの横に置く */
+  #rtRev{flex:0 0 52px;border:1.5px solid var(--line);border-radius:12px;background:var(--card);
+    color:var(--route);font-size:21px;font-weight:700;line-height:1;cursor:pointer;
+    font-family:var(--gothic);-webkit-user-select:none;user-select:none}
+  #rtGo{flex:1 1 auto;min-width:0;border:none;border-radius:12px;padding:12px;font-size:15px;font-weight:700;
     background:var(--line);color:var(--soft);font-family:var(--gothic);cursor:pointer}
   #rtGo.ready{background:var(--ink);color:var(--paper)}
   .rt-search{display:flex;gap:6px;padding:7px 12px 4px;border-top:1.5px solid var(--line)}
@@ -821,7 +826,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <div class="rt-stop rt-end" data-slot="d"><div class="rt-name ph">未選択</div><div class="rt-mid rt-lab">目的地</div><div class="rt-pad"></div></div>
   </div>
   <div class="rt-hint" id="rtHint"></div>
-  <div class="rt-gorow"><button id="rtGo">🗺 Googleマップへ</button></div>
+  <div class="rt-gorow"><button id="rtRev" title="行きと帰りを逆にする">⇆</button><button id="rtGo">🗺 Googleマップへ</button></div>
   <div class="rt-search"><input type="text" id="rtQ" placeholder="名前・住所で検索" autocomplete="off"><button class="iconbtn" id="rtQx">✕</button></div>
   <div class="rt-cats" id="rtCats"></div>
   <div class="rt-list" id="rtList"></div>
@@ -978,7 +983,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.56.0";
+const VER = "0.57.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4011,6 +4016,7 @@ const HELP_SECS=[
  '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
  '<li>下のリストは検索とカテゴリで絞れます（使う回数が多い場所ほど上に並びます）。</li>'+
  '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
+ '<li><span class="hp-btn">⇆</span> … <b>行きと帰りを逆に</b>します（帰り道モード）。出発地と目的地が入れ替わり、経由地①②③も逆順に。もう一度押せば元に戻ります。</li>'+
  '<li><span class="hp-btn">クリア</span> … 全部の枠を一度に空にします（直後に出る「取り消す」で戻せます）。一つだけ直したい時は、その枠をタップ→「✕ 外す」。</li>'+
  '<li><span class="hp-btn">💾 メモリに保存</span> … タップで、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。コースの行を<b>長押しすると「名前の変更」「削除」</b>ができます。</li>'+
  '</ul>'},
@@ -6096,6 +6102,19 @@ document.getElementById("rtClear").onclick=()=>{
   RT.cur={s:null,w:[null,null,null],d:null}; rtSaveCur();
   RT.sel=rtNextEmpty(); rtRender();
   toast("クリアしました","取り消す",()=>{RT.cur=prev; rtSaveCur(); RT.sel=null; rtRender();});
+};
+/* ⇆ 逆転=帰り道モード（v0.57.0 コーイチさん発案）: 出発地⇄目的地を入れ替え、
+   経由地①②③は空枠を詰めてから逆順に。もう一度押せば元に戻る（それ自体が取り消し）ので
+   確認もトーストの「取り消す」も付けない。出発地が現在地（未選択）だった行きを逆にすると
+   帰り着く先が決まらない＝目的地の枠を自動で選択して、そのまま下のリストから選べるようにする */
+document.getElementById("rtRev").onclick=()=>{
+  if(!RT_SLOTS.some(sl=>rtGet(sl))){ toast("先に経由地リストを組んでください"); return; }
+  const c=RT.cur, w=c.w.filter(Boolean).reverse();
+  RT.cur={s:c.d,w:[w[0]||null,w[1]||null,w[2]||null],d:c.s};
+  rtSaveCur();
+  RT.sel=rtGet("d")?null:"d";
+  rtRender();
+  toast(rtGet("d")?"行きと帰りを逆にしました":"逆にしました。帰り着く先（目的地）を選んでください");
 };
 /* 💾 メモリに保存: タップ→名前を付けて保存（v0.53.1でタップ化＝名前入力自体が確認代わり。
    数の制限なし・同名だけは上書き確認） */
