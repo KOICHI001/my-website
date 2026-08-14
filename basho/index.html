@@ -562,8 +562,13 @@
     border:1.5px solid var(--line);border-left:7px solid var(--nrc,#6B7280);
     border-radius:12px;padding:10px 12px;margin:8px 0;cursor:pointer;
     transition:border-color .15s,box-shadow .15s}
-  .nearrow .nr-t{flex:1;min-width:0}
+  /* 名称のあたり=写真の縦閲覧（v0.59.0）。3ボタンのぶん幅が細い（実測63px）ので、
+     カード左端と上下の余白まで負マージンで飲み込んで指が届く広さにする（見た目は不変） */
+  .nearrow .nr-t{flex:1;min-width:0;align-self:stretch;display:flex;flex-direction:column;justify-content:center;
+    margin:-10px 0 -10px -12px;padding:10px 0 10px 12px}
   .nearrow .nr-c{font-size:11px;font-weight:700;color:var(--nrc,#6B7280);letter-spacing:.04em}
+  /* 写真がある場所だけ 📷 枚数（名称タップ=縦閲覧 の目印・v0.59.0） */
+  .nearrow .nr-p{margin-left:6px;font-size:10px;font-weight:700;color:var(--soft);letter-spacing:0}
   .nearrow .nr-n{font-family:var(--mincho);font-size:15px;font-weight:600;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nearrow .nr-d{font-size:14px;font-weight:700;color:var(--route);white-space:nowrap}
@@ -983,7 +988,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.58.0";
+const VER = "0.59.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4009,6 +4014,7 @@ const HELP_SECS=[
  '<li><b>地図を指でずらすと「ただの地図」になります</b> … 円が引っ込み、ピンチはふつうの拡大縮小に。端に見えた場所へ自由に寄れます。上の距離ボタン（≈の数字含む）を押すと円の表示に戻ります。</li>'+
  '<li><b>登録した場所は最初から全部、点で見えています</b> … 円の表示中は、円の外の場所が<b>うすい点</b>（＝この距離には入っていない印）。ただの地図になると全部ふつうの色になります。うすい点はタップで名前が出ます。</li>'+
  '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 地図をずらして遠くに見つけた点も、長押しすればそこの周辺に切り替わります。<span class="hp-btn">← 戻る</span>を押せばその場所のカードが開いた状態で一覧に戻ります。</li>'+
+ '<li><b>カードの左（名前のあたり）をタップ＝その場所の写真</b> … いつもの縦に連ねた閲覧で開きます。「お目当てのお店はどれだったか」を写真で確かめられます。写真がある場所はカテゴリ名の隣に<b>📷の枚数</b>が出ます。閉じるのはいつもどおり<b>左上の←か右フリック</b>で、この画面（場所周辺）に戻ります。</li>'+
  '</ul>'},
 {id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
  '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
@@ -5861,12 +5867,17 @@ function nearRender(){
     const el=document.createElement("div");
     el.className="nearrow"; el.dataset.id=x.p.id;
     el.style.setProperty("--nrc",catColor(x.p.cat));
-    el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(x.p.cat)+'</div>'+
+    const np=(x.p.ph||[]).length;
+    el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(x.p.cat)+
+      (np?'<span class="nr-p">📷'+np+'</span>':'')+'</div>'+
       '<div class="nr-n">'+esc(x.p.name)+'</div></div>'+
       '<div class="nr-d">'+fmtDist(x.d)+'</div>'+
       '<div class="nr-b"><button data-a="route">経路</button>'+
       '<button data-a="area">場所周辺</button><button data-a="nav">到達距離</button></div>';
-    el.onclick=()=>nearJump(x.p.id);
+    el.onclick=()=>{ if(flickSwiped) return; nearJump(x.p.id); };
+    /* 左の名称のあたり＝登録画像の縦閲覧（v0.59.0 コーイチさん発案）。
+       場所周辺を見て回りながら「この店だっけ？」を写真で確かめられる。ボタン類は触らない */
+    el.querySelector(".nr-t").onclick=e=>{e.stopPropagation(); if(flickSwiped) return; nearPhotos(x.p);};
     el.querySelector('[data-a="route"]').onclick=e=>{e.stopPropagation(); openRoute(x.p);};
     /* 周辺=この場所を真ん中に置き直す（次々に見て回れる） */
     el.querySelector('[data-a="area"]').onclick=e=>{e.stopPropagation(); nearOpen(x.p);};
@@ -5918,6 +5929,14 @@ function nearJump(id){
    発動直後のclickは各clickハンドラ側のrtLongAteで無視。円モード・ただの地図モード共通 */
 function nearDotLong(mk,p){
   rtLong(mk._path,()=>{ toast("「"+p.name+"」を中心にしました"); nearOpen(p); });
+}
+/* カードの左（名称のあたり）タップ＝その場所の登録画像をいつもの縦閲覧で開く（v0.59.0）。
+   閉じ方もいつもどおり＝左上の←／右フリック。周辺モードは下に開いたままなので、
+   閉じれば探していた場所周辺の続きに戻る（pv z58 > nearov z46・closeTopOverlayもpvが先） */
+function nearPhotos(p){
+  const q=places.find(z=>z&&z.id===p.id)||p;   /* 追加直後の写真も見えるよう本体を引き直す */
+  if(!ordSync(q).length){ toast("「"+q.name+"」には写真がありません"); nearJump(p.id); return; }
+  pvOpen(q);
 }
 document.getElementById("nearBtn").onclick=nearOpen;
 document.getElementById("nearBack").onclick=nearClose;
