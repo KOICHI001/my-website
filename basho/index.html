@@ -983,7 +983,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.57.0";
+const VER = "0.58.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4008,6 +4008,7 @@ const HELP_SECS=[
  '<li><b>円は自由に伸ばせます</b> … 地図を2本指で広げると円がそのまま広がり、入った場所が上のカード列に増えていきます（5kmの右におおよその半径が出ます）。日本全体まで広げれば、登録した場所が全部並びます。</li>'+
  '<li><b>地図を指でずらすと「ただの地図」になります</b> … 円が引っ込み、ピンチはふつうの拡大縮小に。端に見えた場所へ自由に寄れます。上の距離ボタン（≈の数字含む）を押すと円の表示に戻ります。</li>'+
  '<li><b>登録した場所は最初から全部、点で見えています</b> … 円の表示中は、円の外の場所が<b>うすい点</b>（＝この距離には入っていない印）。ただの地図になると全部ふつうの色になります。うすい点はタップで名前が出ます。</li>'+
+ '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 地図をずらして遠くに見つけた点も、長押しすればそこの周辺に切り替わります。<span class="hp-btn">← 戻る</span>を押せばその場所のカードが開いた状態で一覧に戻ります。</li>'+
  '</ul>'},
 {id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
  '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
@@ -5835,14 +5836,16 @@ function nearRender(){
       const mk=L.circleMarker([+p.lat,+p.lng],
         {radius:6,color:"#fff",weight:1.5,fillColor:catColor(p.cat),fillOpacity:.45});
       mk.bindTooltip(esc(p.name),{direction:"top",offset:[0,-4]});
-      mk.on("click",()=>mk.openTooltip());
+      mk.on("click",()=>{ if(rtLongAte(mk._path))return; mk.openTooltip(); });
       mk.addTo(NEAR.map); NEAR.outDots.push(mk);
+      nearDotLong(mk,p);
     });
   }
   NEAR.items.forEach(x=>{
     const mk=L.circleMarker([+x.p.lat,+x.p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(x.p.cat),fillOpacity:1});
-    mk.on("click",()=>nearJump(x.p.id));
+    mk.on("click",()=>{ if(rtLongAte(mk._path))return; nearJump(x.p.id); });
     mk.addTo(NEAR.map); NEAR.dots[x.p.id]=mk;
+    nearDotLong(mk,x.p);
   });
   NEAR.map.invalidateSize();
   nearFitCircle();
@@ -5907,6 +5910,14 @@ function nearJump(id){
   const cards=document.getElementById("nearCards");
   const el=cards.querySelector('.nearrow[data-id="'+id+'"]'); if(!el)return;
   cards.scrollTo({top:el.offsetTop-(cards.clientHeight-el.offsetHeight)/2,behavior:"smooth"});
+}
+/* 地図の点はどれでも長押し=その場所を中心に置き直す（v0.58.0 コーイチさん発案）。
+   地図をずらして見つけた遠くのうすい点は今までタップで名前が出るだけ＝そこで行き止まりだった。
+   長押しでその場所の周辺へ切り替え（カード列「場所周辺」ボタンと同じ動き）＝戻るでそのカードも開ける。
+   長押し部品は経由地モードのrtLongを流用＝指が動いたら不発（地図ドラッグと衝突しない）・
+   発動直後のclickは各clickハンドラ側のrtLongAteで無視。円モード・ただの地図モード共通 */
+function nearDotLong(mk,p){
+  rtLong(mk._path,()=>{ toast("「"+p.name+"」を中心にしました"); nearOpen(p); });
 }
 document.getElementById("nearBtn").onclick=nearOpen;
 document.getElementById("nearBack").onclick=nearClose;
