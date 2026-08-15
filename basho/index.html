@@ -541,7 +541,17 @@
   /* v0.60.0: 上段＝「← 戻る」の下に“今の中心”のカード（距離ボタン列は廃止） */
   .near-top{display:flex;flex-direction:column;align-items:stretch;gap:6px;
     padding:calc(8px + env(safe-area-inset-top)) 12px 8px;border-bottom:1.5px solid var(--line)}
-  .near-top .nv-back{align-self:flex-start}
+  /* 「← 戻る」の右に検索窓（v0.61.0）。一覧と同じ探し方でカード列を絞る */
+  .near-hd{display:flex;align-items:center;gap:8px}
+  .near-hd .nv-back{flex:0 0 auto}
+  #nearQ{flex:1;min-width:0;font-family:var(--gothic);font-size:15px;padding:8px 12px;
+    border:1.5px solid var(--line);border-radius:var(--r);background:var(--card);color:var(--ink)}
+  #nearQ:focus{outline:none;border-color:var(--route);box-shadow:0 0 0 3px rgba(11,110,95,.13)}
+  #nearQx{display:none;flex:0 0 auto}#nearQx.on{display:block}
+  /* 検索中だけ「地図の外にも◯件」＝タップで全部見えるところまで地図を引く */
+  .near-hint{font-size:12px;color:var(--route);background:var(--card);border:1.5px dashed var(--line);
+    border-radius:999px;padding:5px 12px;text-align:center;cursor:pointer}
+  .near-hint[hidden]{display:none}
   .near-here{font-family:var(--mincho);font-weight:600;font-size:14px;letter-spacing:.05em;
     color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .near-here .nearrow{margin:0}
@@ -798,8 +808,13 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
      最上段には「今の中心」のカードを太枠で置く（長押しで中心にした場所の写真もここから見られる） -->
 <div class="nearov" id="nearov">
   <div class="near-top">
-    <button class="nv-back" id="nearBack">← 戻る</button>
+    <div class="near-hd">
+      <button class="nv-back" id="nearBack">← 戻る</button>
+      <input type="text" id="nearQ" placeholder="名前・住所などで検索" autocomplete="off">
+      <button class="iconbtn" id="nearQx">✕</button>
+    </div>
     <div class="near-here" id="nearHere"></div>
+    <div class="near-hint" id="nearHint" hidden></div>
   </div>
   <div class="near-cards" id="nearCards"></div>
   <div class="near-map" id="nearMap"></div>
@@ -982,7 +997,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.60.0";
+const VER = "0.61.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -1994,6 +2009,15 @@ function norm(s){
     .replace(/[\s\-ー・,、.。()（）]/g,"");
 }
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[m]));}
+/* 検索の当たり判定（一覧と場所周辺で同じ探し方＝名前・かな・カテゴリ・フォルダ・住所・メモ・電話・都道府県/地方）。
+   qn=norm(入力)・qr=ローマ字をひらがなにしたもの（v0.61.0で一覧から切り出して共用） */
+function qHit(p,qn,qr){
+  if(!qn) return true;
+  const pi=PREF_INFO[p.pref]||["",""];
+  const rg=REGIONS.find(r=>r[0]===pi[1])||["",""];
+  const hay=norm([p.name,p.kana,p.cat,p.sf||"",p.addr,p.memo,p.tel,p.pref||"",pi[0],pi[1],rg[1]].join(" "));
+  return hay.includes(qn)||(qr&&qr!==qn&&hay.includes(qr));
+}
 function openUrl(u){const a=document.createElement("a");a.href=u;a.target="_blank";a.rel="noopener";document.body.appendChild(a);a.click();a.remove();}
 function hasSpot(p){return !!(p.url||(p.lat&&p.lng)||p.addr);}
 /* 正確なピンがあるか＝経路・周辺が安心して使える状態（座標あり・精度±80m以内 or 手動ピン=accなし） */
@@ -2352,11 +2376,7 @@ function _renderBody(){
     if(filterPref){ if(p.pref!==filterPref) return false; }
     else if(filterRegion){ if(prefRegion(p.pref||"")!==filterRegion) return false; }
     if(nearFilter){ const d=placeDist(p); if(d==null||d>2000) return false; }
-    if(!qn) return true;
-    const pi=PREF_INFO[p.pref]||["",""];
-    const rg=REGIONS.find(r=>r[0]===pi[1])||["",""];
-    const hay=norm([p.name,p.kana,p.cat,p.sf||"",p.addr,p.memo,p.tel,p.pref||"",pi[0],pi[1],rg[1]].join(" "));
-    return hay.includes(qn)||(qr&&qr!==qn&&hay.includes(qr));
+    return qHit(p,qn,qr);
   });
   document.getElementById("tally").textContent = places.length ? rows.length+" / "+places.length : "";
 
@@ -4007,6 +4027,7 @@ const HELP_SECS=[
  '<li><b>地図はふつうに拡大・縮小できます</b>（2本指・ダブルタップ）。<b>上に並ぶカード＝いま地図に見えている場所</b>なので、寄れば絞られ、引けば増えます。日本全体まで引けば登録した場所が全部並びます（中心から近い順）。</li>'+
  '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 遠くに見つけた点でも、長押しすればそこが太枠のカードになり、並び順もそこから近い順に変わります。地図の縮尺はそのままなので、見て回っている流れが切れません。</li>'+
  '<li><b>カードの左（名前のあたり）をタップ＝その場所の写真</b> … いつもの縦に連ねた閲覧で開きます。「お目当てのお店はどれだったか」を写真で確かめられます。写真がある場所はカテゴリ名の隣に<b>📷の枚数</b>が出ます。いちばん上の中心のカードも同じです。閉じるのはいつもどおり<b>左上の←か右フリック</b>で、この画面（場所周辺）に戻ります。</li>'+
+ '<li><b>「← 戻る」の右の検索窓</b> … カード列を名前・住所・メモ・電話などで絞り込めます（探し方は一覧の検索と同じ）。当たりが今の地図の外にもある時は<b>「地図の外にも◯件」</b>と出るので、そこをタップすると全部見えるところまで地図が引かれます。</li>'+
  '<li><span class="hp-btn">← 戻る</span>を押すと、今の中心の場所のカードが開いた状態で一覧に戻ります。</li>'+
  '</ul>'},
 {id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
@@ -5694,6 +5715,9 @@ function nearOpen(place){
   else nearLocate();
 }
 function nearClose(){
+  document.getElementById("nearQ").value="";              /* 次に開く時は素の状態から */
+  document.getElementById("nearQx").classList.remove("on");
+  document.getElementById("nearHint").hidden=true;
   document.getElementById("nearov").classList.remove("on");
   document.body.classList.remove("nearon");
   if(!document.getElementById("nvov").classList.contains("on"))
@@ -5779,6 +5803,20 @@ function nearHereRender(){
   const p=places.find(x=>x&&x.id===NEAR.at.id)||NEAR.at;
   box.appendChild(nearRow(p,"中心",true));
 }
+/* 検索中に「地図の外にも◯件」を出す（v0.61.0）。タップ＝その全部と中心が入るところまで地図を引く
+   ＝カード列は「地図に見えているもの」という決まりを崩さずに、外の当たりへも行ける */
+function nearHintRender(out){
+  const el=document.getElementById("nearHint");
+  if(!out.length){ el.hidden=true; el.onclick=null; return; }
+  el.hidden=false;
+  el.textContent="地図の外にも "+out.length+" 件 — タップで全部見えるところまで引く";
+  el.onclick=()=>{
+    const bb=L.latLngBounds(out.map(p=>[+p.lat,+p.lng]));
+    if(NEAR.center) bb.extend([NEAR.center.lat,NEAR.center.lng]);
+    NEAR.items.forEach(x=>bb.extend([+x.p.lat,+x.p.lng]));
+    NEAR.map.fitBounds(bb.pad(0.15),{animate:false});
+  };
+}
 /* カード列＝「今この地図に見えている場所」を中心から近い順に。
    地図を引けば増え、寄せれば減る（日本全体まで引けば全部並ぶ）＝点とカードが常に一致する */
 function nearCardsRender(){
@@ -5788,14 +5826,23 @@ function nearCardsRender(){
   /* 地図を動かしても見ていたカードを見失わない。今スクロールの真ん中にあるカードを
      その場で読む（NEAR.focusIdはrAF待ちで1拍遅れることがあるため当てにしない） */
   const keep=nearMidId();
-  NEAR.items=places.filter(p=>p&&p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id)
-      &&b.contains([+p.lat,+p.lng]))
+  /* v0.61.0: 検索窓＝カード列の絞り込み（探し方は一覧と同じ）。
+     ここのカードは「地図に見えているもの」なので、絞った結果が地図の外にしか無い時は
+     下の案内を出して、タップで全部見えるところまで地図を引けるようにする */
+  const qi=document.getElementById("nearQ"), qs=qi.value.trim();
+  const qn=norm(qs), qr=norm(romaToHira(qs));
+  document.getElementById("nearQx").classList.toggle("on",!!qs);
+  const mine=places.filter(p=>p&&p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id)&&qHit(p,qn,qr));
+  NEAR.items=mine.filter(p=>b.contains([+p.lat,+p.lng]))
     .map(p=>({p,d:distM(c,{lat:+p.lat,lng:+p.lng})}))
     .sort((a,b2)=>a.d-b2.d);
+  nearHintRender(qn?mine.filter(p=>!b.contains([+p.lat,+p.lng])):[]);
   NEAR.focusId=null;
   if(!NEAR.items.length){
     cards.style.paddingTop=cards.style.paddingBottom="";
-    cards.innerHTML='<div class="near-empty">この地図に見えている登録場所はありません。<br>地図を2本指で縮めると、<br>遠くの場所も見えてきます</div>';
+    cards.innerHTML=qn
+      ?'<div class="near-empty">この地図に見えている場所には<br>見つかりませんでした</div>'
+      :'<div class="near-empty">この地図に見えている登録場所はありません。<br>地図を2本指で縮めると、<br>遠くの場所も見えてきます</div>';
     return;
   }
   cards.innerHTML="";
@@ -5867,6 +5914,13 @@ document.getElementById("nearCards").addEventListener("scroll",()=>{
   if(NEAR.raf) return;
   NEAR.raf=requestAnimationFrame(()=>{NEAR.raf=0;nearSyncFocus();});
 },{passive:true});
+/* 検索窓（v0.61.0）: 打つたびにカード列を絞る。自動フォーカスはしない（画面がガタつくため） */
+document.getElementById("nearQ").addEventListener("input",()=>{ if(NEAR.center) nearCardsRender(); });
+document.getElementById("nearQx").onclick=()=>{
+  const q=document.getElementById("nearQ"); q.value="";
+  if(NEAR.center) nearCardsRender();
+  q.focus();                                   /* ✕は自分で押した操作＝ここは出しっぱなしで良い */
+};
 
 /* ───── 🧭経由地モード（v0.52.0 コーイチさん発案） ─────
    出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路URLで
