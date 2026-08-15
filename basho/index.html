@@ -307,6 +307,10 @@
   .t-sub{font-size:11.5px;color:var(--soft)}
   .t-edit{position:absolute;right:2px;top:2px;border:0;background:none;color:#C8CEC4;
     font-size:14px;padding:8px;cursor:pointer}
+  /* 写真がある場所だけ右下に 📷枚数（タップ=縦閲覧・v0.64.0 コーイチさん発案）。
+     ✎と対角に置いてタイルの顔（名前）を邪魔しない */
+  .t-ph{position:absolute;right:2px;bottom:2px;border:0;background:none;color:var(--soft);
+    font-size:11px;font-weight:700;padding:8px 10px;cursor:pointer;font-family:var(--gothic);letter-spacing:0}
   /* ───── リスト表示（v0.50.0 テスターFB）: 細い1行=左に名前・右に大きめ3ボタン。
      外で文字を打つ暇がない時、1画面に沢山並べて即タップするための表示。
      編集に入るタップ面積は名前部分だけに絞り、押す場所はボタン側だと見た目で示す */
@@ -324,6 +328,11 @@
   .r-acts button:first-child{color:var(--route);font-weight:700}
   .r-acts button:active{background:rgba(27,36,34,.08)}
   .r-acts button.warn{color:var(--danger);background:rgba(163,58,42,.06)}
+  /* 写真がある行だけ名前の右に 📷枚数（タップ=縦閲覧・v0.64.0 コーイチさん発案）。
+     上下いっぱいに伸ばして細い行でも指が届くようにする */
+  .r-ph{flex:none;align-self:stretch;border:0;background:none;color:var(--soft);
+    font-size:11px;font-weight:700;padding:0 8px;cursor:pointer;font-family:var(--gothic);letter-spacing:0}
+  .r-ph:active{background:rgba(11,110,95,.07)}
   /* ───── 周辺モード（拡大地図ナビ） ───── */
   .nvov{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;flex-direction:column;
     touch-action:none}   /* 地図中はブラウザのスクロール/引っ張って更新を渡さない */
@@ -1009,7 +1018,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.63.0";
+const VER = "0.64.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2435,12 +2444,18 @@ function _renderBody(){
       el.className="tile"; el.dataset.id=p.id; el.style.setProperty("--catcolor",catColor(p.cat));   /* v0.36.0: 戻ってくる時の目印 */
       const dm=(sortMode==="near")?placeDist(p):null;
       const sub=[dm!=null?fmtDist(dm):"",p.cat||""].filter(Boolean).join(" ／ ");
+      /* 画像がある場所だけ右下に 📷枚数（写真が無く添付だけなら📎）。タップ=いつもの縦閲覧
+         （v0.64.0 コーイチさん発案。場所周辺の nr-p と同じ目印をタイル・リストにも） */
+      const np=(p.ph||[]).length, na=(p.att||[]).length;
       el.innerHTML=
         '<button class="tile-main"><span class="t-name">'+(p.fav?"★ ":"")+esc(p.name)+'</span>'+
         (sub?'<span class="t-sub">'+esc(sub)+'</span>':"")+'</button>'+
-        '<button class="t-edit" aria-label="編集">✎</button>';
+        '<button class="t-edit" aria-label="編集">✎</button>'+
+        (np||na?'<button class="t-ph" aria-label="画像を見る">'+(np?"📷"+np:"📎"+na)+'</button>':'');
       el.querySelector(".tile-main").onclick=()=>hasSpot(p)?openMap(p):(toast("位置がまだ入っていません"),form(p));
       el.querySelector(".t-edit").onclick=()=>form(p);
+      const tp=el.querySelector(".t-ph");
+      if(tp) tp.onclick=e=>{e.stopPropagation(); pvOpen(p,np?undefined:"att");};
       list.appendChild(el);
     });
     return;
@@ -2451,14 +2466,20 @@ function _renderBody(){
     rows.forEach(p=>{
       const el=document.createElement("div");
       el.className="row"; el.dataset.id=p.id; el.style.setProperty("--catcolor",catColor(p.cat));
+      /* 画像がある行だけ名前の右に 📷枚数（写真が無く添付だけなら📎）。タップ=いつもの縦閲覧
+         （v0.64.0 コーイチさん発案。場所周辺の nr-p と同じ目印をタイル・リストにも） */
+      const np=(p.ph||[]).length, na=(p.att||[]).length;
       el.innerHTML=
         '<button class="r-name">'+(p.fav?"★ ":"")+esc(p.name)+'</button>'+
+        (np||na?'<button class="r-ph" aria-label="画像を見る">'+(np?"📷"+np:"📎"+na)+'</button>':'')+
         '<div class="r-acts">'+
           '<button data-a="map"'+(hasSpot(p)?'':' class="warn"')+'>地図を開く</button>'+
           '<button data-a="area"'+((p.lat&&p.lng)?'':' class="warn"')+'>場所周辺</button>'+
           '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>到達距離</button>'+
         '</div>';
       el.querySelector(".r-name").onclick=()=>form(p);
+      const rp=el.querySelector(".r-ph");
+      if(rp) rp.onclick=()=>pvOpen(p,np?undefined:"att");
       el.querySelectorAll(".r-acts button").forEach(b=>b.onclick=()=>cardAction(p,b.dataset.a));
       list.appendChild(el);
     });

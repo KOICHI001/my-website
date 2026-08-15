@@ -1,8 +1,8 @@
-/* 場所帳 service worker — network first（更新が確実に届く方式） */
-const CACHE = "basho-v0.63.0";
-/* OCRエンジン（ocr/ 約10MB・内容不変）は別キャッシュ＋cache first ＝ 毎回の再DLも版上げ時の再DLもしない */
+/* 場所帳 service worker  Enetwork first�E�更新が確実に届く方式！E*/
+const CACHE = "basho-v0.64.0";
+/* OCRエンジン�E�Ecr/ 紁E0MB・冁E��不変）�E別キャチE��ュ�E�cache first �E�E毎回の再DLも版上げ時�E再DLもしなぁE*/
 const OCR_CACHE = "basho-ocr-v1";
-/* v0.37.0: ヘルプを画像からHTML本文に刷新＝help01〜04.pngは同梱・precacheともに廃止 */
+/* v0.37.0: ヘルプを画像からHTML本斁E��刷新�E�help01、E4.pngは同梱・precacheともに廁E�� */
 const ASSETS = ["./", "./index.html", "./pref_data.js", "./leaflet.js", "./leaflet.css", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {
@@ -26,7 +26,7 @@ self.addEventListener("fetch", e => {
     );
     return;
   }
-  /* 🔍Gマップ写真取得(v0.38.0)のGoogle応答は都度物が大きい＝キャッシュに溜め込まない（素通し） */
+  /* 🔍Gマップ�E真取征Ev0.38.0)のGoogle応答�E都度物が大きい�E�キャチE��ュに溜め込まなぁE��素通し�E�E*/
   const noStore = /\b(googleapis\.com|googleusercontent\.com)\//.test(e.request.url);
   e.respondWith(
     fetch(e.request)
@@ -39,9 +39,8 @@ self.addEventListener("fetch", e => {
       })
       .catch(() => caches.match(e.request).then(r => {
         if (r) return r;
-        /* index.htmlへのフォールバックは自分のページだけ。
-           外部サイトへの失敗(CORS等)に自分の画面を返すと、リンクカードの
-           サイト情報取得が「場所帳自身」を掴んでしまう（v0.13.0の実機バグ） */
+        /* index.htmlへのフォールバックは自刁E�Eペ�Eジだけ、E           外部サイトへの失敁ECORS筁Eに自刁E�E画面を返すと、リンクカード�E
+           サイト情報取得が「場所帳自身」を掴んでしまぁE��E0.13.0の実機バグ�E�E*/
         if (new URL(e.request.url).origin === location.origin) return caches.match("./index.html");
         return Response.error();
       }))
