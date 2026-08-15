@@ -584,12 +584,21 @@
   .nearrow.here .nr-d{font-size:11px;font-weight:700;color:var(--paper);background:var(--nrc,#6B7280);
     border-radius:999px;padding:3px 8px;letter-spacing:.06em}
   .near-map{flex:1;position:relative;background:#DDE2D8}
-  /* ───── 🧭経由地モード(v0.52.0) ───── */
-  .rtov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
+  /* ───── 🧭保存経路(v0.52.0=経由地モード / v0.63.0でタブの中身に) ─────
+     ★v0.63.0: 全画面オーバーレイをやめ「タブの下のフィールド」にした。
+     タブは押しても消えず、下だけが差し替わる＝それがタブという約束（コーイチさん指摘）。
+     top は開く時にタブの下端をJSで実測して --rtTop へ入れる（見出し・件数・タイル・★・⋯が出たまま）。
+     z-indexはheader(20)より下＝ヘッダーの上に乗り上げない */
+  .rtov{position:fixed;left:0;right:0;bottom:0;top:var(--rtTop,0px);z-index:15;
+    background:var(--paper);display:none;flex-direction:column}
   .rtov.on{display:flex}
   body.rton .fab,body.rton .fab2,body.rton .fab3{display:none}
-  .rt-top{display:flex;align-items:center;gap:8px;
-    padding:calc(8px + env(safe-area-inset-top)) 12px 4px}
+  /* 保存経路の面では一覧用の検索欄・チップ列は出さない（この面はrtQで探す）。
+     _renderBodyがsearchrowにインラインstyleを書くので!importantで上書きする */
+  body.rton .searchrow,body.rton .legend{display:none!important}
+  /* ヘッダーの下端は本来 paper→透明のグラデ＝下の面が透けるので、この面の間だけベタ塗りに */
+  body.rton header{background:var(--paper)}
+  .rt-top{display:flex;align-items:center;gap:8px;padding:6px 12px 4px}
   .rt-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em}
   .rt-acts{display:flex;gap:5px;margin-left:auto}
   .rt-acts button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
@@ -827,9 +836,9 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
      場所帳側で 出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路でマップを開く。
      メモリ3枠=いつもの巡回コースをワンタップ再現（長押しで保存） -->
 <div class="rtov" id="rtov">
+  <!-- v0.63.0: 「← 戻る」と「🧭 保存経路」の見出しは廃止。
+       どちらもタブが兼ねる（選択中のタブが見出し・他のタブが戻り先）＝タブの中身に見出しは要らない -->
   <div class="rt-top">
-    <button class="nv-back" id="rtBack">← 戻る</button>
-    <div class="rt-tt">🧭 保存経路</div>
     <div class="rt-acts">
       <button id="rtClear">クリア</button>
       <button id="rtSave">💾 メモリに保存</button>
@@ -1000,7 +1009,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.62.0";
+const VER = "0.63.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2264,6 +2273,19 @@ function revealPlace(p){
   el.classList.add("justcame");                          /* どれか一目で分かるよう一瞬だけ光らせる */
   setTimeout(()=>el.classList.remove("justcame"),1900);
 }
+/* 3つのタブの選択状態(v0.63.0)。保存経路の面が開いている間はそのタブだけが選択＝
+   一覧/本棚の記憶(homeTab)は保ったまま「今どの面を見ているか」を正しく映す */
+function syncTabs(){
+  const rtOn=document.getElementById("rtov").classList.contains("on");
+  document.getElementById("tabList").classList.toggle("on",!rtOn&&homeTab==="list");
+  document.getElementById("tabShelf").classList.toggle("on",!rtOn&&homeTab==="shelf");
+  document.getElementById("tabRoute").classList.toggle("on",rtOn);
+}
+/* 保存経路の面が始まる高さ＝タブの下端。タブと上のバーを出したままにするための実測(v0.63.0) */
+function rtTopSync(){
+  const t=document.querySelector(".hometabs"); if(!t) return;
+  document.documentElement.style.setProperty("--rtTop",Math.round(t.getBoundingClientRect().bottom)+"px");
+}
 function _renderBody(){
   const qi=document.getElementById("q"), qn=norm(qi.value);
   document.getElementById("clearq").classList.toggle("on",!!qi.value);
@@ -2271,8 +2293,7 @@ function _renderBody(){
   /* ホームタブの状態と、本棚トップでは検索行を隠す（本の中では出す=本の中だけを検索） */
   const inShelfTop=(homeTab==="shelf"&&!shelfCat);
   const inBook=(homeTab==="shelf"&&!!shelfCat);
-  document.getElementById("tabList").classList.toggle("on",homeTab==="list");
-  document.getElementById("tabShelf").classList.toggle("on",homeTab==="shelf");
+  syncTabs();
   document.querySelector(".searchrow").style.display=inShelfTop?"none":"";
 
   const lg=document.getElementById("legend"); lg.innerHTML="";
@@ -3948,7 +3969,7 @@ const HELP_SECS=[
 {id:"screen",t:"画面の見かた（メイン画面）",h:
  '<p>上のバーには次のものが並んでいます。</p>'+
  '<ul>'+
- '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> / <span class="hp-btn">🧭 保存経路</span> … 切り替えタブ（保存経路だけは画面が開きます。下の「保存経路」の項をどうぞ）</li>'+
+ '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> / <span class="hp-btn">🧭 保存経路</span> … 切り替えタブ。押すとタブから下だけが入れ替わります（下の「保存経路」の項もどうぞ）</li>'+
  '<li>検索欄 … 名前・住所・メモ・電話で探せます（→「検索と絞り込み」）</li>'+
  '<li><span class="hp-btn">五十音</span> … タップするたびに 近い順 → ★ と切り替わる並び順ボタン（★＝★を付けた場所が先頭）</li>'+
  '<li><span class="hp-btn">'+ICON_TILE+'</span>/<span class="hp-btn">'+ICON_ROWS+'</span>/<span class="hp-btn">'+ICON_LIST+'</span> … 表示の切り替え。押すたびに カード → タイル → リスト の順に替わります（□4つ=タイル：小さく沢山 / 線3本=リスト：1行ずつボタン付き / バー2本=カード：大きく詳しく）</li>'+
@@ -5550,12 +5571,15 @@ document.getElementById("sortBtn").onclick=e=>{
   render();
 };
 /* ホームタブ（一覧⇄本棚）。前回開いていたタブを記憶。本棚タップは常に棚トップへ */
+/* v0.63.0: 保存経路の面が開いていたら閉じてから切り替える＝タブは常に「下の面だけ」を差し替える */
 document.getElementById("tabList").onclick=()=>{
+  if(document.getElementById("rtov").classList.contains("on")) rtClose();
   homeTab="list"; shelfCat=null;
   try{localStorage.setItem("basho_home","list");}catch(e){}
   renderTop();
 };
 document.getElementById("tabShelf").onclick=()=>{
+  if(document.getElementById("rtov").classList.contains("on")) rtClose();
   homeTab="shelf"; shelfCat=null;
   try{localStorage.setItem("basho_home","shelf");}catch(e){}
   renderTop();
@@ -5989,6 +6013,8 @@ function rtOpen(){
   document.getElementById("rtov").classList.add("on");
   document.body.classList.add("rton");
   document.documentElement.classList.add("nvon");
+  rtTopSync(); syncTabs();
+  window.addEventListener("resize",rtTopSync);   /* 回転・キーボードで高さが変わっても追随 */
   RT.sel=rtNextEmpty();
   RT.q=""; document.getElementById("rtQ").value="";
   /* メモリが1つでもあれば真っ先に「💾 メモリ」を選択した状態で開く＝保存済みコースを即タップできる */
@@ -5998,6 +6024,9 @@ function rtOpen(){
 function rtClose(){
   document.getElementById("rtov").classList.remove("on");
   document.body.classList.remove("rton");
+  window.removeEventListener("resize",rtTopSync);
+  syncTabs();
+  render();   /* rton中は隠していた検索欄・チップ列を戻す */
   if(!document.getElementById("nvov").classList.contains("on")&&!document.getElementById("nearov").classList.contains("on"))
     document.documentElement.classList.remove("nvon");
 }
@@ -6076,8 +6105,8 @@ function rtRenderList(){
     list.appendChild(el);
   });
 }
-/* v0.62.0: 開く口は「保存経路」タブ側へ移動（旧 routeBtn は廃止） */
-document.getElementById("rtBack").onclick=rtClose;
+/* v0.62.0: 開く口は「保存経路」タブ側へ移動（旧 routeBtn は廃止）。
+   v0.63.0: 「← 戻る」も廃止＝一覧/本棚タブとAndroid戻るボタンが戻り口 */
 document.querySelectorAll("#rtov .rt-stop").forEach(el=>{
   el.onclick=()=>{ RT.sel=(RT.sel===el.dataset.slot)?null:el.dataset.slot; rtRender(); };
 });
