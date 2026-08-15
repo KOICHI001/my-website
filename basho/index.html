@@ -538,24 +538,14 @@
   .nearov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
   .nearov.on{display:flex}
   body.nearon .fab,body.nearon .fab2,body.nearon .fab3{display:none}   /* 表示中はFAB全部隠す */
-  .near-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  /* v0.60.0: 上段＝「← 戻る」の下に“今の中心”のカード（距離ボタン列は廃止） */
+  .near-top{display:flex;flex-direction:column;align-items:stretch;gap:6px;
     padding:calc(8px + env(safe-area-inset-top)) 12px 8px;border-bottom:1.5px solid var(--line)}
-  /* 施設中心の時は名前が入るので、長い名前は詰めて…にする（距離ボタンを押し出さない） */
-  .near-tt{font-family:var(--mincho);font-weight:600;font-size:15px;letter-spacing:.05em;
-    max-width:52vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .near-r{display:flex;gap:5px;margin-left:auto}
-  .near-r button{border:1.5px solid var(--line);background:var(--card);color:var(--ink);
-    border-radius:999px;padding:6px 10px;font-size:12px;font-family:var(--gothic);cursor:pointer}
-  .near-r button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
-  /* v0.51.0: 自由半径チップ＝ピンチで円を広げた時だけ5kmの右に出る（おおよそ表示・破線で「自由」と分かる） */
-  .near-r button.free{border-style:dashed;font-variant-numeric:tabular-nums}
-  /* ピンチ中に地図の上へ大きく半径を出す（チップだけだと指で隠れて見えないため） */
-  .near-rbig{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:1000;
-    background:rgba(10,14,13,.78);color:#F8F9F5;border-radius:999px;padding:7px 16px;
-    font-size:15px;font-weight:700;font-family:var(--gothic);white-space:nowrap;
-    pointer-events:none;opacity:0;transition:opacity .25s}
-  .near-rbig.on{opacity:1}
-  .near-cards{flex:0 0 42%;position:relative;overflow-y:auto;padding:0 12px;scrollbar-width:none;overscroll-behavior:contain}
+  .near-top .nv-back{align-self:flex-start}
+  .near-here{font-family:var(--mincho);font-weight:600;font-size:14px;letter-spacing:.05em;
+    color:var(--soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .near-here .nearrow{margin:0}
+  .near-cards{flex:0 0 36%;position:relative;overflow-y:auto;padding:0 12px;scrollbar-width:none;overscroll-behavior:contain}
   .near-cards::-webkit-scrollbar{display:none}
   .near-empty{color:var(--soft);font-size:13px;text-align:center;padding:26px 14px;line-height:1.8}
   .nearrow{display:flex;align-items:center;gap:10px;background:var(--card);
@@ -578,6 +568,11 @@
   /* フォーカス=そのカードのカテゴリ色で太くぐるっと囲む（赤固定だと赤カテゴリと紛らわしい） */
   .nearrow.focus{border-color:var(--nrc,#6B7280);box-shadow:0 0 0 2.5px var(--nrc,#6B7280)}
   .nearrow.focus .nr-d{color:var(--nrc,#6B7280)}
+  /* 今の中心＝上段に置く太枠のカード（v0.60.0）。中身・ボタンの動きは他のカードと全く同じ */
+  .nearrow.here{border-width:3px;border-left-width:9px;border-color:var(--nrc,#6B7280);
+    box-shadow:0 1px 6px rgba(27,36,34,.10)}
+  .nearrow.here .nr-d{font-size:11px;font-weight:700;color:var(--paper);background:var(--nrc,#6B7280);
+    border-radius:999px;padding:3px 8px;letter-spacing:.06em}
   .near-map{flex:1;position:relative;background:#DDE2D8}
   /* ───── 🧭経由地モード(v0.52.0) ───── */
   .rtov{position:fixed;inset:0;z-index:46;background:var(--paper);display:none;flex-direction:column}
@@ -798,17 +793,16 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <button class="fab2" id="parkBtn">🚩 足あと<small>戻りたい場所に旗を立てる</small></button>
 <button class="fab3" id="nearBtn">📍<span>周辺</span></button>
 
-<!-- 📍周辺ビュー: 中心（現在地 or 選んだ場所）からの距離で絞った場所を「カード列+地図」で同時に見る -->
+<!-- 📍周辺ビュー: 中心（現在地 or 選んだ場所）と、地図に見えている登録場所を「カード列+地図」で同時に見る。
+     v0.60.0: 円（500m〜5km）方式は廃止＝ふつうに拡縮する地図＋見えている場所がそのままカード列。
+     最上段には「今の中心」のカードを太枠で置く（長押しで中心にした場所の写真もここから見られる） -->
 <div class="nearov" id="nearov">
   <div class="near-top">
     <button class="nv-back" id="nearBack">← 戻る</button>
-    <div class="near-tt" id="nearTt">📍 周辺の場所</div>
-    <div class="near-r" id="nearRads">
-      <button data-r="500">500m</button><button data-r="1000">1km</button><button data-r="2000" class="on">2km</button><button data-r="5000">5km</button><button class="free" id="nearFree" hidden></button>
-    </div>
+    <div class="near-here" id="nearHere"></div>
   </div>
   <div class="near-cards" id="nearCards"></div>
-  <div class="near-map" id="nearMap"><div class="near-rbig" id="nearRbig"></div></div>
+  <div class="near-map" id="nearMap"></div>
 </div>
 
 <!-- 🧭経由地モード(v0.52.0 コーイチさん発案): Googleマップの「経由地を後から足す」操作は分かりにくい→
@@ -988,7 +982,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.59.0";
+const VER = "0.60.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4006,15 +4000,14 @@ const HELP_SECS=[
  '<li>本やフォルダを開いた状態で「ここを登録」すると、そのままそこに入ります。</li>'+
  '</ul>'},
 {id:"area",t:"「周辺」「場所周辺」ボタン",h:
- '<p>登録した場所を「まわり」から眺める画面です。<b>上＝近い順のカード列、下＝地図</b>で、カードをスクロールすると地図の赤い点も動きます（地図の点をタップしてもOK）。</p>'+
+ '<p>登録した場所を「まわり」から眺める画面です。<b>いちばん上＝今の中心のカード（太枠）、その下＝近い順のカード列、いちばん下＝地図</b>。カードをスクロールすると地図の点も大きくなって連動します（地図の点をタップしてもOK）。</p>'+
  '<ul>'+
- '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>のまわりの登録場所。500m／1km／2km／5kmで範囲を変えられます。</li>'+
+ '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>を真ん中にして見ます。</li>'+
  '<li><b>カードの</b><span class="hp-btn">場所周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
- '<li><b>円は自由に伸ばせます</b> … 地図を2本指で広げると円がそのまま広がり、入った場所が上のカード列に増えていきます（5kmの右におおよその半径が出ます）。日本全体まで広げれば、登録した場所が全部並びます。</li>'+
- '<li><b>地図を指でずらすと「ただの地図」になります</b> … 円が引っ込み、ピンチはふつうの拡大縮小に。端に見えた場所へ自由に寄れます。上の距離ボタン（≈の数字含む）を押すと円の表示に戻ります。</li>'+
- '<li><b>登録した場所は最初から全部、点で見えています</b> … 円の表示中は、円の外の場所が<b>うすい点</b>（＝この距離には入っていない印）。ただの地図になると全部ふつうの色になります。うすい点はタップで名前が出ます。</li>'+
- '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 地図をずらして遠くに見つけた点も、長押しすればそこの周辺に切り替わります。<span class="hp-btn">← 戻る</span>を押せばその場所のカードが開いた状態で一覧に戻ります。</li>'+
- '<li><b>カードの左（名前のあたり）をタップ＝その場所の写真</b> … いつもの縦に連ねた閲覧で開きます。「お目当てのお店はどれだったか」を写真で確かめられます。写真がある場所はカテゴリ名の隣に<b>📷の枚数</b>が出ます。閉じるのはいつもどおり<b>左上の←か右フリック</b>で、この画面（場所周辺）に戻ります。</li>'+
+ '<li><b>地図はふつうに拡大・縮小できます</b>（2本指・ダブルタップ）。<b>上に並ぶカード＝いま地図に見えている場所</b>なので、寄れば絞られ、引けば増えます。日本全体まで引けば登録した場所が全部並びます（中心から近い順）。</li>'+
+ '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 遠くに見つけた点でも、長押しすればそこが太枠のカードになり、並び順もそこから近い順に変わります。地図の縮尺はそのままなので、見て回っている流れが切れません。</li>'+
+ '<li><b>カードの左（名前のあたり）をタップ＝その場所の写真</b> … いつもの縦に連ねた閲覧で開きます。「お目当てのお店はどれだったか」を写真で確かめられます。写真がある場所はカテゴリ名の隣に<b>📷の枚数</b>が出ます。いちばん上の中心のカードも同じです。閉じるのはいつもどおり<b>左上の←か右フリック</b>で、この画面（場所周辺）に戻ります。</li>'+
+ '<li><span class="hp-btn">← 戻る</span>を押すと、今の中心の場所のカードが開いた状態で一覧に戻ります。</li>'+
  '</ul>'},
 {id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
  '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
@@ -5660,122 +5653,42 @@ document.getElementById("parkBtn").onclick=()=>{
 /* ───── 📍近くビュー: 現在地から一定距離の登録場所を「カード列+地図」で連動表示 ─────
    上=距離順カード(真ん中のカードにフォーカス) / 下=自分中心の地図(フォーカス中の点が赤)。
    カードのスクロール⇄地図の点タップ、双方向で連動する */
-/* free=「ただの地図」モード（v0.55.1）: 地図を指でずらした瞬間に円モードを解いて、
-   破線の円を消し・ネイティブのピンチ拡縮を返す＝画面端のカードにも自由に寄れる。
-   距離ボタン（≈チップ含む）タップで円モードに復帰（nearRenderが仕切り直す） */
-const NEAR={map:null,osm:null,meMk:null,circle:null,dots:{},items:[],r:2000,center:null,at:null,focusId:null,raf:0,free:false};
-function nearFreeMode(){
-  if(NEAR.free||!NEAR.map) return;
-  NEAR.free=true;
-  if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
-  /* 薄い点は「何km内か」を円と対で見せるための区別＝円が消えたら意味がないので普通の色に戻す(v0.56.0) */
-  (NEAR.outDots||[]).forEach(mk=>{ mk.setRadius(8); mk.setStyle({weight:2,fillOpacity:1}); });
-  NEAR.map.touchZoom.enable(); NEAR.map.scrollWheelZoom.enable(); NEAR.map.doubleClickZoom.enable();
-}
+/* ★v0.60.0: 円（500m/1km/2km/5km・ピンチで伸縮）方式は廃止（コーイチさん判断）。
+   もともと「選んだ場所の周りに何があるか」を見るための距離の絞り込みだったが、
+   v0.56.0で登録場所を全部・点で出すようにした時点で、地図をふつうに拡縮して見て回れば足りる。
+   今は「拡縮自由の地図」＋「地図に見えている場所がそのままカード列（中心から近い順）」。
+   日本全体まで引けば全部のカードが並ぶ。 */
+const NEAR={map:null,osm:null,meMk:null,dots:{},items:[],center:null,at:null,focusId:null,raf:0,moveT:0};
 function nearInitMap(){
   if(NEAR.map) return;
   /* 名前入り地図(OSM)=店・施設の名称が見えるのでこの用途に最適 */
   NEAR.osm=L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
-  /* v0.51.0: この画面のピンチは「地図のズーム」ではなく「円の伸縮」に割り当てる。
-     地図のズームは円に自動追従（常に円全体が見える）ので、ネイティブのズーム操作は全部切る。
-     ドラッグ（ちょっと横を覗く）だけ残す。
-     v0.51.1: zoomSnap:0=小数ズーム許可（整数刻みだと伸縮中に地図がガクッと段階ジャンプする）・
-     zoomAnimation:false=連続setView中のアニメで円が一瞬消えるのを防ぐ */
-  NEAR.map=L.map("nearMap",{zoomControl:false,touchZoom:false,scrollWheelZoom:false,
-    doubleClickZoom:false,boxZoom:false,keyboard:false,zoomSnap:0,zoomAnimation:false});
+  /* ふつうの地図（ピンチ拡縮・ドラッグ・ダブルタップ全部あり） */
+  NEAR.map=L.map("nearMap",{zoomControl:false,boxZoom:false,keyboard:false});
   NEAR.map.attributionControl.setPosition("topright");
   NEAR.osm.addTo(NEAR.map);
-  /* 指で地図をずらした瞬間＝「ただの地図」モードへ（v0.55.1・コーイチさんFB:
-     広げた先の端のカードに寄りたいのに、ピンチが必ず円に取られて寄れない） */
-  NEAR.map.on("dragstart",nearFreeMode);
-}
-/* ───── v0.51.0: 円を「掴んで伸ばす」 ─────
-   地図の上で2本指を広げる＝円の実半径がそのまま広がる（狭める＝縮む）。
-   広げた先に登録場所があれば上のカード列にも同じ挙動で並ぶ。日本全体まで広げれば全カードが圏内。
-   4択（500m〜5km）と一致しない間は、5kmの右に「≈○km」のおおよそチップが出る。
-   PCはホイールでも同じ操作（下に回す=広げる）。 */
-const NEARR_MIN=200, NEARR_MAX=3000000;   /* 200m〜3000km（日本のどこからでも全国を覆える） */
-/* v0.51.1: 円が常に「画面中央・ほぼ同じ大きさ」で見え続けるよう、半径から必要ズームを
-   連続計算して直接セットする（fitBoundsはズームが段階刻みでガクッと飛ぶ＋中心がズレ得る） */
-function nearFitCircle(){
-  const c=NEAR.center; if(!c||!NEAR.map) return;
-  const el=document.getElementById("nearMap");
-  const px=Math.min(el.clientWidth,el.clientHeight)*0.42;      /* 円の画面半径の目標px */
-  const z=Math.max(2,Math.min(19,
-    Math.log2(px*156543.03392*Math.cos(c.lat*Math.PI/180)/NEAR.r)));
-  NEAR.map.setView([c.lat,c.lng],z,{animate:false});
-}
-function nearSetRLive(r){
-  NEAR.r=Math.max(NEARR_MIN,Math.min(NEARR_MAX,r));
-  if(NEAR.circle){
-    NEAR.circle.setRadius(NEAR.r);
-    nearFitCircle();
-  }
-  nearRadsSync();
-  const big=document.getElementById("nearRbig");
-  big.textContent="半径 ≈ "+fmtDist(NEAR.r); big.classList.add("on");
-}
-function nearPinchEnd(){
-  document.getElementById("nearRbig").classList.remove("on");
-  if(NEAR.center) nearRender();          /* カード列と地図の点はここでまとめて更新（ピンチ中は円と数字だけ） */
-}
-/* 半径チップの点灯を今のNEAR.rに合わせる。4択と一致＝そのボタン点灯、不一致＝自由チップ点灯 */
-function nearRadsSync(){
-  let hit=false;
-  document.querySelectorAll("#nearRads button[data-r]").forEach(b=>{
-    const on=Math.abs(+b.dataset.r-NEAR.r)<1; b.classList.toggle("on",on); if(on)hit=true;
+  /* 地図を動かし終わるたびにカード列を作り直す＝「見えている点＝並んでいるカード」を保つ。
+     点そのものは中心が変わった時だけ引き直す（動かすたびに全部消して描くのは重い） */
+  NEAR.map.on("moveend zoomend",()=>{
+    clearTimeout(NEAR.moveT);
+    NEAR.moveT=setTimeout(()=>{ if(NEAR.center) nearCardsRender(); },140);
   });
-  const f=document.getElementById("nearFree");
-  f.hidden=hit; f.classList.toggle("on",!hit);
-  if(!hit) f.textContent="≈"+fmtDist(NEAR.r);
 }
-(function(){
-  const el=document.getElementById("nearMap");
-  const pin={on:false,d0:0,r0:0,raf:0,pend:0};
-  const dd=t=>Math.hypot(t[0].clientX-t[1].clientX,t[0].clientY-t[1].clientY);
-  el.addEventListener("touchstart",e=>{
-    if(NEAR.free)return;   /* ただの地図モード中はネイティブのピンチ（touchZoom）に任せる */
-    if(e.touches.length===2){
-      pin.on=true;pin.d0=dd(e.touches);pin.r0=NEAR.r;
-      /* v0.51.1: ピンチ中はドラッグを切る（1本目の指のパンが混ざると中心が流れて円が画面から消える） */
-      if(NEAR.map){ NEAR.map.dragging.disable(); }
-    }
-  },{passive:true});
-  el.addEventListener("touchmove",e=>{
-    if(!pin.on||e.touches.length!==2)return;
-    e.preventDefault();                   /* ブラウザのページズーム・引っ張って更新に渡さない */
-    const d=dd(e.touches); if(!pin.d0||!d)return;
-    pin.pend=pin.r0*(d/pin.d0);
-    if(!pin.raf)pin.raf=requestAnimationFrame(()=>{pin.raf=0;if(pin.pend)nearSetRLive(pin.pend);});
-  },{passive:false});
-  const end=e=>{
-    if(!pin.on||e.touches.length>=2)return;
-    pin.on=false;
-    if(NEAR.map){ NEAR.map.dragging.enable(); }
-    if(pin.raf){cancelAnimationFrame(pin.raf);pin.raf=0;}
-    if(pin.pend){nearSetRLive(pin.pend);pin.pend=0;}   /* rAF待ちの最後の動きを捨てない */
-    nearPinchEnd();
-  };
-  el.addEventListener("touchend",end); el.addEventListener("touchcancel",end);
-  let wt=0;
-  el.addEventListener("wheel",e=>{
-    if(NEAR.free)return;   /* ただの地図モード中はネイティブのホイールズームに任せる */
-    e.preventDefault();
-    nearSetRLive(NEAR.r*(e.deltaY>0?1.18:1/1.18));
-    clearTimeout(wt); wt=setTimeout(nearPinchEnd,300);
-  },{passive:false});
-})();
 /* place を渡すとその場所が真ん中になる（泊まるホテルの周りに何があるかを見る）。
    渡さなければ従来どおり現在地が真ん中（FABの「周辺」）。v0.34.0 */
 function nearOpen(place){
+  /* v0.60.0: すでに開いている＝地図の点の長押しで中心を移した時は、今の縮尺のまま中心だけ移す
+     （日本全体まで引いて見ている時に勝手に寄られると、見て回っている流れが切れる）。
+     一覧の「場所周辺」から新しく開く時だけ、その場所がよく見える縮尺で始める */
+  const open=document.getElementById("nearov").classList.contains("on");
+  NEAR.z=(open&&NEAR.map)?NEAR.map.getZoom():15;
   NEAR.at=(place&&place.lat&&place.lng)?place:null;
   document.getElementById("nearov").classList.add("on");
   document.body.classList.add("nearon");                    /* FAB(足あと・ここを登録)を隠す */
   document.documentElement.classList.add("nvon");           /* 引っ張って更新の封じを流用 */
   NEAR.focusId=null;
-  document.getElementById("nearTt").textContent=
-    NEAR.at?("📍 "+NEAR.at.name+" の周辺"):"📍 周辺の場所";
+  nearHereRender();                                         /* 中心のカードはGPSを待たずに出す */
   /* 場所が真ん中なら現在地は要らない＝GPSを待たずにすぐ出る（電波の悪い場所でも使える） */
   if(NEAR.at){ NEAR.center={lat:+NEAR.at.lat,lng:+NEAR.at.lng}; nearRender(); }
   else nearLocate();
@@ -5809,90 +5722,94 @@ function nearLocate(){
     },
     {enableHighAccuracy:false,timeout:8000,maximumAge:30000});
 }
+/* 中心が決まった/変わった時の一式: 地図の点を全部引き直し→中心へ移動→カード列を作る。
+   地図を動かしただけの時はここは通らない（nearCardsRenderだけが動く） */
 function nearRender(){
   nearInitMap();
-  /* 円モードへ仕切り直し（ただの地図モードで有効化したネイティブズームを切り直す・v0.55.1） */
-  NEAR.free=false;
-  NEAR.map.touchZoom.disable(); NEAR.map.scrollWheelZoom.disable(); NEAR.map.doubleClickZoom.disable();
-  nearRadsSync();
-  const c=NEAR.center, r=NEAR.r, cards=document.getElementById("nearCards");
-  /* 真ん中にした場所そのものは一覧に出さない（真ん中の印として地図に出る） */
-  NEAR.items=places.filter(p=>p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id))
-    .map(p=>({p,d:distM(c,{lat:+p.lat,lng:+p.lng})}))
-    .filter(x=>x.d<=r).sort((a,b)=>a.d-b.d);
-  /* 地図: 先にビューを確定(未設定だとレイヤー追加でエラー)→掃除→自分+円+点 */
+  const c=NEAR.center;
+  /* 地図: 先にビューを確定(未設定だとレイヤー追加でエラー)→掃除→中心の印+登録場所の点 */
   NEAR.map.invalidateSize();
-  NEAR.map.setView([c.lat,c.lng],14,{animate:false});
+  NEAR.map.setView([c.lat,c.lng],NEAR.z||15,{animate:false});
   Object.values(NEAR.dots).forEach(m=>NEAR.map.removeLayer(m)); NEAR.dots={};
-  (NEAR.outDots||[]).forEach(m=>NEAR.map.removeLayer(m)); NEAR.outDots=[];
   if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
-  if(NEAR.circle){NEAR.map.removeLayer(NEAR.circle);NEAR.circle=null;}
-  NEAR.circle=L.circle([c.lat,c.lng],{radius:r,color:"#0B6E5F",weight:1.5,dashArray:"4 6",fill:false}).addTo(NEAR.map);
   /* 真ん中の印: 現在地=青丸／場所を中心にした時=その本の色で一回り大きく（自分と見間違えない） */
   NEAR.meMk=L.circleMarker([c.lat,c.lng],
     NEAR.at?{radius:11,color:"#fff",weight:3.5,fillColor:catColor(NEAR.at.cat),fillOpacity:1}
            :{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
   if(NEAR.at) NEAR.meMk.bindTooltip(NEAR.at.name,{permanent:true,direction:"top",offset:[0,-6]});
-  /* v0.56.0: 円の外の登録地点も最初から「うすい点」で全部出す（コーイチさんFB）。
-     地図をずらせばどこでも登録地点が見える＋「円を広げればあれが入る」が円モードでも一目で分かる。
-     タップで名前だけ出す（カード列には居ないのでジャンプ先が無い）。円内の点より先に描く=重なったら円内が上 */
-  {
-    const inIds=new Set(NEAR.items.map(x=>x.p.id));
-    places.filter(p=>p&&p.lat&&p.lng&&!inIds.has(p.id)&&(!NEAR.at||p.id!==NEAR.at.id)).forEach(p=>{
-      const mk=L.circleMarker([+p.lat,+p.lng],
-        {radius:6,color:"#fff",weight:1.5,fillColor:catColor(p.cat),fillOpacity:.45});
-      mk.bindTooltip(esc(p.name),{direction:"top",offset:[0,-4]});
-      mk.on("click",()=>{ if(rtLongAte(mk._path))return; mk.openTooltip(); });
-      mk.addTo(NEAR.map); NEAR.outDots.push(mk);
-      nearDotLong(mk,p);
-    });
-  }
-  NEAR.items.forEach(x=>{
-    const mk=L.circleMarker([+x.p.lat,+x.p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(x.p.cat),fillOpacity:1});
-    mk.on("click",()=>{ if(rtLongAte(mk._path))return; nearJump(x.p.id); });
-    mk.addTo(NEAR.map); NEAR.dots[x.p.id]=mk;
-    nearDotLong(mk,x.p);
+  /* 登録場所は全部おなじ点（v0.60.0で円が無くなった＝うすい点の区別も無くなった）。
+     タップ=そのカードへジャンプ／長押し=そこを新しい中心に */
+  places.filter(p=>p&&p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id)).forEach(p=>{
+    const mk=L.circleMarker([+p.lat,+p.lng],{radius:8,color:"#fff",weight:2,fillColor:catColor(p.cat),fillOpacity:1});
+    mk.bindTooltip(esc(p.name),{direction:"top",offset:[0,-4]});
+    mk.on("click",()=>{ if(rtLongAte(mk._path))return; nearJump(p.id); });
+    mk.addTo(NEAR.map); NEAR.dots[p.id]=mk;
+    nearDotLong(mk,p);
   });
   NEAR.map.invalidateSize();
-  nearFitCircle();
-  /* カード列（距離順） */
+  nearCardsRender();
+}
+/* カード1枚を作る（上段の中心カードも、下のカード列も同じ部品＝ボタンの動きも全く同じ） */
+function nearRow(p,label,here){
+  const el=document.createElement("div");
+  el.className="nearrow"+(here?" here":""); el.dataset.id=p.id;
+  el.style.setProperty("--nrc",catColor(p.cat));
+  const np=(p.ph||[]).length;
+  el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(p.cat)+
+    (np?'<span class="nr-p">📷'+np+'</span>':'')+'</div>'+
+    '<div class="nr-n">'+esc(p.name)+'</div></div>'+
+    '<div class="nr-d">'+esc(label)+'</div>'+
+    '<div class="nr-b"><button data-a="route">経路</button>'+
+    '<button data-a="area">場所周辺</button><button data-a="nav">到達距離</button></div>';
+  el.onclick=()=>{ if(flickSwiped) return; nearJump(p.id); };
+  /* 左の名称のあたり＝登録画像の縦閲覧（v0.59.0 コーイチさん発案）。
+     場所周辺を見て回りながら「この店だっけ？」を写真で確かめられる。ボタン類は触らない */
+  el.querySelector(".nr-t").onclick=e=>{e.stopPropagation(); if(flickSwiped) return; nearPhotos(p);};
+  el.querySelector('[data-a="route"]').onclick=e=>{e.stopPropagation(); openRoute(p);};
+  /* 場所周辺=この場所を真ん中に置き直す（次々に見て回れる。中心カードで押せば地図が中心へ戻る） */
+  el.querySelector('[data-a="area"]').onclick=e=>{e.stopPropagation(); nearOpen(p);};
+  el.querySelector('[data-a="nav"]').onclick=e=>{e.stopPropagation(); nvOpen("place",p);};
+  return el;
+}
+/* 上段＝今の中心のカード（太枠）。現在地が中心の時はカードが無いので見出しだけ */
+function nearHereRender(){
+  const box=document.getElementById("nearHere");
+  box.innerHTML="";
+  if(!NEAR.at){ box.textContent="📍 現在地のまわり"; return; }
+  const p=places.find(x=>x&&x.id===NEAR.at.id)||NEAR.at;
+  box.appendChild(nearRow(p,"中心",true));
+}
+/* カード列＝「今この地図に見えている場所」を中心から近い順に。
+   地図を引けば増え、寄せれば減る（日本全体まで引けば全部並ぶ）＝点とカードが常に一致する */
+function nearCardsRender(){
+  nearHereRender();
+  const c=NEAR.center, cards=document.getElementById("nearCards");
+  const b=NEAR.map.getBounds();
+  /* 地図を動かしても見ていたカードを見失わない。今スクロールの真ん中にあるカードを
+     その場で読む（NEAR.focusIdはrAF待ちで1拍遅れることがあるため当てにしない） */
+  const keep=nearMidId();
+  NEAR.items=places.filter(p=>p&&p.lat&&p.lng&&(!NEAR.at||p.id!==NEAR.at.id)
+      &&b.contains([+p.lat,+p.lng]))
+    .map(p=>({p,d:distM(c,{lat:+p.lat,lng:+p.lng})}))
+    .sort((a,b2)=>a.d-b2.d);
   NEAR.focusId=null;
   if(!NEAR.items.length){
     cards.style.paddingTop=cards.style.paddingBottom="";
-    cards.innerHTML='<div class="near-empty">この距離には登録した場所がありません。<br>上のボタンのほか、地図を2本指で広げると<br>円ごと遠くまで広げられます</div>';
+    cards.innerHTML='<div class="near-empty">この地図に見えている登録場所はありません。<br>地図を2本指で縮めると、<br>遠くの場所も見えてきます</div>';
     return;
   }
   cards.innerHTML="";
-  NEAR.items.forEach(x=>{
-    const el=document.createElement("div");
-    el.className="nearrow"; el.dataset.id=x.p.id;
-    el.style.setProperty("--nrc",catColor(x.p.cat));
-    const np=(x.p.ph||[]).length;
-    el.innerHTML='<div class="nr-t"><div class="nr-c">'+esc(x.p.cat)+
-      (np?'<span class="nr-p">📷'+np+'</span>':'')+'</div>'+
-      '<div class="nr-n">'+esc(x.p.name)+'</div></div>'+
-      '<div class="nr-d">'+fmtDist(x.d)+'</div>'+
-      '<div class="nr-b"><button data-a="route">経路</button>'+
-      '<button data-a="area">場所周辺</button><button data-a="nav">到達距離</button></div>';
-    el.onclick=()=>{ if(flickSwiped) return; nearJump(x.p.id); };
-    /* 左の名称のあたり＝登録画像の縦閲覧（v0.59.0 コーイチさん発案）。
-       場所周辺を見て回りながら「この店だっけ？」を写真で確かめられる。ボタン類は触らない */
-    el.querySelector(".nr-t").onclick=e=>{e.stopPropagation(); if(flickSwiped) return; nearPhotos(x.p);};
-    el.querySelector('[data-a="route"]').onclick=e=>{e.stopPropagation(); openRoute(x.p);};
-    /* 周辺=この場所を真ん中に置き直す（次々に見て回れる） */
-    el.querySelector('[data-a="area"]').onclick=e=>{e.stopPropagation(); nearOpen(x.p);};
-    el.querySelector('[data-a="nav"]').onclick=e=>{e.stopPropagation(); nvOpen("place",x.p);};
-    cards.appendChild(el);
-  });
+  NEAR.items.forEach(x=>cards.appendChild(nearRow(x.p,fmtDist(x.d),false)));
   /* 最初/最後のカードも「真ん中」に来られるよう上下に余白 */
   const row=cards.querySelector(".nearrow");
   const pad=Math.max(0,(cards.clientHeight-(row?row.offsetHeight:72))/2);
   cards.style.paddingTop=pad+"px"; cards.style.paddingBottom=pad+"px";
-  cards.scrollTop=0;
+  const back=keep&&cards.querySelector('.nearrow[data-id="'+keep+'"]');
+  cards.scrollTop=back?Math.max(0,back.offsetTop-(cards.clientHeight-back.offsetHeight)/2):0;
   nearSyncFocus();
 }
-/* スクロール位置の真ん中に一番近いカードへフォーカス＝地図の点を赤に */
-function nearSyncFocus(){
+/* 今スクロールの真ん中に見えているカードのid（フォーカスの判定と、地図を動かした時の位置合わせで共用） */
+function nearMidId(){
   const cards=document.getElementById("nearCards");
   const mid=cards.scrollTop+cards.clientHeight/2;
   let best=null,bd=Infinity;
@@ -5900,9 +5817,15 @@ function nearSyncFocus(){
     const d=Math.abs(el.offsetTop+el.offsetHeight/2-mid);
     if(d<bd){bd=d;best=el;}
   });
-  const id=best?best.dataset.id:null;
+  return best?best.dataset.id:null;
+}
+/* スクロール位置の真ん中に一番近いカードへフォーカス＝地図の点を大きく */
+function nearSyncFocus(){
+  const cards=document.getElementById("nearCards");
+  const id=nearMidId();
   if(id===NEAR.focusId) return;
   const prev=cards.querySelector(".nearrow.focus"); if(prev)prev.classList.remove("focus");
+  const best=id&&cards.querySelector('.nearrow[data-id="'+id+'"]');
   if(best)best.classList.add("focus");
   /* 地図の点: 色はカテゴリ色のまま、フォーカス中だけ大きく(白縁も太く) */
   if(NEAR.focusId&&NEAR.dots[NEAR.focusId]){
@@ -5944,14 +5867,6 @@ document.getElementById("nearCards").addEventListener("scroll",()=>{
   if(NEAR.raf) return;
   NEAR.raf=requestAnimationFrame(()=>{NEAR.raf=0;nearSyncFocus();});
 },{passive:true});
-document.querySelectorAll("#nearRads button[data-r]").forEach(b=>{
-  b.onclick=()=>{
-    NEAR.r=+b.dataset.r; nearRadsSync();
-    if(NEAR.center) nearRender();
-  };
-});
-/* 自由チップのタップ＝円全体が見える位置に戻す（ドラッグで覗いた後の帰り道） */
-document.getElementById("nearFree").onclick=()=>{ if(NEAR.center) nearRender(); };
 
 /* ───── 🧭経由地モード（v0.52.0 コーイチさん発案） ─────
    出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路URLで
