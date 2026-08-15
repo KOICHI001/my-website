@@ -780,12 +780,15 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <span class="sp"></span>
       <button class="iconbtn" id="viewBtn" aria-label="表示切り替え"></button>
       <button class="iconbtn" id="sortBtn">★</button>
-      <button class="iconbtn" id="routeBtn">経由</button>
       <button class="iconbtn" id="menuBtn">⋯</button>
     </div>
+    <!-- v0.62.0: 「経由」をヘッダーのアイコン列から出して「一覧／本棚」と同列の3タブへ。
+         この機能の正体は“経路をこれから組む”ことではなく“前に決めた道を呼び戻す”ことなので
+         名前も「保存経路」に。場所帳が覚えるのは点（場所）と線（道）の2つ、と一目で分かる並びにする -->
     <div class="hometabs">
       <button id="tabList">一覧</button>
       <button id="tabShelf">📚 本棚</button>
+      <button id="tabRoute">🧭 保存経路</button>
     </div>
     <div class="searchrow">
       <input type="text" id="q" placeholder="名前・住所・メモ・電話などで検索" autocomplete="off">
@@ -826,7 +829,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <div class="rtov" id="rtov">
   <div class="rt-top">
     <button class="nv-back" id="rtBack">← 戻る</button>
-    <div class="rt-tt">🧭 経由地</div>
+    <div class="rt-tt">🧭 保存経路</div>
     <div class="rt-acts">
       <button id="rtClear">クリア</button>
       <button id="rtSave">💾 メモリに保存</button>
@@ -997,7 +1000,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.61.0";
+const VER = "0.62.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3945,10 +3948,9 @@ const HELP_SECS=[
 {id:"screen",t:"画面の見かた（メイン画面）",h:
  '<p>上のバーには次のものが並んでいます。</p>'+
  '<ul>'+
- '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> … 表示の切り替えタブ</li>'+
+ '<li><span class="hp-btn">一覧</span> / <span class="hp-btn">📚 本棚</span> / <span class="hp-btn">🧭 保存経路</span> … 切り替えタブ（保存経路だけは画面が開きます。下の「保存経路」の項をどうぞ）</li>'+
  '<li>検索欄 … 名前・住所・メモ・電話で探せます（→「検索と絞り込み」）</li>'+
  '<li><span class="hp-btn">五十音</span> … タップするたびに 近い順 → ★ と切り替わる並び順ボタン（★＝★を付けた場所が先頭）</li>'+
- '<li><span class="hp-btn">経由</span> … 経由地つきの経路をつくる画面（下の「経由」の項をどうぞ）</li>'+
  '<li><span class="hp-btn">'+ICON_TILE+'</span>/<span class="hp-btn">'+ICON_ROWS+'</span>/<span class="hp-btn">'+ICON_LIST+'</span> … 表示の切り替え。押すたびに カード → タイル → リスト の順に替わります（□4つ=タイル：小さく沢山 / 線3本=リスト：1行ずつボタン付き / バー2本=カード：大きく詳しく）</li>'+
  '<li><span class="hp-btn">⋯</span> … 設定メニュー（追加・カテゴリ編集・バックアップ・取り込み・このヘルプ）</li>'+
  '<li>カテゴリなどの丸いチップ … タップで絞り込み</li>'+
@@ -4030,8 +4032,9 @@ const HELP_SECS=[
  '<li><b>「← 戻る」の右の検索窓</b> … カード列を名前・住所・メモ・電話などで絞り込めます（探し方は一覧の検索と同じ）。当たりが今の地図の外にもある時は<b>「地図の外にも◯件」</b>と出るので、そこをタップすると全部見えるところまで地図が引かれます。</li>'+
  '<li><span class="hp-btn">← 戻る</span>を押すと、今の中心の場所のカードが開いた状態で一覧に戻ります。</li>'+
  '</ul>'},
-{id:"route",t:"「経由」ボタン（経由地つきの経路）",h:
- '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面です。画面上の<span class="hp-btn">経由</span>ボタンから。</p>'+
+{id:"route",t:"「保存経路」タブ（いつもの道を名前で呼び出す）",h:
+ '<p><b>よく使う道を、まるごと覚えておくための画面です。</b>高速道路の名前や、混まない裏道の入口を毎回調べ直さなくてよくなります。上の<span class="hp-btn">🧭 保存経路</span>タブから。</p>'+
+ '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面でもあります。</p>'+
  '<ul>'+
  '<li>上の枠（<b>出発地・①②③・目的地</b>）をタップ → 下のリストから場所をタップで入ります。<b>順不同でOK</b>・使わない枠は空のままで大丈夫。入っている枠をタップすると「外す」ボタンが出ます。</li>'+
  '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
@@ -5557,6 +5560,9 @@ document.getElementById("tabShelf").onclick=()=>{
   try{localStorage.setItem("basho_home","shelf");}catch(e){}
   renderTop();
 };
+/* 保存経路タブ(v0.62.0)は「開くだけ」＝homeTabは変えない。
+   全画面のオーバーレイなので閉じれば直前のタブ（一覧 or 本棚）にそのまま戻る＝記憶を壊さない */
+document.getElementById("tabRoute").onclick=()=>{ rtOpen(); };
 /* アイコンは「押したら切り替わる先」を表示。3段階サイクル＝カード(バー2本)→タイル(田の字)→リスト(細線3本)→カード…（v0.50.0）。
    中身がSVGになったのでクリック先はe.targetでなくボタン本体を掴む。​=baseline浮き対策(v0.49.1) */
 const viewBtnEl=document.getElementById("viewBtn");
@@ -5589,6 +5595,7 @@ function closeTopOverlay(){
   else if(document.getElementById("helpov").classList.contains("on")) helpClose();   /* 使い方 */
   else if(document.getElementById("advov").classList.contains("on")) advClose();   /* ⚙追加機能 */
   else if(document.getElementById("nearov").classList.contains("on")) nearClose();
+  else if(document.getElementById("rtov").classList.contains("on")) rtClose();   /* 🧭保存経路（v0.62.0で戻るボタン対応漏れを修正） */
   else if(veil.classList.contains("on")) closeSheet();
   else if(homeTab==="shelf"&&shelfCat&&shelfSub){ shelfSub=null; renderTop(); }   /* フォルダ→本へ */
   else if(homeTab==="shelf"&&shelfCat){ shelfCat=null; renderTop(); }   /* 本の中→本棚へ */
@@ -6069,7 +6076,7 @@ function rtRenderList(){
     list.appendChild(el);
   });
 }
-document.getElementById("routeBtn").onclick=rtOpen;
+/* v0.62.0: 開く口は「保存経路」タブ側へ移動（旧 routeBtn は廃止） */
 document.getElementById("rtBack").onclick=rtClose;
 document.querySelectorAll("#rtov .rt-stop").forEach(el=>{
   el.onclick=()=>{ RT.sel=(RT.sel===el.dataset.slot)?null:el.dataset.slot; rtRender(); };
