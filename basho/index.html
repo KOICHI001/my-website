@@ -1018,7 +1018,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.64.0";
+const VER = "0.65.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2401,6 +2401,9 @@ function _renderBody(){
       else if(folderBrowse&&p.sf) return false;           /* 本の直下ではフォルダ入りは畳む */
     }
     else{
+      /* 🙈一覧に出さない（v0.65.0）＝道だけの経由地カードを一覧タブから外す。
+         検索文字が入っている間は表示に戻す（言葉で探せば見つかる約束）。本の中(inBook)は常に出す */
+      if(p.hide && !qn) return false;
       if(onlyFix && hasSpot(p) && !(p.acc&&p.acc>80)) return false;
       if(filterCat && p.cat!==filterCat) return false;
       if(filterSub && p.sf!==filterSub) return false;   /* サブフォルダ絞り込み（カテゴリ横断） */
@@ -3296,6 +3299,13 @@ function form(d){
       '<div class="two"><div><label>緯度</label><input type="text" id="f_lat" value="'+esc(d.lat)+'"></div>'+
       '<div><label>経度</label><input type="text" id="f_lng" value="'+esc(d.lng)+'"></div></div>'+
     '</details>'+
+    /* 一覧に出さない（v0.65.0 コーイチさん発案）＝道だけに印を付けた保存経路の経由地カードが
+       一覧・タイル・リストに混ざらないように。検索に当たった時と本棚の中では今までどおり出す */
+    '<label style="display:flex;align-items:center;gap:9px;padding:12px 2px 2px;font-size:15px;cursor:pointer">'+
+      '<input type="checkbox" id="f_hide" style="width:20px;height:20px"'+(d.hide?" checked":"")+'>'+
+      '🙈 一覧に出さない</label>'+
+    '<div class="hint">道路の経由地など、ふだんの一覧に混ぜたくない場所に。'+
+    '検索に当たった時と、本棚で本を開いた中ではこれまでどおり表示されます。</div>'+
     '<div class="sheet-actions">'+
       (d.__new?'':'<button class="btn del" id="del">削除</button>')+   /* 新規はまだ何も無い＝削除は出さない */
       '<button class="btn" id="cancel">やめる</button>'+
@@ -3422,6 +3432,7 @@ function form(d){
       url:v("f_url"),lat:la,lng:lo,tel:v("f_tel"),memo:v("f_memo"),
       acc:(la+","+lo===accFor)?accPend:null,updated:Date.now()});
     const sfv=v("f_sf"); if(sfv)d.sf=sfv; else delete d.sf;
+    if(document.getElementById("f_hide").checked)d.hide=1; else delete d.hide;
     if(d.__new){ delete d.__new; places.push(d); }   /* 新規はここで初めてリスト入り */
     updatePref(d);
     save(); closeSheet(); toast("保存しました");
