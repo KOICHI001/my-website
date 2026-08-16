@@ -426,6 +426,17 @@
     box-shadow:0 6px 20px rgba(11,110,95,.34)}
   .nvov.pick .nv-note{display:none}
   .nvov.pick #nvFollow{display:none}
+  /* 帰るバー（v0.66.0・足あと記録中だけ）: 記録を止めて、線をたどって旗へ戻る */
+  .nv-retbar{display:none;position:absolute;left:0;right:0;bottom:calc(52px + env(safe-area-inset-bottom));
+    z-index:1000;text-align:center;pointer-events:none}
+  .nv-retbar.on{display:block}
+  .nv-retbar button{pointer-events:auto;background:#274A73;color:#fff;border:0;border-radius:999px;
+    padding:11px 28px;font-size:15px;font-family:var(--gothic);font-weight:700;cursor:pointer;
+    box-shadow:0 6px 20px rgba(39,74,115,.34)}
+  .nv-retbar button small{display:block;font-size:10px;font-weight:400;color:rgba(255,255,255,.82)}
+  /* 足あと線の進行方向▲（v0.66.0）: 拡大した時にどちらへ歩いた線か読めるように */
+  .tr-arr{width:16px;height:16px;margin:-8px 0 0 -8px;display:flex;align-items:center;justify-content:center;
+    font-size:12px;line-height:1;color:#274A73;text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;pointer-events:none}
   /* 駐車FAB（左下） */
   .fab2{position:fixed;left:16px;bottom:calc(20px + env(safe-area-inset-bottom));z-index:30;
     width:calc(50vw - 56px);max-width:180px;height:64px;padding:0 6px;
@@ -940,6 +951,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <span class="ico" id="nvEdgeIco">🏁</span><span class="d" id="nvEdgeDist"></span>
     </button>
     <div class="nv-okbar"><button id="nvPickOk">この位置にする</button></div>
+    <div class="nv-retbar" id="nvRetbar"><button id="nvRet">🚩 帰る<small>足あとを止めて、線をたどって旗へ戻る</small></button></div>
   </div>
   <div class="nv-side">
     <button id="nvLayer">写真</button>
@@ -1018,7 +1030,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.65.0";
+const VER = "0.66.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3449,8 +3461,46 @@ function saveParking(){
 function fmtTime(t){const d=new Date(t),p=n=>String(n).padStart(2,"0");return p(d.getHours())+":"+p(d.getMinutes());}
 function parkBtnSync(){
   const b=document.getElementById("parkBtn");
-  if(parking){b.className="fab2 parked";b.innerHTML="🚩 旗へ戻る<small>"+fmtTime(parking.t)+" に記録</small>";}
+  if(parking&&!parking.ret){b.className="fab2 parked";b.innerHTML="🚩 足あと 記録中<small>"+fmtTime(parking.t)+" に旗を立てた</small>";}
+  else if(parking){b.className="fab2 parked";b.innerHTML="🚩 旗へ戻る<small>"+fmtTime(parking.t)+" に記録</small>";}
   else{b.className="fab2";b.innerHTML="🚩 足あと<small>戻りたい場所に旗を立てる</small>";}
+}
+/* ★常駐の足あと記録（v0.66.0）: 旗が立っていて「帰る」前なら、ナビ画面を閉じて
+   メイン画面に戻っても記録を続ける（アプリを開いている間）。
+   メインの🚩ボタンは「モードに入るドア」＝押し直しても記録は生きたまま。
+   画面内の「🚩 帰る」(parking.ret=1)で記録だけ止まり、線と旗はそのまま＝たどって帰る。 */
+let trailWatch=null;
+function trailAdd(lat,lng,acc){
+  if(!parking||parking.ret||acc>35) return;
+  if(parking.lat==null){   /* 画面を閉じたまま最初の測位が来た時も旗の座標を確定できるように */
+    parking.lat=+lat.toFixed(6); parking.lng=+lng.toFixed(6); parking.acc=acc; saveParking(); return;
+  }
+  const tr=parking.trail=parking.trail||[];
+  if(tr.length>=3000) return;
+  const last=tr.length?tr[tr.length-1]:[parking.lat,parking.lng];
+  if(distM({lat:last[0],lng:last[1]},{lat:lat,lng:lng})<4) return;
+  tr.push([+lat.toFixed(6),+lng.toFixed(6)]);
+  saveParking();
+  const ov=document.getElementById("nvov");
+  if(ov.classList.contains("on")&&!ov.classList.contains("pick")&&NV.map) nvDrawTrail();
+  if(tr.length===3000)
+    toast("足あとが上限に達したため、ここで記録を止めました（付けた線と旗の位置はこのまま残ります）");
+}
+function trailWatchSync(){
+  const need=!!parking&&!parking.ret
+    &&navigator.geolocation&&location.protocol!=="file:";
+  if(need&&trailWatch==null){
+    trailWatch=navigator.geolocation.watchPosition(p=>{
+      trailAdd(+p.coords.latitude,+p.coords.longitude,Math.round(p.coords.accuracy));
+    },()=>{},{enableHighAccuracy:true,timeout:20000,maximumAge:0});
+  }else if(!need&&trailWatch!=null){
+    navigator.geolocation.clearWatch(trailWatch); trailWatch=null;
+  }
+}
+/* 「🚩 帰る」バーは足あとモードの記録中だけ出す */
+function nvRetSync(){
+  document.getElementById("nvRetbar").classList.toggle("on",
+    NV.mode==="car"&&!!parking&&!parking.ret);
 }
 /* 駐車写真: 3枠。空き枠＋はタップで撮影、写真はタップで拡大・✕で削除。解除で全部消える一時保存 */
 function nvPhotosRender(){
@@ -3489,7 +3539,7 @@ function nvPhotosRender(){
 }
 
 /* ───── 周辺モード（目的地周辺の拡大地図ナビ・地理院タイル） ───── */
-const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,
+const NV={map:null,std:null,photo:null,photoOn:false,destMk:null,meMk:null,accC:null,trailLn:null,trailAr:null,
   watch:null,follow:true,mode:"place",target:null,fitted:false,lastFix:null,hdgFn:null,wl:null,
   headUp:false,curHd:null,rotShown:0,rotT:0,hasCompass:false,gpsT:0,
   cmpFix:0,rawHd:null,rawHdT:0,fixBuf:[],cmpTold:false,   /* コンパス自動補正（GPS照合） */
@@ -3511,6 +3561,7 @@ function nvInitMap(){
   NV.lay=""; nvSetLayer("std");
   NV.map.on("dragstart",()=>nvFollow(false));
   NV.map.on("move zoom viewreset resize",nvEdgeSync);
+  NV.map.on("zoomend moveend",nvTrailArrows);   /* 足あとの▲は表示範囲・縮尺が変わるたび引き直す */
 }
 /* 地理院タイルは日本専用＝日本の外は白紙になる（v0.45.0・海外テスター対策）。
    緯度20〜46・経度122〜154のざっくり日本範囲かどうかで地理院2種を出すか決める */
@@ -3597,10 +3648,45 @@ nvEl("nvEdge").onclick=()=>{
 };
 function nvDrawTrail(){
   if(NV.trailLn){NV.map.removeLayer(NV.trailLn);NV.trailLn=null;}
-  if(!parking||parking.lat==null) return;
+  if(parking&&parking.lat!=null){
+    const pts=[[parking.lat,parking.lng]].concat(parking.trail||[]);
+    if(pts.length>=2)
+      NV.trailLn=L.polyline(pts,{color:"#274A73",weight:4,opacity:.75,dashArray:"1 8",lineCap:"round"}).addTo(NV.map);
+  }
+  nvTrailArrows();
+}
+/* 足あと線の進行方向マーク（v0.66.0）: 「拡大するとこの点線がどちらへ歩いた線か分からない」
+   （コーイチさん）対策。歩いた向きの小さな▲を画面上ほぼ等間隔（約64px）に置く。
+   画面の外には置かず、ズーム・移動のたびに引き直す（zoomend/moveendで呼ばれる） */
+function nvTrailArrows(){
+  if(NV.trailAr){NV.map.removeLayer(NV.trailAr);NV.trailAr=null;}
+  if(!NV.trailLn||!NV.map||!parking||parking.lat==null) return;
   const pts=[[parking.lat,parking.lng]].concat(parking.trail||[]);
   if(pts.length<2) return;
-  NV.trailLn=L.polyline(pts,{color:"#274A73",weight:4,opacity:.75,dashArray:"1 8",lineCap:"round"}).addTo(NV.map);
+  let c,z,bd;   /* 開いた直後はまだビュー未設定＝setView後のmoveendで改めて描く */
+  try{ c=NV.map.getCenter(); z=NV.map.getZoom(); bd=NV.map.getBounds().pad(0.15); }catch(e){ return; }
+  const mpp=40075016.686*Math.cos(c.lat*Math.PI/180)/Math.pow(2,z+8);   /* 1pxあたりの実距離m */
+  const gap=Math.max(10,mpp*64);
+  const g=L.layerGroup(); let acc=gap/2, n=0;
+  for(let i=1;i<pts.length&&n<400;i++){
+    const a=pts[i-1],b=pts[i];
+    const seg=distM({lat:a[0],lng:a[1]},{lat:b[0],lng:b[1]});
+    if(seg<0.5){continue;}
+    while(acc<=seg){
+      const f=acc/seg, la=a[0]+(b[0]-a[0])*f, ln=a[1]+(b[1]-a[1])*f;
+      if(bd.contains([la,ln])){
+        const r=Math.PI/180, dl=(b[1]-a[1])*r;
+        const br=(Math.atan2(Math.sin(dl)*Math.cos(b[0]*r),
+          Math.cos(a[0]*r)*Math.sin(b[0]*r)-Math.sin(a[0]*r)*Math.cos(b[0]*r)*Math.cos(dl))/r+360)%360;
+        g.addLayer(L.marker([la,ln],{interactive:false,icon:L.divIcon({className:"",iconSize:[0,0],
+          html:'<div class="tr-arr" style="transform:rotate('+Math.round(br)+'deg)">▲</div>'})}));
+        n++;
+      }
+      acc+=gap;
+    }
+    acc-=seg;
+  }
+  if(n) NV.trailAr=g.addTo(NV.map);
 }
 function nvCone(h){
   if(!NV.meMk) return;
@@ -3707,8 +3793,11 @@ function nvOpen(mode,place){
     ? (parking?fmtTime(parking.t)+" に記録"+(parking.acc!=null?" ±"+parking.acc+"m":""):"")
     : (place.acc?"登録精度 ±"+place.acc+"m":"");
   nvEl("nvDist").textContent="—";
+  nvRetSync();
   nvEl("nvNote").innerHTML = mode==="car"
-    ? "画面を点けたまま歩くと<b>足あと</b>が残ります。帰りはこの線をたどってください。"
+    ? (parking&&parking.ret
+        ? "<b>足あと</b>の線（▲は歩いた向き）をたどって旗へ戻ってください。記録は止まっています。"
+        : "画面を点けたまま歩くと<b>足あと</b>が残ります（メイン画面に戻っても記録は続きます）。帰りは<b>「🚩 帰る」</b>を押してください。")
     : "まずはピンの周りをゆっくり確認できます。<b>「追従」</b>を押すと、あなた（青い丸）とピンの両方が見える表示になります。";
   /* ナビの地図は前回使っていたレイヤーで開く（初期値=名前入り。本人の見やすさ優先） */
   let lay="osm";
@@ -3749,21 +3838,8 @@ function nvOpen(mode,place){
         saveParking(); nvSetDest();
         nvEl("nvSub").textContent=fmtTime(parking.t)+" に記録 ±"+parking.acc+"m";
       }
-      /* 足あと：駐車中は4m以上動くたびに記録（精度35m以内のみ）。
-         上限3000点＝そこで記録終了。車へ戻る手がかりなので、一度付けた足あとは絶対に消さない
-         （旧: 古い方=車側から削除していた→車に着く直前の線が欠ける本末転倒だったため変更） */
-      if(parking&&parking.lat!=null&&acc<=35){
-        const tr=parking.trail=parking.trail||[];
-        if(tr.length<3000){
-          const last=tr.length?tr[tr.length-1]:[parking.lat,parking.lng];
-          if(distM({lat:last[0],lng:last[1]},{lat:me[0],lng:me[1]})>=4){
-            tr.push([+me[0].toFixed(6),+me[1].toFixed(6)]);
-            saveParking(); nvDrawTrail();
-            if(tr.length===3000)
-              toast("足あとが上限に達したため、ここで記録を止めました（付けた線と車の位置はこのまま残ります）");
-          }
-        }
-      }
+      /* 足あとの記録は常駐watch（trailAdd/trailWatchSync）に一本化（v0.66.0）
+         ＝この画面を閉じてメイン画面に戻っても記録が続き、「🚩 帰る」を押すまで生きている */
       nvMe(me,acc,hd);
       /* 走行中（7km/h以上）はGPSの進行方向で地図を回す＝車内で狂うコンパスに握らせない。
          ★一度GPSが握ったら「停止」では手放さない（信号待ちでコンパスに切り替わると挙動が乱れる）。
@@ -3871,6 +3947,7 @@ function nvOpenPick(initLL,cb,autoQ){
   nvEl("nvov").classList.add("on","pick");
   nvEl("nvov").classList.remove("car");
   nvEl("nvUnpark").style.display="none";
+  nvEl("nvRetbar").classList.remove("on");
   nvEl("nvName").textContent="地図で座標決め";
   nvEl("nvSub").textContent="＋印を目的の場所に合わせてください（右下ボタンで写真・地理院に切替可）";
   nvEl("nvDist").textContent="";
@@ -3879,7 +3956,7 @@ function nvOpenPick(initLL,cb,autoQ){
   nvSetHead(false);                 /* ピン置きは常に北が上（＋印を正確に合わせるため） */
   setTimeout(()=>NV.map.invalidateSize(),60);
   /* ナビ用の表示物は片づける */
-  ["destMk","trailLn","meMk","accC","gline"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
+  ["destMk","trailLn","trailAr","meMk","accC","gline"].forEach(k=>{ if(NV[k]){NV.map.removeLayer(NV[k]);NV[k]=null;} });
   /* 開始位置（v0.55.0）: 既存座標 → 「今いる場所」 → 前回のピン置き地図 → 日本全体。
      前回の地図から始めると毎回わけが分からない（実機FB）＝現在地から指で動かして決めるのが自然。
      手持ちの現在地をまず出し、新しいGPSが来たら「まだ地図を触っていない時だけ」そこへ寄せる。
@@ -4108,8 +4185,9 @@ const HELP_SECS=[
 {id:"foot",t:"「足あと」ボタン",h:
  '<p>「あとでここに戻ってくる」場所に旗を立てる機能です。駐車場所・ホテル・集合場所・広い施設の入口などに。</p>'+
  '<ul>'+
- '<li><span class="hp-btn">🚩 足あと</span>を押すと今いる場所に旗が立ち、ボタンが「<b>🚩 旗へ戻る</b>」に変わります。</li>'+
- '<li>開くと、旗までの距離と方向、自分が歩いてきた足あとが地図に出ます。</li>'+
+ '<li><span class="hp-btn">🚩 足あと</span>を押すと今いる場所に旗が立ち、歩いた道が<b>足あとの線</b>になります。メイン画面に戻っても記録は続き、もう一度押せば地図に戻れます。</li>'+
+ '<li>線に付いた<b>▲は歩いた向き</b>です。地図を拡大しても、どちらへ進んだ線か分かります。</li>'+
+ '<li>帰りは地図画面の<span class="hp-btn">🚩 帰る</span>を押すと記録が止まり、あとは線をたどって旗へ戻れます。</li>'+
  '<li>写真を3枚まで残せます（駐車場の柱の番号などに便利）。</li>'+
  '<li>「解除」で旗を下ろします（写真も一緒に消えます）。旗は1本だけの使い切りです。</li>'+
  '</ul>'},
@@ -5722,15 +5800,15 @@ try{
     window.Capacitor.Plugins.App.addListener("backButton",()=>closeTopOverlay());
   }
 }catch(e){}
-/* 周辺モード・足あと（旗） */
-parkBtnSync();
+/* 周辺モード・足あと（旗）。メインの🚩はモードに入るドア＝記録の開始/継続はtrailWatchが持つ */
+parkBtnSync(); trailWatchSync();
 document.getElementById("parkBtn").onclick=()=>{
   if(!parking){
     parking={lat:null,lng:null,acc:null,t:Date.now(),trail:[]};
     saveParking();
     toast("この場所に旗を立てます");
   }
-  parkBtnSync();
+  parkBtnSync(); trailWatchSync();
   nvOpen("car");
 };
 
@@ -6229,11 +6307,19 @@ function rtMemMenu(m,all){
   };
 }
 document.getElementById("nvClose").onclick=nvClose;
+/* 🚩帰る（v0.66.0）: 記録だけ止める＝線と旗はそのまま。以降は▲の線をたどって戻る */
+document.getElementById("nvRet").onclick=()=>{
+  if(!parking) return;
+  parking.ret=1; saveParking(); trailWatchSync();
+  nvRetSync(); parkBtnSync();
+  nvEl("nvNote").innerHTML="<b>足あと</b>の線（▲は歩いた向き）をたどって旗へ戻ってください。記録は止まっています。";
+  toast("足あとの記録を止めました。線をたどって旗へ戻れます");
+};
 document.getElementById("nvUnpark").onclick=()=>{
   const nPh=(parking&&parking.ph||[]).length;
   if(!confirm("足あとを解除しますか？\n（旗の位置と足あと"+(nPh?"・写真"+nPh+"枚":"")+"が消えます）")) return;
   if(parking) phPurgePlace(parking);   /* 一時保存の写真もIndexedDBから消す */
-  parking=null; saveParking(); nvClose(); toast("足あとを解除しました");
+  parking=null; saveParking(); trailWatchSync(); nvClose(); toast("足あとを解除しました");
 };
 document.getElementById("nvLayer").onclick=()=>{
   let next=NV.lay==="std"?"photo":(NV.lay==="photo"?"osm":"std");

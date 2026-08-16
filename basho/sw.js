@@ -1,5 +1,5 @@
 /* 蝣ｴ謇蟶ｳ service worker 窶・network first・域峩譁ｰ縺檎｢ｺ螳溘↓螻翫￥譁ｹ蠑擾ｼ・*/
-const CACHE = "basho-v0.65.0";
+const CACHE = "basho-v0.66.0";
 /* OCR繧ｨ繝ｳ繧ｸ繝ｳ・・cr/ 邏・0MB繝ｻ蜀・ｮｹ荳榊､会ｼ峨・蛻･繧ｭ繝｣繝・す繝･・議ache first ・・豈主屓縺ｮ蜀好L繧ら沿荳翫￡譎ゅ・蜀好L繧ゅ＠縺ｪ縺・*/
 const OCR_CACHE = "basho-ocr-v1";
 /* v0.37.0: 繝倥Ν繝励ｒ逕ｻ蜒上°繧羽TML譛ｬ譁・↓蛻ｷ譁ｰ・拮elp01縲・4.png縺ｯ蜷梧｢ｱ繝ｻprecache縺ｨ繧ゅ↓蟒・ｭ｢ */
