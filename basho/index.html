@@ -625,16 +625,25 @@
     border-radius:999px;padding:6px 9px;font-size:11.5px;font-family:var(--gothic);cursor:pointer;
     -webkit-user-select:none;user-select:none;white-space:nowrap}
   .rtrow.mem{border-left-color:#0B6E5F}   /* メモリ行は帳面色の左帯で場所と区別 */
-  /* 出発地→①②③→目的地の一本線。各枠は3段固定(上段16/中段30/下段16px)＝
-     両端は名前が上・ラベルが線上、経由地は丸数字が線上・名前が下（コーイチさんスケッチ準拠） */
-  .rt-line{position:relative;display:flex;align-items:flex-start;justify-content:space-between;
+  /* 呼び出し中のメモリ＝今のバーの中身と一致する行を強調（v0.68.0 コーイチさん要望
+     「どのボタンが押されているのか分かり辛い」）。枠のsel と同じ視覚言語＝route色のリング */
+  .rtrow.mem.on{border-color:var(--route);box-shadow:0 0 0 2px var(--route);
+    background:rgba(11,110,95,.08)}
+  .rtrow.mem.on .rt-rn{color:var(--route)}
+  /* 出発地→①〜⑤→目的地の一本線（v0.68.0で経由地5つ＝一画面に収まらないので横スクロール）。
+     各枠は3段固定(上段16/中段30/下段16px)＝両端は名前が上・ラベルが線上。
+     経由地の名前は①下②上③下④上⑤下の交互＝隣どうしの名称バッティングを最小に（コーイチさん設計） */
+  .rt-scroll{overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .rt-scroll::-webkit-scrollbar{display:none}
+  .rt-line{position:relative;display:flex;align-items:flex-start;min-width:max-content;
     padding:10px 10px 0;gap:3px}
   .rt-line::before{content:"";position:absolute;left:20px;right:26px;top:41.5px;height:3px;
     background:var(--route);border-radius:2px;opacity:.85}
   .rt-line::after{content:"";position:absolute;right:12px;top:36.5px;
     border:6.5px solid transparent;border-left:11px solid var(--route);opacity:.85}
   .rt-stop{position:relative;z-index:1;display:flex;flex-direction:column;align-items:center;
-    flex:1 1 0;min-width:0;cursor:pointer;border-radius:10px;padding:2px 2px 1px}
+    flex:0 0 84px;min-width:0;cursor:pointer;border-radius:10px;padding:2px 2px 1px}
+  .rt-stop.rt-end{flex-basis:90px}
   .rt-stop.sel{box-shadow:0 0 0 2.5px var(--route);background:var(--card)}
   .rt-pad{height:16px}
   .rt-mid{height:30px;display:flex;align-items:center;justify-content:center}
@@ -864,12 +873,18 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
       <button id="rtSave">💾 メモリに保存</button>
     </div>
   </div>
+  <!-- v0.68.0: 経由地①〜⑤（横スクロール）。名前は①下②上③下④上⑤下の交互＝
+       段の高さは名前もパッドも同じ16pxなので、線と丸の高さは全枠で揃う -->
+  <div class="rt-scroll">
   <div class="rt-line">
     <div class="rt-stop rt-end" data-slot="s"><div class="rt-name ph">現在地</div><div class="rt-mid rt-lab">出発地</div><div class="rt-pad"></div></div>
     <div class="rt-stop rt-wp" data-slot="0"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">①</div></div><div class="rt-name"></div></div>
-    <div class="rt-stop rt-wp" data-slot="1"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">②</div></div><div class="rt-name"></div></div>
+    <div class="rt-stop rt-wp" data-slot="1"><div class="rt-name"></div><div class="rt-mid"><div class="rt-num">②</div></div><div class="rt-pad"></div></div>
     <div class="rt-stop rt-wp" data-slot="2"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">③</div></div><div class="rt-name"></div></div>
+    <div class="rt-stop rt-wp" data-slot="3"><div class="rt-name"></div><div class="rt-mid"><div class="rt-num">④</div></div><div class="rt-pad"></div></div>
+    <div class="rt-stop rt-wp" data-slot="4"><div class="rt-pad"></div><div class="rt-mid"><div class="rt-num">⑤</div></div><div class="rt-name"></div></div>
     <div class="rt-stop rt-end" data-slot="d"><div class="rt-name ph">未選択</div><div class="rt-mid rt-lab">目的地</div><div class="rt-pad"></div></div>
+  </div>
   </div>
   <div class="rt-hint" id="rtHint"></div>
   <div class="rt-gorow"><button id="rtRev" title="行きと帰りを逆にする">⇆</button><button id="rtGo">🗺 Googleマップへ</button></div>
@@ -1030,7 +1045,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.67.0";
+const VER = "0.68.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4200,13 +4215,13 @@ const HELP_SECS=[
  '<p><b>よく使う道を、まるごと覚えておくための画面です。</b>高速道路の名前や、混まない裏道の入口を毎回調べ直さなくてよくなります。上の<span class="hp-btn">🧭 保存経路</span>タブから。</p>'+
  '<p>Googleマップでは分かりにくい「経由地」を、場所帳側で先に組んでから地図を開く画面でもあります。</p>'+
  '<ul>'+
- '<li>上の枠（<b>出発地・①②③・目的地</b>）をタップ → 下のリストから場所をタップで入ります。<b>順不同でOK</b>・使わない枠は空のままで大丈夫。入っている枠をタップすると「外す」ボタンが出ます。</li>'+
+ '<li>上の枠（<b>出発地・①〜⑤・目的地</b>）をタップ → 下のリストから場所をタップで入ります。<b>順不同でOK</b>・使わない枠は空のままで大丈夫。入っている枠をタップすると「外す」ボタンが出ます。枠は横に7つ並ぶので、<b>バーは横にスクロール</b>できます。</li>'+
  '<li>出発地を選ばなければ<b>現在地</b>から出発します。</li>'+
  '<li>下のリストは検索とカテゴリで絞れます（使う回数が多い場所ほど上に並びます）。</li>'+
  '<li><span class="hp-btn">🗺 Googleマップへ</span> … 経由地がセット済みの経路がそのまま開きます。</li>'+
- '<li><span class="hp-btn">⇆</span> … <b>行きと帰りを逆に</b>します（帰り道モード）。出発地と目的地が入れ替わり、経由地①②③も逆順に。もう一度押せば元に戻ります。</li>'+
+ '<li><span class="hp-btn">⇆</span> … <b>行きと帰りを逆に</b>します（帰り道モード）。出発地と目的地が入れ替わり、経由地①〜⑤も逆順に。もう一度押せば元に戻ります。</li>'+
  '<li><span class="hp-btn">クリア</span> … 全部の枠を一度に空にします（直後に出る「取り消す」で戻せます）。一つだけ直したい時は、その枠をタップ→「✕ 外す」。</li>'+
- '<li><span class="hp-btn">💾 メモリに保存</span> … タップで、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>。コースの行を<b>長押しすると「名前の変更」「削除」</b>ができます。</li>'+
+ '<li><span class="hp-btn">💾 メモリに保存</span> … タップで、今のリストに<b>名前を付けて保存</b>（数の制限なし）。保存したコースはカテゴリ列の先頭<span class="hp-btn">💾 メモリ</span>に並び、<b>タップした瞬間に上のバーへ入ります</b>（いま呼び出し中のコースは<b>緑の枠で強調</b>されます）。コースの行を<b>長押しすると「名前の変更」「削除」</b>（行程のあらましもここで見られます）。</li>'+
  '</ul>'},
 {id:"nav",t:"「到達距離」ボタン（自分との位置・距離の確認）",h:
  '<p><b>今の自分と目的地の位置・距離</b>を確かめる拡大地図です。遠くで押せば方向と残り距離が分かり、近づいてからは<b>最後の100m</b>の歩き案内になります。細かい道まで載っている国土地理院の地図に、自分の位置・目的地・歩いた線が出ます。</p>'+
@@ -6101,11 +6116,15 @@ document.getElementById("nearQx").onclick=()=>{
    出発地→①②③→目的地 を登録場所から順不同に選び、経由地セット済みの経路URLで
    Googleマップを開く（api=1&waypoints=A|B|C・経由地はGoogle仕様で最大9だがUIは3枠固定）。
    メモリ3枠=長押しで保存・タップで呼び出し。選択中の枠は赤枠、場所を入れると次の空枠へ自動移動 */
-const RT={cur:{s:null,w:[null,null,null],d:null},sel:null,cat:"",q:""};
-const RT_SLOTS=["s","0","1","2","d"];
+/* v0.68.0: 経由地3→5。保存済みデータ(cur/メモリ)は3個時代のものが残るので、
+   読む側は必ず rtW5() で5枠に揃える＝どこから来た配列でも長さ5 */
+const RT_WN=5;
+function rtW5(a){a=a||[];const o=[];for(let i=0;i<RT_WN;i++)o.push(a[i]||null);return o;}
+const RT={cur:{s:null,w:rtW5(),d:null},sel:null,cat:"",q:""};
+const RT_SLOTS=["s","0","1","2","3","4","d"];
 function rtLoad(){
   try{const s=JSON.parse(localStorage.getItem("basho_route_cur"));
-      if(s&&s.w) RT.cur={s:s.s||null,w:[s.w[0]||null,s.w[1]||null,s.w[2]||null],d:s.d||null};}catch(e){}
+      if(s&&s.w) RT.cur={s:s.s||null,w:rtW5(s.w),d:s.d||null};}catch(e){}
 }
 function rtSaveCur(){try{localStorage.setItem("basho_route_cur",JSON.stringify(RT.cur));}catch(e){}}
 /* v0.53.0: メモリは「名前付き・数の制限なし」(basho_route_mem2)。
@@ -6131,9 +6150,16 @@ function rtMemSummary(m){
 }
 /* メモリを上のバーへ即反映（タップした瞬間に表示＝同期でレンダリング） */
 function rtApplyMem(m){
-  RT.cur={s:m.s||null,w:[(m.w||[])[0]||null,(m.w||[])[1]||null,(m.w||[])[2]||null],d:m.d||null};
+  RT.cur={s:m.s||null,w:rtW5(m.w),d:m.d||null};
   RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});
   rtSaveCur(); RT.sel=null; rtRender();
+}
+/* このメモリが「いま呼び出し中」か＝バーの中身と完全一致で判定（v0.68.0）。
+   状態を持たず内容で比べる＝呼び出した後に枠を1つでも手で変えれば自然に強調が消える */
+function rtMemEq(m){
+  const w=rtW5(m.w);
+  return (m.s||null)===(RT.cur.s||null)&&(m.d||null)===(RT.cur.d||null)
+    &&w.every((x,i)=>(x||null)===(RT.cur.w[i]||null));
 }
 /* 長押し(600ms)ヘルパー。発動時刻をel.__longに残す＝直後のclickを呼び出し側で無視できる */
 function rtLong(el,fn){
@@ -6149,8 +6175,8 @@ function rtLongAte(el){ return el.__long&&Date.now()-el.__long<500; }
 function rtP(id){ return id?(places.find(x=>x&&x.id===id)||null):null; }
 function rtGet(sl){ return sl==="s"?RT.cur.s:sl==="d"?RT.cur.d:RT.cur.w[+sl]; }
 function rtSet(sl,id){ if(sl==="s")RT.cur.s=id; else if(sl==="d")RT.cur.d=id; else RT.cur.w[+sl]=id; rtSaveCur(); }
-function rtSlotName(sl){return sl==="s"?"出発地":sl==="d"?"目的地":"経由地"+["①","②","③"][+sl];}
-function rtNextEmpty(){ for(const sl of ["0","1","2","d"]) if(!rtGet(sl)) return sl; return null; }
+function rtSlotName(sl){return sl==="s"?"出発地":sl==="d"?"目的地":"経由地"+["①","②","③","④","⑤"][+sl];}
+function rtNextEmpty(){ for(const sl of ["0","1","2","3","4","d"]) if(!rtGet(sl)) return sl; return null; }
 function rtOpen(){
   rtLoad();
   RT_SLOTS.forEach(sl=>{const id=rtGet(sl); if(id&&!rtP(id))rtSet(sl,null);});   /* 消された場所は静かに外す */
@@ -6189,10 +6215,23 @@ function rtRender(){
   document.getElementById("rtHint").innerHTML = RT.sel
     ? (selP ? '<button id="rtDrop">✕ 「'+esc(selP.name)+'」を外す</button>'
             : '下のリストをタップ → <b>'+rtSlotName(RT.sel)+'</b> に入ります')
-    : '枠（出発地・①②③・目的地）をタップすると選び直せます';
+    : '枠（出発地・①〜⑤・目的地）をタップすると選び直せます';
   const db=document.getElementById("rtDrop");
   if(db)db.onclick=e=>{e.stopPropagation(); rtSet(RT.sel,null); rtRender();};
   document.getElementById("rtGo").classList.toggle("ready",!!rtGet("d"));
+  rtScrollSel();
+  /* メモリ一覧を出している間は「呼び出し中」の強調も今のバーに合わせて更新（v0.68.0） */
+  if(RT.cat===RT_MEMCAT) rtRenderList();
+}
+/* 選択中の枠が横スクロールの外にあれば見える所まで寄せる（v0.68.0＝枠が7つで画面に収まらない）。
+   横方向だけを自前で動かす＝scrollIntoViewだと縦の親まで動くことがある */
+function rtScrollSel(){
+  const sc=document.querySelector("#rtov .rt-scroll");
+  const el=sc&&sc.querySelector(".rt-stop.sel");
+  if(!el)return;
+  const L=el.offsetLeft, R=L+el.offsetWidth;
+  if(L<sc.scrollLeft+8) sc.scrollTo({left:Math.max(0,L-8),behavior:"smooth"});
+  else if(R>sc.scrollLeft+sc.clientWidth-8) sc.scrollTo({left:R-sc.clientWidth+8,behavior:"smooth"});
 }
 function rtRenderCats(){
   const box=document.getElementById("rtCats");
@@ -6218,8 +6257,10 @@ function rtRenderList(){
     list.innerHTML=mems.length?"":'<div class="near-empty">保存したコースはまだありません。<br>経由地を組んで「💾 メモリに保存」を長押しすると、<br>名前を付けてここに並べられます</div>';
     mems.forEach(m=>{
       const el=document.createElement("div");
-      el.className="rtrow mem";
-      el.innerHTML='<div class="rt-rn">💾 '+esc(m.n)+'</div><div class="rt-ra">'+esc(rtMemSummary(m))+'</div>';
+      el.className="rtrow mem"+(rtMemEq(m)?" on":"");   /* 呼び出し中＝バーと一致する行を強調（v0.68.0） */
+      /* v0.68.0: 行は名称のみ。行程のあらましは見切れて読めない＝タップすれば上に出る（コーイチさん指摘）。
+         あらまし自体は長押しメニューの中に残っている */
+      el.innerHTML='<div class="rt-rn">💾 '+esc(m.n)+'</div>';
       el.onclick=()=>{
         if(rtLongAte(el))return;
         rtApplyMem(m);                      /* タップした瞬間に上のバーへ反映 */
@@ -6241,7 +6282,7 @@ function rtRenderList(){
     el.className="rtrow"; el.style.setProperty("--nrc",catColor(p.cat));
     el.innerHTML='<div class="rt-rn">'+esc(p.name)+'</div><div class="rt-ra">'+esc(p.addr||"")+'</div>';
     el.onclick=()=>{
-      if(!RT.sel){ toast("上の枠（出発地・①②③・目的地）をタップしてから選んでください"); return; }
+      if(!RT.sel){ toast("上の枠（出発地・①〜⑤・目的地）をタップしてから選んでください"); return; }
       rtSet(RT.sel,p.id);
       RT.sel=rtNextEmpty();                      /* 次の空枠へ自動移動＝順にタップするだけで組める */
       rtRender();
@@ -6278,7 +6319,7 @@ document.getElementById("rtGo").onclick=()=>{
 document.getElementById("rtClear").onclick=()=>{
   if(!RT_SLOTS.some(sl=>rtGet(sl))) return;
   const prev={s:RT.cur.s,w:RT.cur.w.slice(),d:RT.cur.d};
-  RT.cur={s:null,w:[null,null,null],d:null}; rtSaveCur();
+  RT.cur={s:null,w:rtW5(),d:null}; rtSaveCur();
   RT.sel=rtNextEmpty(); rtRender();
   toast("クリアしました","取り消す",()=>{RT.cur=prev; rtSaveCur(); RT.sel=null; rtRender();});
 };
@@ -6289,7 +6330,7 @@ document.getElementById("rtClear").onclick=()=>{
 document.getElementById("rtRev").onclick=()=>{
   if(!RT_SLOTS.some(sl=>rtGet(sl))){ toast("先に経由地リストを組んでください"); return; }
   const c=RT.cur, w=c.w.filter(Boolean).reverse();
-  RT.cur={s:c.d,w:[w[0]||null,w[1]||null,w[2]||null],d:c.s};
+  RT.cur={s:c.d,w:rtW5(w),d:c.s};
   rtSaveCur();
   RT.sel=rtGet("d")?null:"d";
   rtRender();
