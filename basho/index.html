@@ -1030,7 +1030,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.66.0";
+const VER = "0.67.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -3745,30 +3745,64 @@ function nvSetHead(v){
     NV.map.invalidateSize();
     /* 回転中はLeaflet標準ドラッグを止め、下の自前ドラッグ（回転を逆補正）が引き継ぐ */
     if(NV.map.dragging){ v?NV.map.dragging.disable():NV.map.dragging.enable(); }
+    /* 標準ピンチも同じ理由で止める（CSS回転を知らず、逆を向くと指と地図が逆に動く）
+       ＝下の自前ピンチ（回転を逆補正）が引き継ぐ（v0.67.0） */
+    if(NV.map.touchZoom){ v?NV.map.touchZoom.disable():NV.map.touchZoom.enable(); }
     if(NV.follow&&NV.lastFix) NV.map.panTo([NV.lastFix.lat,NV.lastFix.lng]);
   }
   nvApplyRot();
 }
-/* 「向き上」用の自前1本指ドラッグ: 指の動きを回転角ぶん逆補正してpan
-   （Leaflet標準dragはCSS回転を知らず指とズレるため。2本指ピンチはLeafletに任せる） */
+/* 「向き上」用の自前1本指ドラッグ＋2本指ピンチ: 指の動きを回転角ぶん逆補正して地図に渡す
+   （Leaflet標準のdrag/ピンチはCSS回転を知らないため、回転中は指と地図がズレる。
+     北が上の時はLeaflet標準のまま。v0.67.0でピンチも自前化） */
 (function(){
   const el=document.getElementById("nvMap");
-  const pts=new Map(); let dragging=false, moved=0;
+  const pts=new Map(); let dragging=false, moved=0, pinch=null;
+  /* 画面座標→回転を逆算したLeafletコンテナ座標（回転は#nvMap中心まわり） */
+  const cpt=(x,y)=>{
+    const r=el.getBoundingClientRect(), th=-NV.rotShown*Math.PI/180;
+    const dx=x-(r.left+r.width/2), dy=y-(r.top+r.height/2), s=NV.map.getSize();
+    return L.point(dx*Math.cos(th)-dy*Math.sin(th)+s.x/2, dx*Math.sin(th)+dy*Math.cos(th)+s.y/2);
+  };
+  const pinchOK=()=>NV.headUp&&NV.mode!=="pick"&&NV.map;
   el.addEventListener("pointerdown",e=>{
     pts.set(e.pointerId,[e.clientX,e.clientY]);
     dragging=(pts.size===1&&NV.headUp&&NV.mode!=="pick"); moved=0;
+    if(pts.size===2&&pinchOK()){
+      dragging=false;
+      const [a,b]=[...pts.values()], c=cpt((a[0]+b[0])/2,(a[1]+b[1])/2);
+      pinch={d0:Math.hypot(a[0]-b[0],a[1]-b[1]),z0:NV.map.getZoom(),anchor:NV.map.containerPointToLatLng(c)};
+    }
   });
   el.addEventListener("pointermove",e=>{
     if(!pts.has(e.pointerId)) return;
     const p=pts.get(e.pointerId), dx=e.clientX-p[0], dy=e.clientY-p[1];
     pts.set(e.pointerId,[e.clientX,e.clientY]);
+    if(pinch&&pts.size===2&&pinchOK()){
+      const [a,b]=[...pts.values()], d=Math.hypot(a[0]-b[0],a[1]-b[1]);
+      if(!d||!pinch.d0) return;
+      if(NV.follow) nvFollow(false);
+      const z=Math.max(NV.map.getMinZoom(),Math.min(NV.map.getMaxZoom(),pinch.z0+Math.log2(d/pinch.d0)));
+      const c=cpt((a[0]+b[0])/2,(a[1]+b[1])/2), s=NV.map.getSize();
+      /* ピンチ開始時に指の中心にあった地点を、今の指の中心に置き続ける＝指に地図が吸い付く */
+      NV.map._move(NV.map.unproject(NV.map.project(pinch.anchor,z).subtract(c.subtract(s.divideBy(2))),z),z);
+      return;
+    }
     if(!dragging||pts.size!==1||!NV.headUp||!NV.map) return;
     moved+=Math.abs(dx)+Math.abs(dy);
     if(moved>6&&NV.follow) nvFollow(false);
     const th=NV.rotShown*Math.PI/180;
     NV.map.panBy([-(dx*Math.cos(th)+dy*Math.sin(th)), -(-dx*Math.sin(th)+dy*Math.cos(th))],{animate:false});
   });
-  const up=e=>{ pts.delete(e.pointerId); if(pts.size!==1) dragging=false; };
+  const up=e=>{
+    pts.delete(e.pointerId);
+    if(pts.size!==1) dragging=false;
+    if(pinch&&pts.size<2){
+      pinch=null;
+      /* Leaflet標準と同じく、指を離したら一番近い目盛りへ揃える（端数ズームのボヤけ防止） */
+      if(NV.map){const z=NV.map.getZoom(); if(Math.abs(z-Math.round(z))>0.01) NV.map.setZoom(Math.round(z));}
+    }
+  };
   el.addEventListener("pointerup",up); el.addEventListener("pointercancel",up);
 })();
 function nvWakeLock(){
