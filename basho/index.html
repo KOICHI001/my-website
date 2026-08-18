@@ -1045,7 +1045,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.68.0";
+const VER = "0.69.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2081,17 +2081,22 @@ function q(p){
   if(p.lat&&p.lng) return p.lat+","+p.lng;
   return encodeURIComponent(name);
 }
+/* 📌正確なピン（v0.69.0 実機FB「鎌倉の実家」）: 「名前+住所」の文字でGoogleに検索させると、
+   自作の名前だと文字が手がかりになって実在の別の店に当たることがある→チェックした場所は
+   住所があっても保存座標のピンで開く。実在のお店はチェックなし＝従来どおり検索で
+   「お店カード」（営業時間・口コミ）が開く。座標が無ければ意味を成さないので従来動作 */
+function pinMode(p){ return !!(p.pin&&p.lat&&p.lng); }
 function openMap(p){ bump(p);
   /* ★住所が分かっているなら、それで開くのが最優先（v0.29.0）。
      ピン長押しの共有リンクは短縮URL（maps.app.goo.gl/…）でも中身は座標のピンなので、
      リンクを先に開くとマップの名称欄に数字の羅列が出てしまう＝実機のレコードで確認済み。
      短縮URLは中身が見えず見分けられないため、住所があればそちらを信じる */
-  if((p.addr||"").trim()) return openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
-  if(p.url) return openUrl(p.url);
-  /* 住所が無く名前+座標だけの時はラベル付きピン＝マップの名称欄に登録名が出る
+  if(!pinMode(p)&&(p.addr||"").trim()) return openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
+  if(!pinMode(p)&&p.url) return openUrl(p.url);
+  /* 名前+座標で開く時はラベル付きピン＝マップの名称欄に登録名が出る
      （query=座標だけだと座標文字列がそのまま名称になる）。
      Android=geo:のラベル付きピン（マップアプリの定番機能）／それ以外=従来の検索URL */
-  if(!(p.addr||"").trim()&&p.lat&&p.lng&&p.name){
+  if(p.lat&&p.lng&&p.name){
     const label="("+encodeURIComponent(p.name)+")";
     const web="https://maps.google.com/maps?q="+p.lat+","+p.lng+label;
     /* Android: intent://でGoogleマップへ直行（geo:だとアプリ選択が出る端末がある）。
@@ -2109,8 +2114,9 @@ function openMap(p){ bump(p);
   openUrl("https://www.google.com/maps/search/?api=1&query="+q(p));
 }
 function openRoute(p){ bump(p);
-  /* 旧式daddr形式＝経路画面が残っていても地図が経路全体に飛ぶ（api=1・@カメラ付きdirは既存の経路画面が残ると前回位置のまま＝実機検証済み） */
-  openUrl("https://maps.google.com/maps?daddr="+q(p));
+  /* 旧式daddr形式＝経路画面が残っていても地図が経路全体に飛ぶ（api=1・@カメラ付きdirは既存の経路画面が残ると前回位置のまま＝実機検証済み）。
+     📌の場所は行き先も座標で渡す＝「MAPは正しいのに経路は別の場所へ案内」の食い違いを防ぐ */
+  openUrl("https://maps.google.com/maps?daddr="+(pinMode(p)?p.lat+","+p.lng:q(p)));
 }
 function openByName(p){ bump(p); openUrl("https://www.google.com/maps/search/?api=1&query="+encodeURIComponent(p.name+" "+(p.addr||""))); }
 /* 使用回数は静かに保存だけ（ここでrenderすると「よく行く順」が即並び替わり、
@@ -3333,6 +3339,15 @@ function form(d){
       '🙈 一覧に出さない</label>'+
     '<div class="hint">道路の経由地など、ふだんの一覧に混ぜたくない場所に。'+
     '検索に当たった時と、本棚で本を開いた中ではこれまでどおり表示されます。</div>'+
+    /* 📌正確なピン（v0.69.0 コーイチさん実機FB「鎌倉の実家」が別の場所に）＝
+       自作の名前の場所は名前+住所の検索で別の店に当たることがある→座標ピンで開く */
+    '<label style="display:flex;align-items:center;gap:9px;padding:12px 2px 2px;font-size:15px;cursor:pointer">'+
+      '<input type="checkbox" id="f_pin" style="width:20px;height:20px"'+(d.pin?" checked":"")+'>'+
+      '📌 MAP・経路は正確なピン（座標）で開く</label>'+
+    '<div class="hint">「鎌倉の実家」のように<b>自分で名前を付けた場所</b>に。'+
+    '名前と住所でGoogleに検索させると別の場所が出ることがあるため、'+
+    '保存してある座標のピンで開きます（座標が入っていることが必要です）。'+
+    '実在のお店はチェックなしのままが便利です（営業時間・口コミ付きのお店カードが開きます）。</div>'+
     '<div class="sheet-actions">'+
       (d.__new?'':'<button class="btn del" id="del">削除</button>')+   /* 新規はまだ何も無い＝削除は出さない */
       '<button class="btn" id="cancel">やめる</button>'+
@@ -3460,6 +3475,7 @@ function form(d){
       acc:(la+","+lo===accFor)?accPend:null,updated:Date.now()});
     const sfv=v("f_sf"); if(sfv)d.sf=sfv; else delete d.sf;
     if(document.getElementById("f_hide").checked)d.hide=1; else delete d.hide;
+    if(document.getElementById("f_pin").checked)d.pin=1; else delete d.pin;
     if(d.__new){ delete d.__new; places.push(d); }   /* 新規はここで初めてリスト入り */
     updatePref(d);
     save(); closeSheet(); toast("保存しました");
@@ -4147,6 +4163,7 @@ const HELP_SECS=[
  '<li><span class="hp-btn">☆</span>は「よく行く」印。タップで★になり、一覧の上のほうに並びます。</li>'+
  '<li>写真の段：<span class="hp-btn">📷写真</span> <span class="hp-btn">📁保存画像</span> <span class="hp-btn">🔗リンクPDF</span> <span class="hp-btn">⇅並び順</span>（→「写真・リンク・PDF」）。</li>'+
  '<li>下の4ボタン：<span class="hp-btn">地図を開く</span>＝Googleマップでその場所を表示 / <span class="hp-btn">経路</span>＝そこまでの道順 / <span class="hp-btn">場所周辺</span>＝その場所のまわりの登録場所 / <span class="hp-btn">到達距離</span>＝今の自分との位置・距離を拡大地図で。</li>'+
+ '<li>「実家」のように<b>自分で名前を付けた場所</b>が、地図を開くと別の場所を差すことがあります（名前と住所でGoogleに検索させているため）。その場所の編集画面で<b>「📌 MAP・経路は正確なピン（座標）で開く」</b>にチェックを入れると、保存してある座標のとおりに開きます。</li>'+
  '<li><b>リスト表示</b>（線3本のボタンで切り替え）では、左の<b>名前タップ＝編集</b>、右の3ボタンで地図・場所周辺・到達距離がすぐ開けます。</li>'+
  '</ul>'+
  '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で座標決め」でピンを置くと白になります。</div>'},
@@ -6307,7 +6324,8 @@ document.getElementById("rtGo").onclick=()=>{
   if(!d){ toast("目的地を選んでください（目的地の枠をタップ→下のリストから）"); return; }
   const s=rtP(RT.cur.s);
   const ws=RT.cur.w.map(rtP).filter(Boolean);
-  let u="https://www.google.com/maps/dir/?api=1&destination="+q(d);
+  /* 目的地は名称+住所優先（お店カードが出る）だが、📌の場所は座標で（v0.69.0） */
+  let u="https://www.google.com/maps/dir/?api=1&destination="+(pinMode(d)?d.lat+","+d.lng:q(d));
   if(s) u+="&origin="+rtQ(s);
   if(ws.length) u+="&waypoints="+ws.map(rtQ).join("%7C");
   [s,d].concat(ws).filter(Boolean).forEach(p=>{p.count=(p.count||0)+1;p.used=Date.now();});
