@@ -1,5 +1,5 @@
 /* 場所帳 service worker  Enetwork first�E�更新が確実に届く方式！E*/
-const CACHE = "basho-v0.69.0";
+const CACHE = "basho-v0.70.0";
 /* OCRエンジン�E�Ecr/ 紁E0MB・冁E��不変）�E別キャチE��ュ�E�cache first �E�E毎回の再DLも版上げ時�E再DLもしなぁE*/
 const OCR_CACHE = "basho-ocr-v1";
 /* v0.37.0: ヘルプを画像からHTML本斁E��刷新�E�help01、E4.pngは同梱・precacheともに廁E�� */
