@@ -329,10 +329,13 @@
   .r-acts button:active{background:rgba(27,36,34,.08)}
   .r-acts button.warn{color:var(--danger);background:rgba(163,58,42,.06)}
   /* 写真がある行だけ名前の右に 📷枚数（タップ=縦閲覧・v0.64.0 コーイチさん発案）。
-     上下いっぱいに伸ばして細い行でも指が届くようにする */
-  .r-ph{flex:none;align-self:stretch;border:0;background:none;color:var(--soft);
-    font-size:11px;font-weight:700;padding:0 8px;cursor:pointer;font-family:var(--gothic);letter-spacing:0}
-  .r-ph:active{background:rgba(11,110,95,.07)}
+     上下いっぱいに伸ばして細い行でも指が届くようにする。
+     v0.73.0: 左に縦線+ボタンと同じ薄い背景＝｜📷｜地図｜とボタンの仲間だと見た目で示す。
+     幅は固定＝どのカードでも縦線が同じ位置に来る（写真なしの行は今までどおり何も出ない） */
+  .r-ph{flex:none;align-self:stretch;border:0;border-left:1px solid var(--line);
+    background:rgba(11,110,95,.045);color:var(--soft);min-width:44px;padding:0 4px;text-align:center;
+    font-size:11px;font-weight:700;cursor:pointer;font-family:var(--gothic);letter-spacing:0}
+  .r-ph:active{background:rgba(27,36,34,.08)}
   /* ───── 周辺モード（拡大地図ナビ） ───── */
   .nvov{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;flex-direction:column;
     touch-action:none}   /* 地図中はブラウザのスクロール/引っ張って更新を渡さない */
@@ -1051,7 +1054,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.72.0";
+const VER = "0.73.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2511,13 +2514,15 @@ function _renderBody(){
       /* 画像がある行だけ名前の右に 📷枚数（写真が無く添付だけなら📎）。タップ=いつもの縦閲覧
          （v0.64.0 コーイチさん発案。場所周辺の nr-p と同じ目印をタイル・リストにも） */
       const np=(p.ph||[]).length, na=(p.att||[]).length;
+      /* ボタン名はこのモードだけ省略形（v0.73.0 コーイチさん要望＝リスト表示の肝は名称の視認性。
+         地図=地図を開く/周辺=場所周辺/距離=到達距離。📷も左に縦線＝ボタンの仲間だと見た目で示す） */
       el.innerHTML=
         '<button class="r-name">'+(p.fav?"★ ":"")+esc(p.name)+'</button>'+
         (np||na?'<button class="r-ph" aria-label="画像を見る">'+(np?"📷"+np:"📎"+na)+'</button>':'')+
         '<div class="r-acts">'+
-          '<button data-a="map"'+(hasSpot(p)?'':' class="warn"')+'>地図を開く</button>'+
-          '<button data-a="area"'+((p.lat&&p.lng)?'':' class="warn"')+'>場所周辺</button>'+
-          '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>到達距離</button>'+
+          '<button data-a="map"'+(hasSpot(p)?'':' class="warn"')+'>地図</button>'+
+          '<button data-a="area"'+((p.lat&&p.lng)?'':' class="warn"')+'>周辺</button>'+
+          '<button data-a="nav"'+(goodPin(p)?'':' class="warn"')+'>距離</button>'+
         '</div>';
       el.querySelector(".r-name").onclick=()=>form(p);
       const rp=el.querySelector(".r-ph");
@@ -4170,7 +4175,7 @@ const HELP_SECS=[
  '<li>写真の段：<span class="hp-btn">📷写真</span> <span class="hp-btn">📁保存画像</span> <span class="hp-btn">🔗リンクPDF</span> <span class="hp-btn">⇅並び順</span>（→「写真・リンク・PDF」）。</li>'+
  '<li>下の4ボタン：<span class="hp-btn">地図を開く</span>＝Googleマップでその場所を表示 / <span class="hp-btn">経路</span>＝そこまでの道順 / <span class="hp-btn">場所周辺</span>＝その場所のまわりの登録場所 / <span class="hp-btn">到達距離</span>＝今の自分との位置・距離を拡大地図で。</li>'+
  '<li>「実家」のように<b>自分で名前を付けた場所</b>が、地図を開くと別の場所を差すことがあります（名前と住所でGoogleに検索させているため）。その場所の編集画面で<b>「📌 MAP・経路は正確なピン（座標）で開く」</b>にチェックを入れると、保存してある座標のとおりに開きます。</li>'+
- '<li><b>リスト表示</b>（線3本のボタンで切り替え）では、左の<b>名前タップ＝編集</b>、右の3ボタンで地図・場所周辺・到達距離がすぐ開けます。</li>'+
+ '<li><b>リスト表示</b>（線3本のボタンで切り替え）では、左の<b>名前タップ＝編集</b>、右のボタンは<span class="hp-btn">地図</span>＝地図を開く／<span class="hp-btn">周辺</span>＝場所周辺／<span class="hp-btn">距離</span>＝到達距離の省略名です。写真がある場所は名前の右に<b>📷枚数のボタン</b>（タップ＝写真の縦閲覧）。</li>'+
  '</ul>'+
  '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で座標決め」でピンを置くと白になります。</div>'},
 {id:"reg1",t:"登録① 「ここを登録」ボタン",h:
