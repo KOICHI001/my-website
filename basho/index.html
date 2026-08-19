@@ -362,7 +362,8 @@
   .nv-note b{color:var(--route)}
   /* 自位置マーカー（青丸＋向きの扇） */
   .me-wrap{position:relative;width:0;height:0}
-  .me-cone{position:absolute;left:-26px;top:-26px;width:52px;height:52px;border-radius:50%;
+  /* 向きの扇: 半径26px→36pxに延長（v0.72.0 コーイチさん要望「向きのマークをもう少し長く」。青丸の大きさは不変） */
+  .me-cone{position:absolute;left:-36px;top:-36px;width:72px;height:72px;border-radius:50%;
     background:conic-gradient(from -30deg,rgba(28,110,225,.34) 0 60deg,transparent 60deg);
     transform-origin:50% 50%;display:none}
   .me-dot{position:absolute;left:-8px;top:-8px;width:16px;height:16px;border-radius:50%;
@@ -1050,7 +1051,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.71.0";
+const VER = "0.72.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
