@@ -589,6 +589,10 @@
   .nearrow .nr-c{font-size:11px;font-weight:700;color:var(--nrc,#6B7280);letter-spacing:.04em}
   /* 写真がある場所だけ 📷 枚数（名称タップ=縦閲覧 の目印・v0.59.0） */
   .nearrow .nr-p{margin-left:6px;font-size:10px;font-weight:700;color:var(--soft);letter-spacing:0}
+  /* 場所周辺の自分の位置＝黄色い★（濃い縁取り＋影で白い地図でも埋もれない） */
+  .nr-me{position:absolute;transform:translate(-50%,-50%);font-size:28px;line-height:1;
+    color:#FFD22E;-webkit-text-stroke:1.5px #8A6400;
+    filter:drop-shadow(0 1px 3px rgba(0,0,0,.45))}
   .nearrow .nr-n{font-family:var(--mincho);font-size:15px;font-weight:600;
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .nearrow .nr-d{font-size:14px;font-weight:700;color:var(--route);white-space:nowrap}
@@ -1046,7 +1050,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.70.0";
+const VER = "0.71.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4221,7 +4225,7 @@ const HELP_SECS=[
 {id:"area",t:"「周辺」「場所周辺」ボタン",h:
  '<p>登録した場所を「まわり」から眺める画面です。<b>いちばん上＝今の中心のカード（太枠）、その下＝近い順のカード列、いちばん下＝地図</b>。カードをスクロールすると地図の点も大きくなって連動します（地図の点をタップしてもOK）。</p>'+
  '<ul>'+
- '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>を真ん中にして見ます。</li>'+
+ '<li><b>メイン画面の</b><span class="hp-btn">📍 周辺</span> … <b>現在地</b>を真ん中にして見ます。自分のいる位置は<b>黄色い★</b>です。登録した場所の点と重なっても、★は必ず上に見えます。</li>'+
  '<li><b>カードの</b><span class="hp-btn">場所周辺</span> … <b>その場所</b>を真ん中にして見ます。「泊まるホテルのまわりに何を登録してあったかな」というときに。</li>'+
  '<li><b>地図はふつうに拡大・縮小できます</b>（2本指・ダブルタップ）。<b>上に並ぶカード＝いま地図に見えている場所</b>なので、寄れば絞られ、引けば増えます。日本全体まで引けば登録した場所が全部並びます（中心から近い順）。</li>'+
  '<li><b>地図の点を長押し＝その場所が新しい中心に</b> … 遠くに見つけた点でも、長押しすればそこが太枠のカードになり、並び順もそこから近い順に変わります。地図の縮尺はそのままなので、見て回っている流れが切れません。</li>'+
@@ -5895,6 +5899,10 @@ function nearInitMap(){
     {maxZoom:20,maxNativeZoom:19,attribution:'&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'});
   /* ふつうの地図（ピンチ拡縮・ドラッグ・ダブルタップ全部あり） */
   NEAR.map=L.map("nearMap",{zoomControl:false,boxZoom:false,keyboard:false});
+  /* 中心の印（自分の★や中心の丸）は専用ペインで常に登録場所の点より上に描く
+     ＝点が近くに密集しても自分の位置を見失わない（v0.71.0 コーイチさん実機FB）。
+     640=点(overlayPane 400)より上・名前ラベル(tooltipPane 650)より下 */
+  NEAR.map.createPane("nearMe").style.zIndex=640;
   NEAR.map.attributionControl.setPosition("topright");
   NEAR.osm.addTo(NEAR.map);
   /* 地図を動かし終わるたびにカード列を作り直す＝「見えている点＝並んでいるカード」を保つ。
@@ -5964,10 +5972,13 @@ function nearRender(){
   NEAR.map.setView([c.lat,c.lng],NEAR.z||15,{animate:false});
   Object.values(NEAR.dots).forEach(m=>NEAR.map.removeLayer(m)); NEAR.dots={};
   if(NEAR.meMk){NEAR.map.removeLayer(NEAR.meMk);NEAR.meMk=null;}
-  /* 真ん中の印: 現在地=青丸／場所を中心にした時=その本の色で一回り大きく（自分と見間違えない） */
-  NEAR.meMk=L.circleMarker([c.lat,c.lng],
-    NEAR.at?{radius:11,color:"#fff",weight:3.5,fillColor:catColor(NEAR.at.cat),fillOpacity:1}
-           :{radius:8,color:"#fff",weight:2.5,fillColor:"#2A6BC9",fillOpacity:1}).addTo(NEAR.map);
+  /* 真ん中の印: 現在地=黄色い★（v0.71.0 コーイチさん発案・青丸は点と見分けにくかった）／
+     場所を中心にした時=その本の色で一回り大きく（自分と見間違えない）。
+     どちらも nearMe ペイン＝他の点と重なっても必ず上。★は interactive:false＝重なった点のタップを邪魔しない */
+  NEAR.meMk=NEAR.at
+    ?L.circleMarker([c.lat,c.lng],{pane:"nearMe",radius:11,color:"#fff",weight:3.5,fillColor:catColor(NEAR.at.cat),fillOpacity:1}).addTo(NEAR.map)
+    :L.marker([c.lat,c.lng],{pane:"nearMe",interactive:false,
+       icon:L.divIcon({className:"",iconSize:[0,0],html:'<div class="nr-me">★</div>'})}).addTo(NEAR.map);
   if(NEAR.at) NEAR.meMk.bindTooltip(NEAR.at.name,{permanent:true,direction:"top",offset:[0,-6]});
   /* 登録場所は全部おなじ点（v0.60.0で円が無くなった＝うすい点の区別も無くなった）。
      タップ=そのカードへジャンプ／長押し=そこを新しい中心に */
