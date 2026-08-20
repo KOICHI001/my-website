@@ -150,6 +150,26 @@
     padding:10px 18px;font-size:13.5px;font-family:var(--gothic);cursor:pointer;color:var(--ink)}
   .dlg-btns button.pri{background:var(--route);border-color:var(--route);color:#fff;font-weight:700}
 
+  /* 新規登録の2択（v0.74.0）: 左右の大きなカード型ボタン。z74=注意ダイアログ(76)より下・シート(40)より上 */
+  .pinask{position:fixed;inset:0;z-index:74;background:rgba(27,36,34,.45);display:none;
+    align-items:center;justify-content:center;padding:20px}
+  .pinask.on{display:flex}
+  .pinask-box{background:var(--paper);border-radius:16px;max-width:420px;width:100%;
+    padding:18px 14px 14px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+  .pinask-t{font-family:var(--mincho);font-weight:700;font-size:18px;letter-spacing:.06em;
+    text-align:center;margin-bottom:4px;color:var(--ink)}
+  .pinask-m{font-size:12px;color:var(--soft);text-align:center;margin-bottom:12px}
+  .pinask-ops{display:flex;gap:10px;align-items:stretch}
+  .pinask-ops button{flex:1;min-width:0;border:2px solid var(--line);border-radius:14px;
+    background:var(--card);padding:14px 10px 12px;cursor:pointer;color:var(--ink);
+    font-family:var(--gothic);display:flex;flex-direction:column;gap:8px;align-items:center}
+  .pinask-ops button:active{background:rgba(11,110,95,.07);border-color:var(--route)}
+  .pinask-ops .po-i{font-size:30px;line-height:1}
+  .pinask-ops .po-t{font-size:14px;font-weight:700;line-height:1.4;text-align:center}
+  .pinask-ops .po-s{font-size:11px;color:var(--soft);line-height:1.6;text-align:left}
+  .pinask-back{display:block;margin:12px auto 0;border:1px solid var(--line);background:var(--card);
+    border-radius:10px;padding:9px 24px;font-size:13px;font-family:var(--gothic);cursor:pointer;color:var(--ink)}
+
   /* ライトボックス */
   .lb{position:fixed;inset:0;background:rgba(10,14,13,.93);z-index:70;display:none;
     align-items:center;justify-content:center}
@@ -997,6 +1017,23 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
     <div class="dlg-btns" id="dlgBtns"></div>
   </div>
 </div>
+<!-- 新規登録の2択（v0.74.0 コーイチさん発案）: 📌「正確なピンで開く」は編集シートの奥では
+     初見が必ず見落とす→登録の瞬間に一度だけ選んでもらう。タップ=選んでそのまま登録完了 -->
+<div class="pinask" id="pinask">
+  <div class="pinask-box">
+    <div class="pinask-t">どちらの登録ですか？</div>
+    <div class="pinask-m">タップするとそのまま登録されます（あとから編集画面で変えられます）</div>
+    <div class="pinask-ops">
+      <button id="paShop"><span class="po-i">🏪</span>
+        <span class="po-t">お店・施設の<br>名前のまま</span>
+        <span class="po-s">Googleマップの場所名を変えていない登録。MAPで開くと、営業時間・口コミ付きのお店カードが出ます。</span></button>
+      <button id="paPin"><span class="po-i">📌</span>
+        <span class="po-t">名前を自分で付けた<br>／地図で位置を決めた</span>
+        <span class="po-s">Googleマップに無い名前でもOK。MAP・経路は保存した座標のとおりの位置で開きます（緯度経度の座標が必要）。</span></button>
+    </div>
+    <button class="pinask-back" id="paBack">← 入力に戻る</button>
+  </div>
+</div>
 <div class="pv" id="pv">
   <div class="pv-head">
     <button class="pv-back" id="pvBack" aria-label="戻る">←</button>
@@ -1054,7 +1091,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.73.0";
+const VER = "0.74.0";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -1853,6 +1890,27 @@ function dlgClose(){
 }
 dlg.onclick=e=>{ if(e.target===dlg) dlgClose(); };
 
+/* 新規登録の2択（v0.74.0 コーイチさん発案）: 📌チェックは編集シートの奥＝初見が必ず見落とす→
+   登録の瞬間に「お店の名前のまま／自分で付けた名前」を必ず一度選んでもらう。
+   タップ=即登録（チェック→登録ボタンの2度手間と「両方チェック」の迷子状態を作らない）。
+   共有からの登録と一括取込は名前がGoogleマップ由来＝聞かずに従来どおり（お店のまま）。
+   cbに渡す値: true=📌ピン / false=お店のまま。「← 入力に戻る」はcbを呼ばずシートに帰る */
+function pinAsk(cb){
+  const ov=document.getElementById("pinask");
+  ov.classList.add("on");
+  const done=v=>{ ov.classList.remove("on"); if(v!=null)cb(v); };
+  document.getElementById("paShop").onclick=()=>done(false);
+  document.getElementById("paPin").onclick=()=>done(true);
+  document.getElementById("paBack").onclick=()=>done(null);
+  ov.onclick=e=>{ if(e.target===ov)done(null); };
+}
+/* 📌を選んだのに座標が無い時の案内（登録は通す＝あとから入れられる） */
+function pinCoordNote(p){
+  if(!(p.pin&&!(p.lat&&p.lng))) return;
+  dlgOpen("座標がまだ入っていません。\nこのカードの編集を開き、「🗺 地図で位置を決める」か「📍 現在地で上書き」で座標を入れると、MAP・経路が正しい位置で開きます。",
+    false,null,{title:"📌 座標の設定を忘れずに"});
+}
+
 /* ライトボックス */
 const lb=document.getElementById("lb");
 let lbList=[], lbIdx=0;
@@ -2288,15 +2346,8 @@ function renderTop(){
   _renderBody();
   (document.scrollingElement||document.documentElement).scrollTop=0;
 }
-/* 登録直後、本棚タブにいるなら登録先の本の中を開く＝どの本に入ったか迷わない */
-function showInBook(cat){
-  if(homeTab!=="shelf") return;
-  const nc=CATS.some(x=>x.n===cat)?cat:CAT_OTHER.n;
-  if(shelfCat!==nc) shelfSub=null;   /* 別の本に移る時はフォルダ表示を解除 */
-  shelfCat=nc;
-  renderTop();
-}
 /* v0.36.0: その場所のカードの所まで連れて行く（周辺ビューで見つけた店の情報がすぐ見られるように）。
+   v0.74.0からは新規登録の直後にも必ず呼ぶ＝登録したカードが絞り込みで隠れて「探しに行く羽目」を無くす。
    ★絞り込みや検索が効いているとカードが出てこないので、その場所が隠れる条件だけを外す
      （関係ない絞り込みはそのまま＝画面が勝手に変わりすぎないように）。
    本棚にいる時は、その場所が入っている本（＋小フォルダ）を開く＝カテゴリが違っても迷子にならない */
@@ -3152,11 +3203,17 @@ function quickAdd(){
     };
     const sfv=(document.getElementById("f_sf")||{value:""}).value.trim();
     if(sfv) rec.sf=sfv;
-    updatePref(rec);
-    places.push(rec); save(); closeSheet();
-    showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
-    toast(b ? "「"+name+"」を登録しました" : "「"+name+"」を登録（位置はあとで）",
-      "取り消す",()=>{ places=places.filter(x=>x.id!==rec.id); save(); toast("取り消しました"); });
+    /* GPS登録は名前を自分で打つ＝2択（お店のまま／📌）を経て登録（v0.74.0）。
+       登録後は revealPlace＝絞り込み中でも必ずその新規カードを画面に出す */
+    pinAsk(pin=>{
+      if(pin)rec.pin=1;
+      updatePref(rec);
+      places.push(rec); save(); closeSheet();
+      revealPlace(rec);
+      toast(b ? "「"+name+"」を登録しました" : "「"+name+"」を登録（位置はあとで）",
+        "取り消す",()=>{ places=places.filter(x=>x.id!==rec.id); save(); toast("取り消しました"); });
+      pinCoordNote(rec);
+    });
   };
 }
 
@@ -3302,7 +3359,9 @@ function shareAdd(name,url,c,addr){
     const sfv=(document.getElementById("f_sf")||{value:""}).value.trim();
     if(sfv) rec.sf=sfv;
     updatePref(rec); places.push(rec); save(); closeSheet();
-    showInBook(rec.cat);   /* 本棚タブなら登録先の本の中を見せる */
+    /* 共有は名前がGoogleマップ由来＝2択(pinAsk)は出さず従来どおり（お店のまま）。
+       登録後は revealPlace＝絞り込み中でも必ずその新規カードを画面に出す（v0.74.0） */
+    revealPlace(rec);
     /* v0.40.0: 座標なしでもピン置きは自動で開かない（自動検索が外れて「全然違う場所」が
        出ることが多く混乱のもと＝コーイチさん実使用FB）。位置が要る「近く」「周辺」を
        押した時に、その場で設定するか選んでもらう方式へ */
@@ -3351,14 +3410,16 @@ function form(d){
     '<div class="hint">道路の経由地など、ふだんの一覧に混ぜたくない場所に。'+
     '検索に当たった時と、本棚で本を開いた中ではこれまでどおり表示されます。</div>'+
     /* 📌正確なピン（v0.69.0 コーイチさん実機FB「鎌倉の実家」が別の場所に）＝
-       自作の名前の場所は名前+住所の検索で別の店に当たることがある→座標ピンで開く */
+       自作の名前の場所は名前+住所の検索で別の店に当たることがある→座標ピンで開く。
+       v0.74.0: 新規はこのチェックを出さない＝「保存する」の後の2択(pinAsk)で決める */
+    (d.__new?'':
     '<label style="display:flex;align-items:center;gap:9px;padding:12px 2px 2px;font-size:15px;cursor:pointer">'+
       '<input type="checkbox" id="f_pin" style="width:20px;height:20px"'+(d.pin?" checked":"")+'>'+
       '📌 MAP・経路は正確なピン（座標）で開く</label>'+
     '<div class="hint">「鎌倉の実家」のように<b>自分で名前を付けた場所</b>に。'+
     '名前と住所でGoogleに検索させると別の場所が出ることがあるため、'+
     '保存してある座標のピンで開きます（座標が入っていることが必要です）。'+
-    '実在のお店はチェックなしのままが便利です（営業時間・口コミ付きのお店カードが開きます）。</div>'+
+    '実在のお店はチェックなしのままが便利です（営業時間・口コミ付きのお店カードが開きます）。</div>')+
     '<div class="sheet-actions">'+
       (d.__new?'':'<button class="btn del" id="del">削除</button>')+   /* 新規はまだ何も無い＝削除は出さない */
       '<button class="btn" id="cancel">やめる</button>'+
@@ -3486,8 +3547,22 @@ function form(d){
       acc:(la+","+lo===accFor)?accPend:null,updated:Date.now()});
     const sfv=v("f_sf"); if(sfv)d.sf=sfv; else delete d.sf;
     if(document.getElementById("f_hide").checked)d.hide=1; else delete d.hide;
-    if(document.getElementById("f_pin").checked)d.pin=1; else delete d.pin;
-    if(d.__new){ delete d.__new; places.push(d); }   /* 新規はここで初めてリスト入り */
+    /* 📌チェックは編集の時だけシートにある（新規は次の2択で決める） */
+    const pinEl=document.getElementById("f_pin");
+    if(pinEl){ if(pinEl.checked)d.pin=1; else delete d.pin; }
+    if(d.__new){
+      /* 新規: 2択（お店のまま／📌自分で付けた名前）を経て登録（v0.74.0）。
+         登録後は revealPlace＝絞り込み中でも必ずその新規カードを画面に出す */
+      pinAsk(pin=>{
+        if(pin)d.pin=1; else delete d.pin;
+        delete d.__new; places.push(d);
+        updatePref(d); save(); closeSheet();
+        revealPlace(d);
+        toast("「"+d.name+"」を登録しました");
+        pinCoordNote(d);
+      });
+      return;
+    }
     updatePref(d);
     save(); closeSheet(); toast("保存しました");
   };
@@ -4174,7 +4249,7 @@ const HELP_SECS=[
  '<li><span class="hp-btn">☆</span>は「よく行く」印。タップで★になり、一覧の上のほうに並びます。</li>'+
  '<li>写真の段：<span class="hp-btn">📷写真</span> <span class="hp-btn">📁保存画像</span> <span class="hp-btn">🔗リンクPDF</span> <span class="hp-btn">⇅並び順</span>（→「写真・リンク・PDF」）。</li>'+
  '<li>下の4ボタン：<span class="hp-btn">地図を開く</span>＝Googleマップでその場所を表示 / <span class="hp-btn">経路</span>＝そこまでの道順 / <span class="hp-btn">場所周辺</span>＝その場所のまわりの登録場所 / <span class="hp-btn">到達距離</span>＝今の自分との位置・距離を拡大地図で。</li>'+
- '<li>「実家」のように<b>自分で名前を付けた場所</b>が、地図を開くと別の場所を差すことがあります（名前と住所でGoogleに検索させているため）。その場所の編集画面で<b>「📌 MAP・経路は正確なピン（座標）で開く」</b>にチェックを入れると、保存してある座標のとおりに開きます。</li>'+
+ '<li>「実家」のように<b>自分で名前を付けた場所</b>が、地図を開くと別の場所を差すことがあります（名前と住所でGoogleに検索させているため）。新しく登録する時に出る<b>「どちらの登録ですか？」</b>で<b>📌 名前を自分で付けた／地図で位置を決めた</b>を選ぶと、保存してある座標のとおりに開きます。あとから変える時は、その場所の編集画面の<b>「📌 MAP・経路は正確なピン（座標）で開く」</b>チェックで。</li>'+
  '<li><b>リスト表示</b>（線3本のボタンで切り替え）では、左の<b>名前タップ＝編集</b>、右のボタンは<span class="hp-btn">地図</span>＝地図を開く／<span class="hp-btn">周辺</span>＝場所周辺／<span class="hp-btn">距離</span>＝到達距離の省略名です。写真がある場所は名前の右に<b>📷枚数のボタン</b>（タップ＝写真の縦閲覧）。</li>'+
  '</ul>'+
  '<div class="hp-note"><b>ボタンが赤いとき</b>＝その機能に必要な位置情報がまだ足りないという印です。故障ではありません。編集画面の「🗺 地図で座標決め」でピンを置くと白になります。</div>'},
@@ -5795,6 +5870,8 @@ viewBtnEl.onclick=()=>{
 /* 開いている面を上から順に1つ閉じる（Escape・Android戻るボタン共通） */
 function closeTopOverlay(){
   if(dlg.classList.contains("on")) dlgClose();   /* 注意ダイアログ=最前面（キャンセル扱い） */
+  else if(document.getElementById("pinask").classList.contains("on"))
+    document.getElementById("pinask").classList.remove("on");   /* 新規登録の2択=閉じて入力に戻る（v0.74.0） */
   else if(document.getElementById("cvcrop").classList.contains("on")) cvCropCancel();   /* 表紙の位置調整 */
   else if(document.getElementById("cpick").classList.contains("on")) cpickClose();
   else if(lb.classList.contains("on")) lbClose();
