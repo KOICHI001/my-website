@@ -1091,7 +1091,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.74.0";
+const VER = "0.74.1";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -1893,7 +1893,8 @@ dlg.onclick=e=>{ if(e.target===dlg) dlgClose(); };
 /* 新規登録の2択（v0.74.0 コーイチさん発案）: 📌チェックは編集シートの奥＝初見が必ず見落とす→
    登録の瞬間に「お店の名前のまま／自分で付けた名前」を必ず一度選んでもらう。
    タップ=即登録（チェック→登録ボタンの2度手間と「両方チェック」の迷子状態を作らない）。
-   共有からの登録と一括取込は名前がGoogleマップ由来＝聞かずに従来どおり（お店のまま）。
+   v0.74.1: 共有からの登録も通す＝新規登録は毎回必ず聞く（ピン長押し共有・スクショOCR経由は
+   名前を自分で打つ本命ケースなのに素通りだった・コーイチさん指摘）。一括取込だけは束なので聞かない。
    cbに渡す値: true=📌ピン / false=お店のまま。「← 入力に戻る」はcbを呼ばずシートに帰る */
 function pinAsk(cb){
   const ov=document.getElementById("pinask");
@@ -3358,14 +3359,20 @@ function shareAdd(name,url,c,addr){
     };
     const sfv=(document.getElementById("f_sf")||{value:""}).value.trim();
     if(sfv) rec.sf=sfv;
-    updatePref(rec); places.push(rec); save(); closeSheet();
-    /* 共有は名前がGoogleマップ由来＝2択(pinAsk)は出さず従来どおり（お店のまま）。
-       登録後は revealPlace＝絞り込み中でも必ずその新規カードを画面に出す（v0.74.0） */
-    revealPlace(rec);
-    /* v0.40.0: 座標なしでもピン置きは自動で開かない（自動検索が外れて「全然違う場所」が
-       出ることが多く混乱のもと＝コーイチさん実使用FB）。位置が要る「近く」「周辺」を
-       押した時に、その場で設定するか選んでもらう方式へ */
-    toast("「"+nm+"」を登録しました"+((rec.lat&&rec.lng)?"":"（位置はまだ未設定です）"));
+    /* v0.74.1: 共有からの登録も2択(pinAsk)を通す。ピン長押し共有やスクショ(OCR)経由は
+       名前を自分で打つ＝📌にすべき本命ケースなのに、ここだけ素通りだった（コーイチさん指摘）。
+       「Google由来の名前かどうか」の判別は不確実なので、新規登録=毎回聞くに統一（一括取込だけは束なので聞かない）。
+       登録後は revealPlace＝絞り込み中でも必ずその新規カードを画面に出す */
+    pinAsk(pin=>{
+      if(pin)rec.pin=1;
+      updatePref(rec); places.push(rec); save(); closeSheet();
+      revealPlace(rec);
+      /* v0.40.0: 座標なしでもピン置きは自動で開かない（自動検索が外れて「全然違う場所」が
+         出ることが多く混乱のもと＝コーイチさん実使用FB）。位置が要る「近く」「周辺」を
+         押した時に、その場で設定するか選んでもらう方式へ */
+      toast("「"+nm+"」を登録しました"+((rec.lat&&rec.lng)?"":"（位置はまだ未設定です）"));
+      pinCoordNote(rec);
+    });
   };
 }
 
