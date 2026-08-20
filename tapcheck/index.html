@@ -68,6 +68,17 @@ header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
+/* 番号の表示/非表示 */
+body.nonum .tile .num{display:none}
+/* ブラインド：そろえる前のカードは黒い「？」で隠す（編集中は見せる） */
+body.blind:not(.editing) .tile:not(.done) img{visibility:hidden}
+body.blind:not(.editing) .tile:not(.done) .label{display:none}
+body.blind:not(.editing) .tile:not(.done)::after{
+  content:'？'; position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  background:#10102a; color:#4a4a72; font-size:2.4em; font-weight:800;
+}
+body.blind:not(.editing) .tile:not(.done) .num{z-index:1}
 /* 編集モード */
 body.editing .tile img{filter:grayscale(0) brightness(.9)}
 .tile .del{
@@ -172,22 +183,49 @@ body.editing .tile .del{display:flex}
 #doneOverlay .sub{font-size:14px; color:#c8e6c9}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 
-/* ===== 編集アクションシート ===== */
-#sheetBack{
+/* ===== 編集アクションシート・あそびシート ===== */
+#sheetBack,#playBack{
   position:fixed; inset:0; z-index:45; display:none;
   background:rgba(0,0,0,.55); align-items:flex-end;
 }
-#sheetBack.show{display:flex}
-#sheet{
+#sheetBack.show,#playBack.show{display:flex}
+#sheet,#play{
   width:100%; background:var(--card); border-radius:20px 20px 0 0;
   padding:14px 14px calc(14px + env(safe-area-inset-bottom));
   display:flex; flex-direction:column; gap:8px;
 }
-#sheet button{
+#sheet button,#play button{
   padding:13px 0; border:none; border-radius:13px;
   background:var(--bg); color:var(--text); font-size:16px; cursor:pointer;
 }
 #sheet #shDel{color:#ff9b9b}
+
+/* ===== トリミング（切り取り）画面 ===== */
+#cropOv{
+  position:fixed; inset:0; z-index:60; background:var(--bg);
+  display:none; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+  padding:16px;
+}
+#cropOv.show{display:flex}
+#cropTitle{font-size:15px; font-weight:700}
+#cropFrame{
+  width:min(86vw,360px); aspect-ratio:1; border-radius:14px; overflow:hidden;
+  border:2px solid var(--accent); position:relative; touch-action:none;
+  background:#000; flex:0 0 auto;
+}
+#cropFrame img{
+  position:absolute; left:0; top:0; transform-origin:0 0;
+  max-width:none; max-height:none; pointer-events:none; user-select:none;
+  -webkit-user-drag:none;
+}
+#cropHint{font-size:13px; color:var(--sub)}
+#cropBtns{display:flex; gap:12px; width:min(86vw,360px)}
+#cropBtns button{
+  flex:1; padding:13px 0; border:none; border-radius:16px;
+  font-size:16px; font-weight:700; cursor:pointer;
+}
+#cropOk{background:var(--accent); color:#1a1a2e}
+#cropCancel{background:var(--card); color:var(--text)}
 </style>
 </head>
 <body>
@@ -224,6 +262,7 @@ body.editing .tile .del{display:flex}
 <div id="bottombar">
   <button id="resetBtn">↺</button>
   <button id="addBtn">➕</button>
+  <button id="playBtn">⚙</button>
   <button id="editBtn">✕</button>
 </div>
 
@@ -244,11 +283,30 @@ body.editing .tile .del{display:flex}
   </div>
 </div>
 
+<div id="playBack">
+  <div id="play">
+    <button id="plNum">🔢 番号を隠す</button>
+    <button id="plShuffle">🎲 シャッフル（並びを混ぜる）</button>
+    <button id="plBlind">🕶 ブラインド（かくして当てる）</button>
+    <button id="plCancel">やめる</button>
+  </div>
+</div>
+
+<div id="cropOv">
+  <div id="cropTitle">✂️ 切り取る範囲を合わせてね</div>
+  <div id="cropFrame"></div>
+  <div id="cropHint">ドラッグで動かす・ピンチで拡大縮小</div>
+  <div id="cropBtns">
+    <button id="cropCancel">やめる</button>
+    <button id="cropOk">✅ OK</button>
+  </div>
+</div>
+
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.5.0';
+const APP_VERSION = '0.6.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -263,9 +321,9 @@ let sheetIndex = -1;     // 編集シート対象
 function load(){
   try{
     const s = JSON.parse(localStorage.getItem(LS_KEY));
-    if(s && Array.isArray(s.items)) return s;
+    if(s && Array.isArray(s.items)) return Object.assign({hideNum:false, blind:false}, s);
   }catch(e){}
-  return {items: [], lastTap: 0};
+  return {items: [], lastTap: 0, hideNum:false, blind:false};
 }
 function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -361,7 +419,12 @@ function deleteItem(i){
 }
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
-  progress.textContent = `${d}/${state.items.length}`;
+  progress.textContent = (state.blind ? '🕶 ' : '') + `${d}/${state.items.length}`;
+}
+/* 番号非表示・ブラインドをbodyクラスに反映 */
+function applyModes(){
+  document.body.classList.toggle('nonum', !!state.hideNum);
+  document.body.classList.toggle('blind', !!state.blind);
 }
 
 /* ===== 画像コミット（カメラ・Web共通） ===== */
@@ -390,44 +453,157 @@ function cropSquare(img){
 }
 
 const galInput = document.getElementById('galInput');
-function handleFilePick(inp){
+function handleFilePick(inp, useCrop){
   const f = inp.files[0];
   inp.value = '';
   if(!f) return;
   const img = new Image();
+  const url = URL.createObjectURL(f);
   img.onload = ()=>{
-    const data = cropSquare(img);
-    URL.revokeObjectURL(img.src);
-    commitDataUrl(data);
+    if(useCrop){
+      // ギャラリー画像は切り取り画面を通す（初期位置=従来の中央切り出しと同じ）
+      openCrop(img, data=>{
+        URL.revokeObjectURL(url);
+        if(data) commitDataUrl(data);
+      });
+    }else{
+      const data = cropSquare(img);
+      URL.revokeObjectURL(url);
+      commitDataUrl(data);
+    }
   };
-  img.src = URL.createObjectURL(f);
+  img.src = url;
 }
-camInput.addEventListener('change', ()=>handleFilePick(camInput));
-galInput.addEventListener('change', ()=>handleFilePick(galInput));
+camInput.addEventListener('change', ()=>handleFilePick(camInput, false));
+galInput.addEventListener('change', ()=>handleFilePick(galInput, true));
 
-/* ===== Web画像検索（Wikipedia + Wikimedia Commons・キー不要）
-   同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る） ===== */
+/* ===== トリミング（切り取り）画面：ドラッグ移動＋ピンチ/ホイール拡縮 ===== */
+const cropOv = document.getElementById('cropOv');
+const cropFrame = document.getElementById('cropFrame');
+let crCb=null, crImg=null, crScale=1, crMin=1, crOx=0, crOy=0;
+const crPtrs = new Map();
+function openCrop(img, cb){
+  crCb = cb; crImg = img;
+  cropFrame.querySelectorAll('img').forEach(n=>n.remove());
+  img.style.width = img.naturalWidth+'px';
+  img.style.height = img.naturalHeight+'px';
+  cropFrame.appendChild(img);
+  cropOv.classList.add('show');
+  const FR = cropFrame.clientWidth;
+  crMin = FR / Math.min(img.naturalWidth, img.naturalHeight); // 枠を必ず埋める最小倍率
+  crScale = crMin;
+  crOx = (FR - img.naturalWidth*crScale)/2;
+  crOy = (FR - img.naturalHeight*crScale)/2;
+  crApply();
+}
+function crClamp(){
+  const FR = cropFrame.clientWidth;
+  crOx = Math.min(0, Math.max(FR - crImg.naturalWidth*crScale, crOx));
+  crOy = Math.min(0, Math.max(FR - crImg.naturalHeight*crScale, crOy));
+}
+function crApply(){
+  crClamp();
+  crImg.style.transform = `translate(${crOx}px,${crOy}px) scale(${crScale})`;
+}
+function crZoom(ns, mx, my){
+  ns = Math.min(crMin*8, Math.max(crMin, ns));
+  const k = ns/crScale;
+  crOx = mx - (mx-crOx)*k;
+  crOy = my - (my-crOy)*k;
+  crScale = ns;
+  crApply();
+}
+cropFrame.addEventListener('pointerdown', e=>{
+  if(!crImg) return;
+  try{ cropFrame.setPointerCapture(e.pointerId); }catch(err){}
+  crPtrs.set(e.pointerId, {x:e.clientX, y:e.clientY});
+});
+cropFrame.addEventListener('pointermove', e=>{
+  const p = crPtrs.get(e.pointerId);
+  if(!p || !crImg) return;
+  if(crPtrs.size === 1){
+    crOx += e.clientX - p.x;
+    crOy += e.clientY - p.y;
+    crApply();
+  }else if(crPtrs.size === 2){
+    const other = [...crPtrs.entries()].find(([id])=>id!==e.pointerId)[1];
+    const d0 = Math.hypot(p.x-other.x, p.y-other.y);
+    const d1 = Math.hypot(e.clientX-other.x, e.clientY-other.y);
+    if(d0 > 0){
+      const r = cropFrame.getBoundingClientRect();
+      crZoom(crScale*d1/d0, (e.clientX+other.x)/2-r.left, (e.clientY+other.y)/2-r.top);
+    }
+  }
+  p.x = e.clientX; p.y = e.clientY;
+});
+const crEnd = e=>crPtrs.delete(e.pointerId);
+cropFrame.addEventListener('pointerup', crEnd);
+cropFrame.addEventListener('pointercancel', crEnd);
+cropFrame.addEventListener('wheel', e=>{
+  if(!crImg) return;
+  e.preventDefault();
+  const r = cropFrame.getBoundingClientRect();
+  crZoom(crScale*(e.deltaY<0 ? 1.12 : 1/1.12), e.clientX-r.left, e.clientY-r.top);
+}, {passive:false});
+function crClose(){
+  cropOv.classList.remove('show');
+  if(crImg && crImg.parentNode) crImg.parentNode.removeChild(crImg);
+  crImg = null; crCb = null; crPtrs.clear();
+}
+document.getElementById('cropOk').addEventListener('click', ()=>{
+  if(!crImg) return;
+  const FR = cropFrame.clientWidth;
+  const OUT = 512;
+  const cv = document.createElement('canvas');
+  cv.width = OUT; cv.height = OUT;
+  let data = null;
+  try{
+    cv.getContext('2d').drawImage(crImg, -crOx/crScale, -crOy/crScale, FR/crScale, FR/crScale, 0, 0, OUT, OUT);
+    data = cv.toDataURL('image/jpeg', .82);
+  }catch(e){}
+  const cb = crCb;
+  crClose();
+  if(cb) cb(data, data ? null : 'err');
+});
+document.getElementById('cropCancel').addEventListener('click', ()=>{
+  const cb = crCb;
+  crClose();
+  if(cb) cb(null);
+});
+
+/* ===== Web画像検索（Wikipedia + Commons + Openverse・キー不要）
+   同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る）
+   Openverse=Flickr等のフリー写真集約。日本語はWikipediaの言語リンクで
+   英語名（なす→Eggplant）に変換してから投げる＝日用品のヒット率を上げる ===== */
 function toKatakana(s){ return s.replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }
+let enTerm = null; // 検索語の英語名（Wikipedia言語リンク由来・言葉が変わるまで保持）
 async function webSearch(term, page){
   const enc = encodeURIComponent(term);
   const kata = toKatakana(term);
   // page0のみ：題名ドンピシャの記事（リダイレクト解決付き・ひらがな→カタカナ両方）を最優先で引く
+  // ついでに言語リンクで英語名も取る（Openverse用）
   const titles = term === kata ? encodeURIComponent(term) : encodeURIComponent(term)+'%7C'+encodeURIComponent(kata);
-  const exactQ = page === 0
-    ? fetch(`https://ja.wikipedia.org/w/api.php?action=query&titles=${titles}&redirects=1&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
+  const exact = page === 0
+    ? await fetch(`https://ja.wikipedia.org/w/api.php?action=query&titles=${titles}&redirects=1&prop=pageimages%7Clanglinks&piprop=thumbnail&pithumbsize=400&lllang=en&format=json&origin=*`)
         .then(r=>r.json()).catch(()=>null)
-    : Promise.resolve(null);
-  const [exact, wiki, commons] = await Promise.all([
-    exactQ,
+    : null;
+  const exactUrls = [];
+  if(exact && exact.query && exact.query.pages){
+    Object.values(exact.query.pages).forEach(p=>{
+      if(p.thumbnail) exactUrls.push(p.thumbnail.source);
+      const ll = p.langlinks && p.langlinks[0] && p.langlinks[0]['*'];
+      if(ll && !enTerm) enTerm = ll.replace(/\s*\(.*\)$/, ''); // 「Eggplant (food)」→「Eggplant」
+    });
+  }
+  const [wiki, commons, ov] = await Promise.all([
     fetch(`https://ja.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrlimit=6&gsroffset=${page*6}&prop=pageimages&piprop=thumbnail&pithumbsize=400&format=json&origin=*`)
       .then(r=>r.json()).catch(()=>null),
     fetch(`https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch=${enc}&gsrnamespace=6&gsrlimit=9&gsroffset=${page*9}&prop=imageinfo&iiprop=url&iiurlwidth=400&format=json&origin=*`)
-      .then(r=>r.json()).catch(()=>null)
+      .then(r=>r.json()).catch(()=>null),
+    fetch(`https://api.openverse.org/v1/images/?q=${encodeURIComponent(enTerm||term)}&page_size=8&page=${page+1}`)
+      .then(r=>r.ok ? r.json() : null).catch(()=>null)
   ]);
-  const urls = [];
-  if(exact && exact.query && exact.query.pages){
-    Object.values(exact.query.pages).forEach(p=>{ if(p.thumbnail) urls.push(p.thumbnail.source); });
-  }
+  const wikiUrls = [], comUrls = [], ovUrls = [];
   if(wiki && wiki.query){
     // 題名一致を前へ・「なすの (列車)」等のカッコ付き題名（曖昧さ回避っぽい）を後回し
     const score = p => {
@@ -438,16 +614,23 @@ async function webSearch(term, page){
       return s;
     };
     Object.values(wiki.query.pages).sort((a,b)=>score(a)-score(b))
-      .forEach(p=>{ if(p.thumbnail) urls.push(p.thumbnail.source); });
+      .forEach(p=>{ if(p.thumbnail) wikiUrls.push(p.thumbnail.source); });
   }
   if(commons && commons.query){
     Object.values(commons.query.pages).sort((a,b)=>a.index-b.index)
       .forEach(p=>{
         const ii = p.imageinfo && p.imageinfo[0];
-        if(ii && ii.thumburl && /\.(jpe?g|png|webp)$/i.test(ii.thumburl)) urls.push(ii.thumburl);
+        if(ii && ii.thumburl && /\.(jpe?g|png|webp)$/i.test(ii.thumburl)) comUrls.push(ii.thumburl);
       });
   }
-  return [...new Set(urls)].slice(0,9);
+  if(ov && ov.results){
+    ov.results.forEach(r=>{ if(r.thumbnail) ovUrls.push(r.thumbnail); });
+  }
+  // 並び：ドンピシャ→Openverse/Wikipedia/Commonsを交互に混ぜる
+  const urls = [...exactUrls];
+  const qs = [ovUrls, wikiUrls, comUrls];
+  for(let i=0; i<9; i++){ qs.forEach(q=>{ if(q[i] !== undefined) urls.push(q[i]); }); }
+  return [...new Set(urls)].slice(0,12);
 }
 
 let searching = false;
@@ -456,7 +639,7 @@ async function doWebSearch(){
   const term = webInput.value.trim();
   if(!term || searching) return;
   if(term === lastTerm){ searchPage++; }               // 同じ言葉の再検索＝次の候補セット
-  else { lastTerm = term; searchPage = 0; seenUrls = new Set(); }
+  else { lastTerm = term; searchPage = 0; seenUrls = new Set(); enTerm = null; }
   searching = true;
   webResults.innerHTML = '';
   webResults.classList.remove('show');
@@ -486,14 +669,22 @@ async function doWebSearch(){
     d.appendChild(im);
     d.addEventListener('click', ()=>{
       if(!im.complete || !im.naturalWidth) return;
-      let data;
-      try{ data = cropSquare(im); }
-      catch(e){ setupHint.textContent = 'この画像は使えなかった…別のを選んでね'; return; }
-      if(!replaceMode){ pendingIndex = state.items.length; pendingLabel = term; }
-      webResults.classList.remove('show');
-      webResults.innerHTML = '';
-      webInput.value = '';
-      commitDataUrl(data);
+      // 同じURLをもう一度読み（キャッシュから即）、切り取り画面へ
+      const big = new Image();
+      big.crossOrigin = 'anonymous';
+      big.onload = ()=>{
+        openCrop(big, (data, err)=>{
+          if(err){ setupHint.textContent = 'この画像は使えなかった…別のを選んでね'; return; }
+          if(!data) return; // やめる＝候補一覧に戻る
+          if(!replaceMode){ pendingIndex = state.items.length; pendingLabel = term; }
+          webResults.classList.remove('show');
+          webResults.innerHTML = '';
+          webInput.value = '';
+          commitDataUrl(data);
+        });
+      };
+      big.onerror = ()=>{ setupHint.textContent = 'この画像は使えなかった…別のを選んでね'; };
+      big.src = u;
     });
     webResults.appendChild(d);
   });
@@ -597,11 +788,39 @@ document.getElementById('shDel').addEventListener('click', ()=>{
 document.getElementById('shCancel').addEventListener('click', closeSheet);
 sheetBack.addEventListener('click', e=>{ if(e.target===sheetBack) closeSheet(); });
 
+/* ===== 設定シート（番号・シャッフル・ブラインド） ===== */
+const playBack = document.getElementById('playBack');
+function openPlay(){
+  document.getElementById('plNum').textContent = state.hideNum ? '🔢 番号を表示する' : '🔢 番号を隠す';
+  document.getElementById('plBlind').textContent = state.blind ? '🕶 ブラインドをやめる' : '🕶 ブラインド（かくして当てる）';
+  playBack.classList.add('show');
+}
+function closePlay(){ playBack.classList.remove('show'); }
+document.getElementById('plNum').addEventListener('click', ()=>{
+  state.hideNum = !state.hideNum;
+  save(); applyModes(); closePlay();
+});
+document.getElementById('plShuffle').addEventListener('click', ()=>{
+  for(let i=state.items.length-1; i>0; i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [state.items[i], state.items[j]] = [state.items[j], state.items[i]];
+  }
+  save(); render(); closePlay();
+});
+document.getElementById('plBlind').addEventListener('click', ()=>{
+  state.blind = !state.blind;
+  if(state.blind) state.items.forEach(i=>i.done=false); // 開始時は全部かくす
+  save(); applyModes(); render(); closePlay();
+});
+document.getElementById('plCancel').addEventListener('click', closePlay);
+playBack.addEventListener('click', e=>{ if(e.target===playBack) closePlay(); });
+
 /* ===== 下部バー ===== */
 document.getElementById('resetBtn').addEventListener('click', ()=>{
   state.items.forEach(i=>i.done=false);
   save(); render();
 });
+document.getElementById('playBtn').addEventListener('click', openPlay);
 document.getElementById('addBtn').addEventListener('click', ()=>showSetup(false));
 document.getElementById('editBtn').addEventListener('click', ()=>{
   editing = !editing;
@@ -613,6 +832,7 @@ doneOverlay.addEventListener('click', ()=>doneOverlay.classList.remove('show'));
 window.addEventListener('resize', render);
 
 /* ===== 起動 ===== */
+applyModes();
 render();
 if(state.items.length === 0) showSetup(false); // 初回は登録から
 
