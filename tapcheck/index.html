@@ -509,7 +509,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.2';
+const APP_VERSION = '0.7.3';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -1652,6 +1652,13 @@ window.addEventListener('resize', render);
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
+  // 新しいsw.jsが有効になったら1回だけ開き直す＝新版がその場で反映される（初回登録時は開き直さない）
+  let hadCtrl = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', ()=>{
+    if(hadCtrl && !sessionStorage.getItem('swReloaded')){ sessionStorage.setItem('swReloaded','1'); location.reload(); }
+    hadCtrl = true;
+  });
+  setTimeout(()=>sessionStorage.removeItem('swReloaded'), 5000);
 }
 </script>
 </body>

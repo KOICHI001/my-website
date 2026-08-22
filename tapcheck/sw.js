@@ -1,4 +1,4 @@
-const CACHE = 'tapcheck-v0.7.2';
+const CACHE = 'tapcheck-v0.7.3';
 const ASSETS = ['.', 'index.html', 'manifest.json', 'icon.svg'];
 
 self.addEventListener('install', e => {
@@ -13,9 +13,10 @@ self.addEventListener('activate', e => {
 });
 self.addEventListener('fetch', e => {
   // ページ本体はネット優先＝更新が即届く。オフライン時のみキャッシュ
+  // ★cache:'no-cache'＝GitHub Pagesのmax-age=600（10分）のHTTPキャッシュを素通りしてサーバーに必ず確認する
   if (e.request.mode === 'navigate') {
     e.respondWith(
-      fetch(e.request).then(res => {
+      fetch(e.request, {cache: 'no-cache'}).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(e.request, copy));
         return res;
