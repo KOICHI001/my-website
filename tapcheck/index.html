@@ -446,8 +446,8 @@ body:not(.hard) .hardonly{display:none}
   <div id="play" class="sheet">
     <button id="plNum" class="nohard">🔢 番号を隠す</button>
     <button id="plShuffle" class="nohard">🎲 シャッフル（並びを混ぜる）</button>
-    <button id="plBlind" class="nohard">🕶 ブラインド（かくして当てる）</button>
-    <button id="plGen" class="nohard">🎱 番号を生成（ビンゴ）</button>
+    <button id="plBlind" class="nohard">🙈 ブラインド（かくして当てる）</button>
+    <button id="plGen" class="nohard">🎰 番号を生成（ビンゴ）</button>
     <button id="plGroup" class="nohard">📂 グループ（保存・呼び出し）</button>
     <button id="plSign" class="hardonly">✍️ 署名してPNG保存</button>
     <button id="plHard">🔒 ハードモード（確認作業用）</button>
@@ -509,7 +509,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.1';
+const APP_VERSION = '0.7.2';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -867,7 +867,7 @@ function deleteItem(i){
 }
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
-  progress.textContent = (state.hard ? '🔒 ' : '') + (state.blind ? '🕶 ' : '') + `${d}/${state.items.length}`;
+  progress.textContent = (state.hard ? '🔒 ' : '') + (state.blind ? '🙈 ' : '') + `${d}/${state.items.length}`;
 }
 function updateBar(){
   const rb = document.getElementById('resetBtn');
@@ -1287,7 +1287,7 @@ document.getElementById('selCancel').addEventListener('click', ()=>setSelecting(
 const playBack = document.getElementById('playBack');
 function openPlay(){
   document.getElementById('plNum').textContent = state.hideNum ? '🔢 番号を表示する' : '🔢 番号を隠す';
-  document.getElementById('plBlind').textContent = state.blind ? '🕶 ブラインドをやめる' : '🕶 ブラインド（かくして当てる）';
+  document.getElementById('plBlind').textContent = state.blind ? '🙈 ブラインドをやめる' : '🙈 ブラインド（かくして当てる）';
   document.getElementById('plHard').textContent = state.hard ? '🔓 ハードモードを解除' : '🔒 ハードモード（確認作業用）';
   playBack.classList.add('show');
 }
@@ -1316,7 +1316,7 @@ document.getElementById('plGen').addEventListener('click', async ()=>{
   closePlay();
   let err = '';
   while(true){
-    const r = await dlg({title:'🎱 番号を生成', msg:'ビンゴのように「？」をめくると番号が出ます。\n今の並びは置き換わります（残したいなら先に📂で保存）', err,
+    const r = await dlg({title:'🎰 番号を生成', msg:'ビンゴのように「？」をめくると番号が出ます。\n今の並びは置き換わります（残したいなら先に📂で保存）', err,
       inputs:[{type:'number', ph:'1', value:'1', label:'何番から'},{type:'number', ph:'75', value:'75', label:'何番まで'}], ok:'生成'});
     if(!r.ok) return;
     const a = parseInt(r.values[0],10), b = parseInt(r.values[1],10);
