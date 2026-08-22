@@ -46,6 +46,17 @@ body.hard #progress{color:#ff8a80}
 #dots.show{display:flex}
 #dots span{width:7px; height:7px; border-radius:50%; background:#44446a}
 #dots span.on{background:var(--accent)}
+#dots span.sum{border-radius:2px}
+/* ビンゴ：最後のページ＝全番号の一覧（開いた番号が光る・見るだけ） */
+.sumpage{flex-direction:column; gap:6px; padding:6px}
+.sumhead{font-size:14px; font-weight:700; color:var(--sub); flex:0 0 auto}
+.sumhead b{color:var(--accent)}
+.sumgrid{display:flex; flex-wrap:wrap; align-content:center; justify-content:center}
+.bn{
+  display:flex; align-items:center; justify-content:center; border-radius:6px;
+  background:var(--card); color:#55557a; font-weight:700; line-height:1;
+}
+.bn.on{background:var(--accent); color:#1a1a2e; box-shadow:0 0 8px 2px rgba(255,179,71,.6)}
 .tile{
   position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
   background:var(--card); border:2px solid transparent;
@@ -498,7 +509,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.0';
+const APP_VERSION = '0.7.1';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -543,7 +554,7 @@ async function idbSet(k, v){
     tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
   });
 }
-function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false}; }
+function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false, bingo:null}; }
 function normalize(s){
   if(!s || !Array.isArray(s.items)) return null;
   const st = Object.assign(defaults(), s);
@@ -689,7 +700,9 @@ function txFont(label, size){
   const len = Math.max(1, (label||'').length);
   return Math.max(11, Math.min(size*0.36, size*1.5/len));
 }
-function pageCount(){ return Math.max(1, Math.ceil(state.items.length / PER_PAGE)); }
+function itemPages(){ return Math.max(1, Math.ceil(state.items.length / PER_PAGE)); }
+function hasSum(){ return !!(state.bingo && state.items.length); }
+function pageCount(){ return itemPages() + (hasSum() ? 1 : 0); }
 
 function render(){
   const n = state.items.length;
@@ -704,7 +717,7 @@ function render(){
     // 1ページ18枚までなら全部で最大サイズ。超えたら18枚基準のサイズで全ページ統一
     const {cols, size} = bestLayout(Math.min(n, PER_PAGE), W, H - (pc>1 ? 12 : 0));
     const fontPx = Math.max(11, Math.min(18, size*0.14));
-    for(let p=0; p<pc; p++){
+    for(let p=0; p<itemPages(); p++){
       const pg = document.createElement('div'); pg.className = 'page';
       const g = document.createElement('div'); g.className = 'pgrid';
       g.style.gap = GAP+'px'; g.style.padding = PAD+'px';
@@ -729,15 +742,47 @@ function render(){
       pg.appendChild(g);
       pagesEl.appendChild(pg);
     }
+    if(hasSum()) pagesEl.appendChild(buildSumPage(W, H-12));
   }
   pagesEl.style.transition = 'none';
   pagesEl.style.transform = `translateX(${-page*100}%)`;
   requestAnimationFrame(()=>{ pagesEl.style.transition = ''; });
   dotsEl.innerHTML = '';
   dotsEl.classList.toggle('show', pc > 1);
-  for(let p=0; p<pc; p++){ const s = document.createElement('span'); if(p===page) s.className='on'; dotsEl.appendChild(s); }
+  for(let p=0; p<pc; p++){ const s = document.createElement('span'); s.className = (p===page ? 'on ' : '') + (hasSum() && p===pc-1 ? 'sum' : ''); dotsEl.appendChild(s); }
   updateProgress();
   updateBar();
+}
+/* ビンゴの一覧ページ：数字の札を番号順に全部並べ、開いた札を光らせる */
+function buildSumPage(W, H){
+  const pg = document.createElement('div'); pg.className = 'page sumpage';
+  const nums = state.items.map((it,i)=>({n:parseInt(it.label,10), done:it.done, i}))
+    .filter(x=>!isNaN(x.n)).sort((a,b)=>a.n-b.n);
+  const opened = nums.filter(x=>x.done).length;
+  const head = document.createElement('div'); head.className = 'sumhead';
+  head.innerHTML = `開いた番号 <b>${opened}</b> / ${nums.length}`;
+  pg.appendChild(head);
+  const g = document.createElement('div'); g.className = 'sumgrid';
+  const SG = 3;
+  let best = {cols:1, size:0};
+  for(let cols=1; cols<=nums.length; cols++){
+    const rows = Math.ceil(nums.length/cols);
+    const size = Math.min((W - 12 - SG*(cols-1))/cols, (H - 40 - SG*(rows-1))/rows);
+    if(size > best.size) best = {cols, size};
+  }
+  const size = Math.floor(best.size);
+  g.style.gap = SG+'px';
+  g.style.width = (best.cols*size + SG*(best.cols-1)) + 'px';
+  const fs = Math.max(9, Math.min(22, size*0.45));
+  nums.forEach(x=>{
+    const d = document.createElement('div');
+    d.className = 'bn' + (x.done ? ' on' : '');
+    d.style.width = size+'px'; d.style.height = size+'px'; d.style.fontSize = fs+'px';
+    d.textContent = x.n;
+    g.appendChild(d);
+  });
+  pg.appendChild(g);
+  return pg;
 }
 function gotoPage(p){
   page = Math.max(0, Math.min(pageCount()-1, p));
@@ -1280,7 +1325,7 @@ document.getElementById('plGen').addEventListener('click', async ()=>{
     state.items = [];
     for(let n=a; n<=b; n++) state.items.push({img:null, done:false, label:String(n)});
     shuffleItems();
-    state.blind = true; state.groupName = `番号 ${a}〜${b}`; page = 0;
+    state.blind = true; state.bingo = {a, b}; state.groupName = `番号 ${a}〜${b}`; page = 0;
     save(); applyModes(); render();
     return;
   }
@@ -1332,7 +1377,7 @@ function openGroups(){
         if(!ok) return;
       }
       state.items = g.items.map(it=>({img:it.img, label:it.label, done:false}));
-      state.groupName = g.name; state.blind = false; page = 0;
+      state.groupName = g.name; state.blind = false; state.bingo = null; page = 0;
       save(); applyModes(); render();
     });
     const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = '✕';
