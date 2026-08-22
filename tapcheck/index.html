@@ -8,7 +8,7 @@
 <link rel="manifest" href="manifest.json">
 <style>
 :root{
-  --bg:#1a1a2e; --card:#24243e; --text:#eaeaf2; --sub:#9b9bb0; --accent:#ffb347;
+  --bg:#1a1a2e; --card:#24243e; --text:#eaeaf2; --sub:#9b9bb0; --accent:#ffb347; --sel:#5aa9ff;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{height:100%; overflow:hidden}
@@ -21,20 +21,31 @@ body{
 }
 header{
   flex:0 0 auto; display:flex; align-items:center; justify-content:space-between;
-  padding:6px 14px;
+  padding:6px 14px; gap:8px;
 }
-header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
+header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub); white-space:nowrap}
+#gname{flex:1; font-size:13px; color:var(--sub); text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #progress{
-  font-size:15px; font-weight:700; color:var(--accent);
+  font-size:15px; font-weight:700; color:var(--accent); white-space:nowrap;
   background:var(--card); border-radius:12px; padding:3px 12px;
 }
+body.hard #progress{color:#ff8a80}
 
-/* ===== メイン：全写真1画面グリッド（スクロール無し） ===== */
+/* ===== メイン：1ページ=最大18枚を必ず1画面に（ページは横スワイプ） ===== */
 #stage{flex:1 1 auto; position:relative; overflow:hidden}
-#grid{
-  position:absolute; inset:0;
-  display:flex; flex-wrap:wrap; align-content:center; justify-content:center;
+#pages{
+  position:absolute; inset:0; display:flex; touch-action:none;
+  transition:transform .25s ease; will-change:transform;
 }
+.page{flex:0 0 100%; height:100%; display:flex; align-items:center; justify-content:center}
+.pgrid{display:flex; flex-wrap:wrap; align-content:center; justify-content:center}
+#dots{
+  position:absolute; left:0; right:0; bottom:2px; display:none; gap:6px; justify-content:center;
+  pointer-events:none;
+}
+#dots.show{display:flex}
+#dots span{width:7px; height:7px; border-radius:50%; background:#44446a}
+#dots span.on{background:var(--accent)}
 .tile{
   position:relative; border-radius:12px; overflow:hidden; cursor:pointer;
   background:var(--card); border:2px solid transparent;
@@ -43,6 +54,13 @@ header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
   width:100%; height:100%; object-fit:cover; display:block;
   filter:grayscale(1) brightness(.7); transition:filter .25s;
 }
+/* 文字だけのタイル */
+.tile .tx{
+  position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+  text-align:center; padding:6%; color:var(--sub); font-weight:800; line-height:1.15;
+  word-break:break-all; overflow:hidden; background:#2a2a48; transition:background .25s,color .25s;
+}
+.tile.done .tx{background:var(--accent); color:#1a1a2e; animation:pop .3s}
 .tile.done{
   border-color:var(--accent);
   box-shadow:0 0 10px 2px rgba(255,179,71,.55);
@@ -71,7 +89,8 @@ header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub)}
 /* 番号の表示/非表示 */
 body.nonum .tile .num{display:none}
 /* ブラインド：そろえる前のカードは黒い「？」で隠す（編集中は見せる） */
-body.blind:not(.editing) .tile:not(.done) img{visibility:hidden}
+body.blind:not(.editing) .tile:not(.done) img,
+body.blind:not(.editing) .tile:not(.done) .tx{visibility:hidden}
 body.blind:not(.editing) .tile:not(.done) .label{display:none}
 body.blind:not(.editing) .tile:not(.done)::after{
   content:'？'; position:absolute; inset:0;
@@ -87,7 +106,17 @@ body.editing .tile img{filter:grayscale(0) brightness(.9)}
   background:rgba(120,30,30,.9); color:#fff; cursor:pointer;
   align-items:center; justify-content:center;
 }
-body.editing .tile .del{display:flex}
+body.editing:not(.selecting) .tile .del{display:flex}
+/* 選択モード */
+.tile .chk{
+  display:none; position:absolute; top:2%; right:2%;
+  width:2em; height:2em; border-radius:50%; border:2px solid #fff;
+  background:rgba(20,20,40,.6); color:#fff; font-weight:800;
+  align-items:center; justify-content:center;
+}
+body.selecting .tile .chk{display:flex}
+.tile.sel{border-color:var(--sel); box-shadow:0 0 10px 2px rgba(90,169,255,.6)}
+.tile.sel .chk{background:var(--sel)}
 
 /* ===== 下部バー（親指リーチ・スリム） ===== */
 #bottombar{
@@ -99,8 +128,15 @@ body.editing .tile .del{display:flex}
   background:var(--card); color:var(--text); font-size:17px; cursor:pointer;
 }
 #editBtn.on{background:var(--accent); color:#1a1a2e}
+#mainBar,#selBar{display:flex; gap:8px; flex:1}
+#selBar{display:none}
+body.selecting #mainBar{display:none}
+body.selecting #selBar{display:flex}
+#selDel{color:#ff9b9b}
+body.hard #addBtn, body.hard #editBtn{display:none}
+body.editing #resetBtn{font-size:15px}
 
-/* ===== セットアップ（撮影/Web登録）画面 ===== */
+/* ===== セットアップ（撮影/Web/文字登録）画面 ===== */
 #setup{
   position:absolute; inset:0; z-index:20; background:var(--bg);
   display:none; flex-direction:column; align-items:center; gap:14px;
@@ -120,14 +156,14 @@ body.editing .tile .del{display:flex}
   width:min(86vw,360px); padding:12px 0; border:1px solid #44446a; border-radius:12px;
   background:var(--card); color:var(--text); font-size:15px; cursor:pointer;
 }
-#webRow{
+#webRow,#txtRow{
   display:flex; gap:8px; width:min(86vw,360px);
 }
-#webInput{
+#webInput,#txtInput{
   flex:1; padding:11px 12px; border-radius:12px; border:1px solid #44446a;
-  background:var(--card); color:var(--text); font-size:16px;
+  background:var(--card); color:var(--text); font-size:16px; min-width:0;
 }
-#webBtn{
+#webBtn,#txtBtn{
   flex:0 0 auto; width:52px; border:none; border-radius:12px;
   background:var(--card); color:var(--text); font-size:20px; cursor:pointer;
   border:1px solid #44446a;
@@ -175,30 +211,54 @@ body.editing .tile .del{display:flex}
 #doneOverlay{
   position:fixed; inset:0; z-index:50; display:none;
   flex-direction:column; align-items:center; justify-content:center; gap:14px;
-  background:rgba(20,40,20,.93); cursor:pointer;
+  background:rgba(20,40,20,.93); cursor:pointer; padding:20px;
 }
 #doneOverlay.show{display:flex; animation:fadein .3s}
 #doneOverlay .big{font-size:72px; animation:pop .5s}
 #doneOverlay .msg{font-size:24px; font-weight:700; color:#a5d6a7}
 #doneOverlay .sub{font-size:14px; color:#c8e6c9}
+#hardDone{display:none; flex-direction:column; gap:10px; width:min(80vw,320px)}
+body.hard #doneOverlay .sub{display:none}
+body.hard #hardDone{display:flex}
+#hardDone button{
+  padding:13px 0; border:none; border-radius:14px; font-size:16px; font-weight:700; cursor:pointer;
+  background:var(--card); color:var(--text);
+}
+#hdSign{background:var(--accent); color:#1a1a2e}
 @keyframes fadein{from{opacity:0}to{opacity:1}}
 
-/* ===== 編集アクションシート・あそびシート ===== */
-#sheetBack,#playBack{
+/* ===== 各種シート（編集・⚙設定・グループ） ===== */
+.sheetBack{
   position:fixed; inset:0; z-index:45; display:none;
   background:rgba(0,0,0,.55); align-items:flex-end;
 }
-#sheetBack.show,#playBack.show{display:flex}
-#sheet,#play{
+.sheetBack.show{display:flex}
+.sheet{
   width:100%; background:var(--card); border-radius:20px 20px 0 0;
   padding:14px 14px calc(14px + env(safe-area-inset-bottom));
-  display:flex; flex-direction:column; gap:8px;
+  display:flex; flex-direction:column; gap:8px; max-height:85vh; overflow-y:auto;
 }
-#sheet button,#play button{
+.sheet button{
   padding:13px 0; border:none; border-radius:13px;
   background:var(--bg); color:var(--text); font-size:16px; cursor:pointer;
 }
-#sheet #shDel{color:#ff9b9b}
+.sheet .danger{color:#ff9b9b}
+.sheet .title{font-size:14px; color:var(--sub); text-align:center; padding:2px 0}
+body.hard .nohard{display:none}
+body:not(.hard) .hardonly{display:none}
+/* グループ一覧 */
+#grpList{display:flex; flex-direction:column; gap:6px; max-height:45vh; overflow-y:auto}
+#grpList .row{display:flex; gap:6px; align-items:stretch}
+#grpList .row .nm{
+  flex:1; text-align:left; padding:12px 12px; font-size:16px; border-radius:13px;
+  background:var(--bg); color:var(--text); border:none; cursor:pointer;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+#grpList .row .nm small{color:var(--sub); font-size:12px; margin-left:6px}
+#grpList .row .rm{
+  flex:0 0 48px; border:none; border-radius:13px; background:var(--bg); color:#ff9b9b; cursor:pointer; font-size:16px;
+}
+#grpEmpty{font-size:13px; color:var(--sub); text-align:center; padding:8px}
 
 /* ===== トリミング（切り取り）画面 ===== */
 #cropOv{
@@ -226,17 +286,89 @@ body.editing .tile .del{display:flex}
 }
 #cropOk{background:var(--accent); color:#1a1a2e}
 #cropCancel{background:var(--card); color:var(--text)}
+
+/* ===== 汎用ダイアログ（確認・入力・パスワード） ===== */
+#dlgBack{
+  position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center;
+  background:rgba(0,0,0,.6); padding:20px;
+}
+#dlgBack.show{display:flex}
+#dlg{
+  width:min(88vw,360px); background:var(--card); border-radius:18px; padding:18px 16px;
+  display:flex; flex-direction:column; gap:10px;
+}
+#dlgTitle{font-size:17px; font-weight:700; text-align:center}
+#dlgMsg{font-size:14px; color:var(--sub); text-align:center; white-space:pre-wrap; line-height:1.5}
+#dlgMsg:empty{display:none}
+#dlgInputs{display:flex; flex-direction:column; gap:8px}
+#dlgInputs:empty{display:none}
+#dlgInputs input{
+  width:100%; padding:11px 12px; border-radius:12px; border:1px solid #44446a;
+  background:var(--bg); color:var(--text); font-size:16px;
+}
+#dlgInputs .two{display:flex; gap:8px; align-items:center}
+#dlgInputs .two span{color:var(--sub); font-size:14px; white-space:nowrap}
+#dlgBtns{display:flex; gap:10px; margin-top:4px}
+#dlgBtns button{
+  flex:1; padding:13px 0; border:none; border-radius:14px; font-size:16px; font-weight:700; cursor:pointer;
+}
+#dlgOk{background:var(--accent); color:#1a1a2e}
+#dlgOk.danger{background:#c62828; color:#fff}
+#dlgCancel{background:var(--bg); color:var(--text)}
+#dlgErr{font-size:13px; color:#ff9b9b; text-align:center}
+#dlgErr:empty{display:none}
+
+/* ===== ライトボックス（ハードモード：タップで拡大） ===== */
+#lb{
+  position:fixed; inset:0; z-index:65; background:#000; display:none;
+  align-items:center; justify-content:center; overflow:hidden; touch-action:none;
+}
+#lb.show{display:flex}
+#lb img{max-width:100vw; max-height:100vh; display:block; transform-origin:center center; pointer-events:none; -webkit-user-drag:none}
+#lb .tx{
+  padding:24px; font-size:min(18vw,120px); font-weight:800; color:#fff; text-align:center;
+  word-break:break-all; transform-origin:center center; pointer-events:none; max-width:100vw;
+}
+#lbCap{
+  position:absolute; left:0; right:0; bottom:calc(14px + env(safe-area-inset-bottom));
+  text-align:center; color:#ddd; font-size:14px; pointer-events:none;
+  text-shadow:0 1px 3px #000;
+}
+
+/* ===== 署名画面（ハードモード完了時） ===== */
+#signOv{
+  position:fixed; inset:0; z-index:70; background:var(--bg); display:none;
+  flex-direction:column; align-items:center; justify-content:center; gap:12px; padding:16px;
+}
+#signOv.show{display:flex}
+#signOv h2{font-size:17px}
+#signName{
+  width:min(88vw,400px); padding:11px 12px; border-radius:12px; border:1px solid #44446a;
+  background:var(--card); color:var(--text); font-size:16px;
+}
+#signPad{
+  width:min(88vw,400px); height:min(40vw,180px); border-radius:14px; background:#fff;
+  touch-action:none; border:2px solid var(--accent);
+}
+#signBtns{display:flex; gap:10px; width:min(88vw,400px)}
+#signBtns button{
+  flex:1; padding:13px 0; border:none; border-radius:14px; font-size:16px; font-weight:700; cursor:pointer;
+  background:var(--card); color:var(--text);
+}
+#signOk{background:var(--accent); color:#1a1a2e}
 </style>
 </head>
 <body>
 
 <header>
   <h1>タップチェック</h1>
+  <div id="gname"></div>
   <div id="progress">0/0</div>
 </header>
 
 <div id="stage">
-  <div id="grid"></div>
+  <div id="pages"></div>
+  <div id="dots"></div>
   <div id="setup">
     <div id="bigNum">
       <div class="n">1</div>
@@ -249,6 +381,10 @@ body.editing .tile .del{display:flex}
       <button id="webBtn">🔍</button>
     </div>
     <div id="webResults"></div>
+    <div id="txtRow">
+      <input type="text" id="txtInput" maxlength="20" placeholder="🔤 文字だけで登録（例：財布）" enterkeyhint="done">
+      <button id="txtBtn">➕</button>
+    </div>
     <div id="shotPrev"><img alt=""><div class="num">1</div><div class="plabel"></div></div>
     <button id="labelBtn">✏️ 名前を付ける（任意）</button>
     <div class="hint" id="setupHint">撮影するか、Webから画像を選んでね</div>
@@ -260,35 +396,61 @@ body.editing .tile .del{display:flex}
 </div>
 
 <div id="bottombar">
-  <button id="resetBtn">↺</button>
-  <button id="addBtn">➕</button>
-  <button id="playBtn">⚙</button>
-  <button id="editBtn">✕</button>
+  <div id="mainBar">
+    <button id="resetBtn">↺</button>
+    <button id="addBtn">➕</button>
+    <button id="playBtn">⚙</button>
+    <button id="editBtn">✕</button>
+  </div>
+  <div id="selBar">
+    <button id="selAll">☑ 全部</button>
+    <button id="selDel">🗑 削除</button>
+    <button id="selCancel">やめる</button>
+  </div>
 </div>
 
 <div id="doneOverlay">
   <div class="big">✨</div>
   <div class="msg">全部そろった！</div>
   <div class="sub">タップで閉じる</div>
+  <div id="hardDone">
+    <button id="hdSign">✍️ 署名してPNG保存</button>
+    <button id="hdNext" style="display:none">🔄 次の確認を始める</button>
+    <button id="hdClose">閉じる</button>
+  </div>
 </div>
 
-<div id="sheetBack">
-  <div id="sheet">
+<div id="sheetBack" class="sheetBack">
+  <div id="sheet" class="sheet">
     <button id="shRetake">📷 撮り直す</button>
     <button id="shGallery">📁 保存した画像から選び直す</button>
     <button id="shWeb">🌐 Webから選び直す</button>
     <button id="shLabel">✏️ 名前を変更</button>
-    <button id="shDel">✕ 削除</button>
+    <button id="shDel" class="danger">✕ 削除</button>
     <button id="shCancel">やめる</button>
   </div>
 </div>
 
-<div id="playBack">
-  <div id="play">
-    <button id="plNum">🔢 番号を隠す</button>
-    <button id="plShuffle">🎲 シャッフル（並びを混ぜる）</button>
-    <button id="plBlind">🕶 ブラインド（かくして当てる）</button>
+<div id="playBack" class="sheetBack">
+  <div id="play" class="sheet">
+    <button id="plNum" class="nohard">🔢 番号を隠す</button>
+    <button id="plShuffle" class="nohard">🎲 シャッフル（並びを混ぜる）</button>
+    <button id="plBlind" class="nohard">🕶 ブラインド（かくして当てる）</button>
+    <button id="plGen" class="nohard">🎱 番号を生成（ビンゴ）</button>
+    <button id="plGroup" class="nohard">📂 グループ（保存・呼び出し）</button>
+    <button id="plSign" class="hardonly">✍️ 署名してPNG保存</button>
+    <button id="plHard">🔒 ハードモード（確認作業用）</button>
     <button id="plCancel">やめる</button>
+  </div>
+</div>
+
+<div id="grpBack" class="sheetBack">
+  <div id="grp" class="sheet">
+    <div class="title">📂 グループ</div>
+    <button id="grpSave" class="nohard">💾 今の並びを名前を付けて保存</button>
+    <div id="grpList"></div>
+    <div id="grpEmpty">保存したグループはまだありません</div>
+    <button id="grpCancel">やめる</button>
   </div>
 </div>
 
@@ -302,46 +464,125 @@ body.editing .tile .del{display:flex}
   </div>
 </div>
 
+<div id="lb">
+  <div id="lbBody"></div>
+  <div id="lbCap"></div>
+</div>
+
+<div id="signOv">
+  <h2>✍️ 署名</h2>
+  <input type="text" id="signName" maxlength="30" placeholder="名前（例：山田 太郎）">
+  <canvas id="signPad"></canvas>
+  <div class="hint">白い枠に指で署名してね</div>
+  <div id="signBtns">
+    <button id="signClear">🧹 消す</button>
+    <button id="signCancel">やめる</button>
+    <button id="signOk">💾 PNG保存</button>
+  </div>
+</div>
+
+<div id="dlgBack">
+  <div id="dlg">
+    <div id="dlgTitle"></div>
+    <div id="dlgMsg"></div>
+    <div id="dlgInputs"></div>
+    <div id="dlgErr"></div>
+    <div id="dlgBtns">
+      <button id="dlgCancel">NO</button>
+      <button id="dlgOk">YES</button>
+    </div>
+  </div>
+</div>
+
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.6.0';
+const APP_VERSION = '0.7.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
+const PER_PAGE = 18;      // 1ページに並べる上限（横3×縦6）
+const LONG_MS = 600;      // 長押し判定
+const DBL_MS = 280;       // ダブルタップ判定
 
-let state = load();
+let state = null;
 let editing = false;
+let selecting = false;
+let selSet = new Set();
+let page = 0;
 let pendingIndex = -1;   // 画像コミット先index（新規=items.length）
 let pendingLabel = null; // 新規コミット時に付ける名前（Web検索語）
 let replaceMode = false; // 編集からの差し替え（コミット後すぐグリッドへ戻る）
 let sheetIndex = -1;     // 編集シート対象
 
-function load(){
-  try{
-    const s = JSON.parse(localStorage.getItem(LS_KEY));
-    if(s && Array.isArray(s.items)) return Object.assign({hideNum:false, blind:false}, s);
-  }catch(e){}
-  return {items: [], lastTap: 0, hideNum:false, blind:false};
+/* ===== 保存：IndexedDB（画像が増えてもlocalStorage 5MBで溢れない）
+   旧localStorageのデータは初回に自動で引き継ぐ。IDBが使えない環境はlocalStorageに退避 ===== */
+const DB_NAME = 'tapcheck', DB_STORE = 'kv';
+function idbOpen(){
+  return new Promise((res, rej)=>{
+    if(!('indexedDB' in window)) return rej(new Error('no idb'));
+    const r = indexedDB.open(DB_NAME, 1);
+    r.onupgradeneeded = ()=>r.result.createObjectStore(DB_STORE);
+    r.onsuccess = ()=>res(r.result);
+    r.onerror = ()=>rej(r.error);
+  });
 }
-function save(){ localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+async function idbGet(k){
+  const db = await idbOpen();
+  return new Promise((res, rej)=>{
+    const t = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).get(k);
+    t.onsuccess = ()=>res(t.result); t.onerror = ()=>rej(t.error);
+  });
+}
+async function idbSet(k, v){
+  const db = await idbOpen();
+  return new Promise((res, rej)=>{
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).put(v, k);
+    tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+  });
+}
+function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false}; }
+function normalize(s){
+  if(!s || !Array.isArray(s.items)) return null;
+  const st = Object.assign(defaults(), s);
+  if(!Array.isArray(st.groups)) st.groups = [];
+  return st;
+}
+async function load(){
+  let s = null;
+  try{ s = normalize(await idbGet('state')); }catch(e){}
+  if(!s){
+    try{ s = normalize(JSON.parse(localStorage.getItem(LS_KEY))); }catch(e){}
+    if(s){ idbSet('state', s).catch(()=>{}); } // 旧データをIDBへ引き継ぎ
+  }
+  return s || defaults();
+}
+let saveTimer = null;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{
+    idbSet('state', state).catch(()=>{});
+    try{
+      const j = JSON.stringify(state);
+      if(j.length < 3_000_000) localStorage.setItem(LS_KEY, j); // 小さいうちは予備としても置く
+    }catch(e){}
+  }, 120);
+}
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function itemName(it, i){ return it.label || `No.${i+1}`; }
 
-// 起動時オートリセット：全部そろった後の再訪 or 8時間放置なら白黒に戻す
-(function autoReset(){
-  const allDone = state.items.length>0 && state.items.every(i=>i.done);
-  const stale = state.lastTap && (Date.now()-state.lastTap > RESET_AFTER_MS);
-  if(allDone || stale){ state.items.forEach(i=>i.done=false); save(); }
-})();
-
-const grid = document.getElementById('grid');
+const pagesEl = document.getElementById('pages');
+const dotsEl = document.getElementById('dots');
 const progress = document.getElementById('progress');
+const gnameEl = document.getElementById('gname');
 const setup = document.getElementById('setup');
 const bigNum = document.getElementById('bigNum');
 const webInput = document.getElementById('webInput');
 const webBtn = document.getElementById('webBtn');
 const webResults = document.getElementById('webResults');
+const txtInput = document.getElementById('txtInput');
 const shotPrev = document.getElementById('shotPrev');
 const labelBtn = document.getElementById('labelBtn');
 const setupHint = document.getElementById('setupHint');
@@ -350,6 +591,85 @@ const finishBtn = document.getElementById('finishBtn');
 const camInput = document.getElementById('camInput');
 const doneOverlay = document.getElementById('doneOverlay');
 const sheetBack = document.getElementById('sheetBack');
+
+/* ===== 汎用ダイアログ：dlg({title,msg,inputs:[{ph,type,value,label}],ok,cancel,danger}) → {ok,values} ===== */
+const dlgBack = document.getElementById('dlgBack');
+const dlgInputs = document.getElementById('dlgInputs');
+const dlgErr = document.getElementById('dlgErr');
+let dlgResolve = null;
+function dlg(o){
+  return new Promise(res=>{
+    dlgResolve = res;
+    document.getElementById('dlgTitle').textContent = o.title || '';
+    document.getElementById('dlgMsg').textContent = o.msg || '';
+    dlgErr.textContent = o.err || '';
+    dlgInputs.innerHTML = '';
+    (o.inputs||[]).forEach((inp,i)=>{
+      const el = document.createElement('input');
+      el.type = inp.type || 'text';
+      el.placeholder = inp.ph || '';
+      el.value = inp.value || '';
+      if(inp.type === 'number'){ el.inputMode = 'numeric'; el.min = inp.min||''; el.max = inp.max||''; }
+      if(inp.maxlength) el.maxLength = inp.maxlength;
+      el.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); dlgEnd(true); } });
+      if(inp.label){
+        const w = document.createElement('div'); w.className = 'two';
+        const s = document.createElement('span'); s.textContent = inp.label;
+        w.appendChild(s); w.appendChild(el); dlgInputs.appendChild(w);
+      }else dlgInputs.appendChild(el);
+    });
+    const ok = document.getElementById('dlgOk'), cancel = document.getElementById('dlgCancel');
+    ok.textContent = o.ok || 'OK';
+    cancel.textContent = o.cancel || 'やめる';
+    ok.classList.toggle('danger', !!o.danger);
+    cancel.style.display = o.cancel === false ? 'none' : '';
+    dlgBack.classList.add('show');
+  });
+}
+function dlgEnd(ok){
+  if(!dlgResolve) return;
+  const values = [...dlgInputs.querySelectorAll('input')].map(i=>i.value);
+  dlgBack.classList.remove('show');
+  const r = dlgResolve; dlgResolve = null;
+  r({ok, values});
+}
+document.getElementById('dlgOk').addEventListener('click', ()=>dlgEnd(true));
+document.getElementById('dlgCancel').addEventListener('click', ()=>dlgEnd(false));
+async function confirmDlg(title, msg, opts){ return (await dlg(Object.assign({title, msg, ok:'OK', cancel:'やめる'}, opts||{}))).ok; }
+
+/* ===== パスワード（SHA-256で保存・平文は持たない） ===== */
+async function hashPw(s){
+  try{
+    const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('tapcheck:'+s));
+    return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }catch(e){
+    let h = 0; for(const c of 'tapcheck:'+s) h = (h*31 + c.charCodeAt(0))|0;
+    return 'x'+h;
+  }
+}
+async function askPw(title, msg){
+  let err = '';
+  while(true){
+    const r = await dlg({title, msg, err, inputs:[{type:'password', ph:'パスワード'}], ok:'OK', cancel:'やめる'});
+    if(!r.ok) return false;
+    if(await hashPw(r.values[0]) === state.pwHash) return true;
+    err = 'パスワードがちがいます';
+  }
+}
+async function setPw(){
+  let err = '';
+  while(true){
+    const r = await dlg({title:'🔒 パスワードを設定', msg:'解除・リセット・ハードモード終了に必要です。\n忘れると戻せないので注意', err,
+      inputs:[{type:'password', ph:'パスワード（4文字以上）'},{type:'password', ph:'もう一度'}], ok:'設定', cancel:'やめる'});
+    if(!r.ok) return false;
+    const [a,b] = r.values;
+    if(a.length < 4){ err = '4文字以上にしてね'; continue; }
+    if(a !== b){ err = '2つが一致しません'; continue; }
+    state.pwHash = await hashPw(a);
+    save();
+    return true;
+  }
+}
 
 /* ===== 全写真を必ず1画面に収めるグリッド計算 ===== */
 function bestLayout(n, W, H){
@@ -365,52 +685,135 @@ function bestLayout(n, W, H){
   best.size = Math.floor(best.size);
   return best;
 }
+function txFont(label, size){
+  const len = Math.max(1, (label||'').length);
+  return Math.max(11, Math.min(size*0.36, size*1.5/len));
+}
+function pageCount(){ return Math.max(1, Math.ceil(state.items.length / PER_PAGE)); }
 
 function render(){
   const n = state.items.length;
-  grid.innerHTML = '';
-  if(n === 0){ updateProgress(); return; }
-  // 幅・高さは必ずstage基準で測る（gridは前回のmax-widthで縮んでいるため）
+  pagesEl.innerHTML = '';
+  gnameEl.textContent = state.groupName || '';
   const stageEl = document.getElementById('stage');
   const W = stageEl.clientWidth, H = stageEl.clientHeight;
-  const {cols, size} = bestLayout(n, W, H);
-  grid.style.gap = GAP+'px';
-  grid.style.padding = PAD+'px';
-  grid.style.maxWidth = (cols*size + GAP*(cols-1) + PAD*2) + 'px';
-  grid.style.margin = '0 auto';
-  const fontPx = Math.max(11, Math.min(18, size*0.14));
-  state.items.forEach((it,i)=>{
-    const t = document.createElement('div');
-    t.className = 'tile' + (it.done ? ' done':'');
-    t.style.width = size+'px';
-    t.style.height = size+'px';
-    t.style.fontSize = fontPx+'px';
-    t.innerHTML =
-      `<img src="${it.img}" alt="">` +
-      `<div class="num">${i+1}</div>` +
-      (it.label ? `<div class="label">${escapeHtml(it.label)}</div>` : '') +
-      `<button class="del">✕</button>`;
-    t.addEventListener('click', e=>{
-      if(editing){
-        if(e.target.classList.contains('del')){ deleteItem(i); return; }
-        openSheet(i);
-        return;
+  const pc = pageCount();
+  if(page > pc-1) page = pc-1;
+  if(page < 0) page = 0;
+  if(n > 0){
+    // 1ページ18枚までなら全部で最大サイズ。超えたら18枚基準のサイズで全ページ統一
+    const {cols, size} = bestLayout(Math.min(n, PER_PAGE), W, H - (pc>1 ? 12 : 0));
+    const fontPx = Math.max(11, Math.min(18, size*0.14));
+    for(let p=0; p<pc; p++){
+      const pg = document.createElement('div'); pg.className = 'page';
+      const g = document.createElement('div'); g.className = 'pgrid';
+      g.style.gap = GAP+'px'; g.style.padding = PAD+'px';
+      g.style.width = (cols*size + GAP*(cols-1) + PAD*2) + 'px';
+      const from = p*PER_PAGE, to = Math.min(n, from+PER_PAGE);
+      for(let i=from; i<to; i++){
+        const it = state.items[i];
+        const t = document.createElement('div');
+        t.className = 'tile' + (it.done ? ' done':'') + (it.img ? '' : ' txt') + (selSet.has(i) ? ' sel':'');
+        t.style.width = size+'px'; t.style.height = size+'px'; t.style.fontSize = fontPx+'px';
+        t.dataset.i = i;
+        t.innerHTML =
+          (it.img ? `<img src="${it.img}" alt="">`
+                  : `<div class="tx" style="font-size:${txFont(it.label, size)}px">${escapeHtml(it.label||'')}</div>`) +
+          `<div class="num">${i+1}</div>` +
+          (it.label && it.img ? `<div class="label">${escapeHtml(it.label)}</div>` : '') +
+          `<button class="del">✕</button><div class="chk">${selSet.has(i) ? '✓':''}</div>`;
+        t.addEventListener('click', e=>onTileClick(e, i));
+        t.addEventListener('pointerdown', e=>onTileDown(e, i));
+        g.appendChild(t);
       }
-      toggle(i);
-    });
-    grid.appendChild(t);
-  });
+      pg.appendChild(g);
+      pagesEl.appendChild(pg);
+    }
+  }
+  pagesEl.style.transition = 'none';
+  pagesEl.style.transform = `translateX(${-page*100}%)`;
+  requestAnimationFrame(()=>{ pagesEl.style.transition = ''; });
+  dotsEl.innerHTML = '';
+  dotsEl.classList.toggle('show', pc > 1);
+  for(let p=0; p<pc; p++){ const s = document.createElement('span'); if(p===page) s.className='on'; dotsEl.appendChild(s); }
   updateProgress();
+  updateBar();
+}
+function gotoPage(p){
+  page = Math.max(0, Math.min(pageCount()-1, p));
+  pagesEl.style.transform = `translateX(${-page*100}%)`;
+  [...dotsEl.children].forEach((d,i)=>d.classList.toggle('on', i===page));
+}
+
+/* ===== タイル操作：タップ／長押し／スワイプ（ページ送り） ===== */
+let swipeLock = 0;      // スワイプ直後のclickを無視
+let lpTimer = null, lpFired = false;
+let sw = null;          // スワイプ追跡
+function onTileDown(e, i){
+  lpFired = false;
+  clearTimeout(lpTimer);
+  if(state.hard && !editing && !selecting){
+    lpTimer = setTimeout(()=>{ lpFired = true; hardLongPress(i); }, LONG_MS);
+  }
+}
+pagesEl.addEventListener('pointerdown', e=>{
+  sw = {x:e.clientX, y:e.clientY, moved:false};
+});
+pagesEl.addEventListener('pointermove', e=>{
+  if(!sw) return;
+  const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+  if(!sw.moved && Math.hypot(dx,dy) > 10){ sw.moved = true; clearTimeout(lpTimer); }
+});
+function swEnd(e){
+  clearTimeout(lpTimer);
+  if(!sw) return;
+  const dx = e.clientX - sw.x, dy = e.clientY - sw.y;
+  sw = null;
+  if(Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy)*1.3){
+    swipeLock = Date.now();
+    gotoPage(page + (dx < 0 ? 1 : -1));
+  }else if(Math.hypot(dx,dy) > 10){
+    swipeLock = Date.now(); // 動かしたタップは無効
+  }
+}
+pagesEl.addEventListener('pointerup', swEnd);
+pagesEl.addEventListener('contextmenu', e=>e.preventDefault()); // 長押しでメニューを出さない
+document.getElementById('lb').addEventListener('contextmenu', e=>e.preventDefault());
+pagesEl.addEventListener('pointercancel', e=>{ clearTimeout(lpTimer); sw = null; });
+
+function onTileClick(e, i){
+  if(Date.now() - swipeLock < 400) return;
+  if(lpFired){ lpFired = false; return; }
+  if(selecting){
+    if(selSet.has(i)) selSet.delete(i); else selSet.add(i);
+    const t = e.currentTarget;
+    t.classList.toggle('sel', selSet.has(i));
+    t.querySelector('.chk').textContent = selSet.has(i) ? '✓' : '';
+    updateBar();
+    return;
+  }
+  if(editing){
+    if(e.target.classList.contains('del')){ deleteItem(i); return; }
+    openSheet(i);
+    return;
+  }
+  if(state.hard){ openLightbox(i); return; }
+  toggle(i);
 }
 
 function toggle(i){
   state.items[i].done = !state.items[i].done;
+  state.items[i].at = state.items[i].done ? Date.now() : null;
   state.lastTap = Date.now();
   save();
   if(navigator.vibrate) navigator.vibrate(state.items[i].done ? 30 : 10);
   render();
+  checkAllDone();
+}
+function checkAllDone(){
   if(state.items.length>0 && state.items.every(x=>x.done)){
     if(navigator.vibrate) navigator.vibrate([40,60,40]);
+    document.getElementById('hdNext').style.display = state.signed ? '' : 'none';
     doneOverlay.classList.add('show');
   }
 }
@@ -419,12 +822,18 @@ function deleteItem(i){
 }
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
-  progress.textContent = (state.blind ? '🕶 ' : '') + `${d}/${state.items.length}`;
+  progress.textContent = (state.hard ? '🔒 ' : '') + (state.blind ? '🕶 ' : '') + `${d}/${state.items.length}`;
 }
-/* 番号非表示・ブラインドをbodyクラスに反映 */
+function updateBar(){
+  const rb = document.getElementById('resetBtn');
+  rb.textContent = editing ? '☑ 選択' : '↺';
+  document.getElementById('selDel').textContent = selSet.size ? `🗑 削除 (${selSet.size})` : '🗑 削除';
+}
+/* 番号非表示・ブラインド・ハードをbodyクラスに反映 */
 function applyModes(){
   document.body.classList.toggle('nonum', !!state.hideNum);
   document.body.classList.toggle('blind', !!state.blind);
+  document.body.classList.toggle('hard', !!state.hard);
 }
 
 /* ===== 画像コミット（カメラ・Web共通） ===== */
@@ -440,6 +849,24 @@ function commitDataUrl(data){
   if(setup.classList.contains('show')) showShot();
   else render();
 }
+/* 文字だけの登録（連続入力できるようセットアップ画面に留まる） */
+function commitText(){
+  const v = txtInput.value.trim();
+  if(!v) return;
+  if(replaceMode){
+    const it = state.items[sheetIndex];
+    it.img = null; it.label = v;
+    save(); txtInput.value = ''; replaceMode = false; closeSetup(); return;
+  }
+  state.items.push({img:null, done:false, label:v});
+  save();
+  txtInput.value = '';
+  showBigNum();
+  setupHint.textContent = `「${v}」を登録したよ（続けて入力できる）`;
+}
+document.getElementById('txtBtn').addEventListener('click', commitText);
+txtInput.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); commitText(); } });
+
 function cropSquare(img){
   // 必ず自然サイズ基準（DOM内imgの.width/.heightはCSS表示サイズ＝切り出しがズレる）
   const w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
@@ -461,7 +888,6 @@ function handleFilePick(inp, useCrop){
   const url = URL.createObjectURL(f);
   img.onload = ()=>{
     if(useCrop){
-      // ギャラリー画像は切り取り画面を通す（初期位置=従来の中央切り出しと同じ）
       openCrop(img, data=>{
         URL.revokeObjectURL(url);
         if(data) commitDataUrl(data);
@@ -490,7 +916,7 @@ function openCrop(img, cb){
   cropFrame.appendChild(img);
   cropOv.classList.add('show');
   const FR = cropFrame.clientWidth;
-  crMin = FR / Math.min(img.naturalWidth, img.naturalHeight); // 枠を必ず埋める最小倍率
+  crMin = FR / Math.min(img.naturalWidth, img.naturalHeight);
   crScale = crMin;
   crOx = (FR - img.naturalWidth*crScale)/2;
   crOy = (FR - img.naturalHeight*crScale)/2;
@@ -573,15 +999,12 @@ document.getElementById('cropCancel').addEventListener('click', ()=>{
 
 /* ===== Web画像検索（Wikipedia + Commons + Openverse・キー不要）
    同じ言葉で🔍を押すたびに次の候補セットへ（尽きたら最初に戻る）
-   Openverse=Flickr等のフリー写真集約。日本語はWikipediaの言語リンクで
-   英語名（なす→Eggplant）に変換してから投げる＝日用品のヒット率を上げる ===== */
+   日本語はWikipediaの言語リンクで英語名（なす→Eggplant）に変換してOpenverseへ ===== */
 function toKatakana(s){ return s.replace(/[ぁ-ゖ]/g, c=>String.fromCharCode(c.charCodeAt(0)+0x60)); }
-let enTerm = null; // 検索語の英語名（Wikipedia言語リンク由来・言葉が変わるまで保持）
+let enTerm = null;
 async function webSearch(term, page){
   const enc = encodeURIComponent(term);
   const kata = toKatakana(term);
-  // page0のみ：題名ドンピシャの記事（リダイレクト解決付き・ひらがな→カタカナ両方）を最優先で引く
-  // ついでに言語リンクで英語名も取る（Openverse用）
   const titles = term === kata ? encodeURIComponent(term) : encodeURIComponent(term)+'%7C'+encodeURIComponent(kata);
   const exact = page === 0
     ? await fetch(`https://ja.wikipedia.org/w/api.php?action=query&titles=${titles}&redirects=1&prop=pageimages%7Clanglinks&piprop=thumbnail&pithumbsize=400&lllang=en&format=json&origin=*`)
@@ -592,7 +1015,7 @@ async function webSearch(term, page){
     Object.values(exact.query.pages).forEach(p=>{
       if(p.thumbnail) exactUrls.push(p.thumbnail.source);
       const ll = p.langlinks && p.langlinks[0] && p.langlinks[0]['*'];
-      if(ll && !enTerm) enTerm = ll.replace(/\s*\(.*\)$/, ''); // 「Eggplant (food)」→「Eggplant」
+      if(ll && !enTerm) enTerm = ll.replace(/\s*\(.*\)$/, '');
     });
   }
   const [wiki, commons, ov] = await Promise.all([
@@ -605,7 +1028,6 @@ async function webSearch(term, page){
   ]);
   const wikiUrls = [], comUrls = [], ovUrls = [];
   if(wiki && wiki.query){
-    // 題名一致を前へ・「なすの (列車)」等のカッコ付き題名（曖昧さ回避っぽい）を後回し
     const score = p => {
       let s = p.index;
       if(p.title === term || p.title === kata) s -= 100;
@@ -626,7 +1048,6 @@ async function webSearch(term, page){
   if(ov && ov.results){
     ov.results.forEach(r=>{ if(r.thumbnail) ovUrls.push(r.thumbnail); });
   }
-  // 並び：ドンピシャ→Openverse/Wikipedia/Commonsを交互に混ぜる
   const urls = [...exactUrls];
   const qs = [ovUrls, wikiUrls, comUrls];
   for(let i=0; i<9; i++){ qs.forEach(q=>{ if(q[i] !== undefined) urls.push(q[i]); }); }
@@ -638,7 +1059,7 @@ let lastTerm = '', searchPage = 0, seenUrls = new Set();
 async function doWebSearch(){
   const term = webInput.value.trim();
   if(!term || searching) return;
-  if(term === lastTerm){ searchPage++; }               // 同じ言葉の再検索＝次の候補セット
+  if(term === lastTerm){ searchPage++; }
   else { lastTerm = term; searchPage = 0; seenUrls = new Set(); enTerm = null; }
   searching = true;
   webResults.innerHTML = '';
@@ -646,7 +1067,6 @@ async function doWebSearch(){
   setupHint.textContent = '🔍 検索中…';
   let urls = [];
   try{ urls = (await webSearch(term, searchPage)).filter(u=>!seenUrls.has(u)); }catch(e){}
-  // 候補が尽きた→最初のセットに戻る
   let wrapped = false;
   if(urls.length === 0 && searchPage > 0){
     searchPage = 0; seenUrls = new Set(); wrapped = true;
@@ -669,13 +1089,12 @@ async function doWebSearch(){
     d.appendChild(im);
     d.addEventListener('click', ()=>{
       if(!im.complete || !im.naturalWidth) return;
-      // 同じURLをもう一度読み（キャッシュから即）、切り取り画面へ
       const big = new Image();
       big.crossOrigin = 'anonymous';
       big.onload = ()=>{
         openCrop(big, (data, err)=>{
           if(err){ setupHint.textContent = 'この画像は使えなかった…別のを選んでね'; return; }
-          if(!data) return; // やめる＝候補一覧に戻る
+          if(!data) return;
           if(!replaceMode){ pendingIndex = state.items.length; pendingLabel = term; }
           webResults.classList.remove('show');
           webResults.innerHTML = '';
@@ -702,6 +1121,7 @@ function showSetup(replace){
 function showBigNum(){
   bigNum.style.display = 'flex';
   document.getElementById('webRow').style.display = 'flex';
+  document.getElementById('txtRow').style.display = 'flex';
   shotPrev.style.display = 'none';
   labelBtn.style.display = 'none';
   nextBtn.style.display = 'none';
@@ -709,13 +1129,14 @@ function showBigNum(){
   webResults.innerHTML = '';
   const num = replaceMode ? sheetIndex+1 : state.items.length+1;
   bigNum.querySelector('.n').textContent = num;
-  setupHint.textContent = replaceMode ? '撮影するか、Webから選んで差し替え' : '撮影するか、Webから画像を選んでね';
+  setupHint.textContent = replaceMode ? '撮影・Web・文字で差し替え' : '撮影・Webの画像・文字だけ、どれでも登録できるよ';
 }
 function showShot(){
   const i = state.items.length-1;
   const it = state.items[i];
   bigNum.style.display = 'none';
   document.getElementById('webRow').style.display = 'none';
+  document.getElementById('txtRow').style.display = 'none';
   webResults.classList.remove('show');
   shotPrev.style.display = 'block';
   shotPrev.querySelector('img').src = it.img;
@@ -729,6 +1150,7 @@ function showShot(){
 }
 function closeSetup(){
   setup.classList.remove('show');
+  if(!replaceMode) page = pageCount()-1; // 追加した直後は最後のページを見せる
   replaceMode = false;
   render();
 }
@@ -742,11 +1164,11 @@ document.getElementById('galBtn').addEventListener('click', ()=>{
   galInput.click();
 });
 shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
-labelBtn.addEventListener('click', ()=>{
+labelBtn.addEventListener('click', async ()=>{
   const it = state.items[state.items.length-1];
-  const v = prompt('名前（空欄にすると消えます）', it.label || '');
-  if(v === null) return;
-  it.label = v.trim() || null;
+  const r = await dlg({title:'✏️ 名前', msg:'空欄にすると消えます', inputs:[{ph:'名前', value:it.label||'', maxlength:20}], ok:'OK'});
+  if(!r.ok) return;
+  it.label = r.values[0].trim() || null;
   save(); showShot();
 });
 nextBtn.addEventListener('click', showBigNum);
@@ -755,6 +1177,10 @@ finishBtn.addEventListener('click', closeSetup);
 /* ===== 編集アクションシート ===== */
 function openSheet(i){
   sheetIndex = i;
+  const it = state.items[i];
+  document.getElementById('shRetake').textContent = it.img ? '📷 撮り直す' : '📷 写真を撮って付ける';
+  document.getElementById('shGallery').textContent = it.img ? '📁 保存した画像から選び直す' : '📁 保存した画像を付ける';
+  document.getElementById('shWeb').textContent = it.img ? '🌐 Webから選び直す／文字だけに' : '🌐 Webから画像を付ける';
   sheetBack.classList.add('show');
 }
 function closeSheet(){ sheetBack.classList.remove('show'); }
@@ -773,12 +1199,14 @@ document.getElementById('shWeb').addEventListener('click', ()=>{
   pendingIndex = sheetIndex;
   showSetup(true);
 });
-document.getElementById('shLabel').addEventListener('click', ()=>{
+document.getElementById('shLabel').addEventListener('click', async ()=>{
   closeSheet();
   const it = state.items[sheetIndex];
-  const v = prompt('名前（空欄にすると消えます）', it.label || '');
-  if(v === null) return;
-  it.label = v.trim() || null;
+  const r = await dlg({title:'✏️ 名前', msg:it.img ? '空欄にすると消えます' : '', inputs:[{ph:'名前', value:it.label||'', maxlength:20}], ok:'OK'});
+  if(!r.ok) return;
+  const v = r.values[0].trim();
+  if(!it.img && !v) return; // 文字だけのカードは空にできない
+  it.label = v || null;
   save(); render();
 });
 document.getElementById('shDel').addEventListener('click', ()=>{
@@ -788,11 +1216,34 @@ document.getElementById('shDel').addEventListener('click', ()=>{
 document.getElementById('shCancel').addEventListener('click', closeSheet);
 sheetBack.addEventListener('click', e=>{ if(e.target===sheetBack) closeSheet(); });
 
-/* ===== 設定シート（番号・シャッフル・ブラインド） ===== */
+/* ===== 選択モード（まとめて削除） ===== */
+function setSelecting(on){
+  selecting = on; selSet = new Set();
+  document.body.classList.toggle('selecting', on);
+  render();
+}
+document.getElementById('selAll').addEventListener('click', ()=>{
+  if(selSet.size === state.items.length) selSet = new Set();
+  else selSet = new Set(state.items.map((_,i)=>i));
+  render();
+});
+document.getElementById('selDel').addEventListener('click', async ()=>{
+  if(!selSet.size) return;
+  const all = selSet.size === state.items.length;
+  const ok = await confirmDlg(all ? '🗑 全部削除' : '🗑 削除', all ? `全部（${selSet.size}件）を削除します。\n戻せません` : `${selSet.size}件を削除します`, {ok:'削除', danger:true});
+  if(!ok) return;
+  state.items = state.items.filter((_,i)=>!selSet.has(i));
+  save();
+  setSelecting(false);
+});
+document.getElementById('selCancel').addEventListener('click', ()=>setSelecting(false));
+
+/* ===== 設定シート ===== */
 const playBack = document.getElementById('playBack');
 function openPlay(){
   document.getElementById('plNum').textContent = state.hideNum ? '🔢 番号を表示する' : '🔢 番号を隠す';
   document.getElementById('plBlind').textContent = state.blind ? '🕶 ブラインドをやめる' : '🕶 ブラインド（かくして当てる）';
+  document.getElementById('plHard').textContent = state.hard ? '🔓 ハードモードを解除' : '🔒 ハードモード（確認作業用）';
   playBack.classList.add('show');
 }
 function closePlay(){ playBack.classList.remove('show'); }
@@ -800,41 +1251,359 @@ document.getElementById('plNum').addEventListener('click', ()=>{
   state.hideNum = !state.hideNum;
   save(); applyModes(); closePlay();
 });
-document.getElementById('plShuffle').addEventListener('click', ()=>{
+function shuffleItems(){
   for(let i=state.items.length-1; i>0; i--){
     const j = Math.floor(Math.random()*(i+1));
     [state.items[i], state.items[j]] = [state.items[j], state.items[i]];
   }
+}
+document.getElementById('plShuffle').addEventListener('click', ()=>{
+  shuffleItems();
   save(); render(); closePlay();
 });
 document.getElementById('plBlind').addEventListener('click', ()=>{
   state.blind = !state.blind;
-  if(state.blind) state.items.forEach(i=>i.done=false); // 開始時は全部かくす
+  if(state.blind) state.items.forEach(i=>i.done=false);
   save(); applyModes(); render(); closePlay();
+});
+/* 番号生成（ビンゴ）：範囲→文字カードをシャッフル＋ブラインドで「？」をめくると番号 */
+document.getElementById('plGen').addEventListener('click', async ()=>{
+  closePlay();
+  let err = '';
+  while(true){
+    const r = await dlg({title:'🎱 番号を生成', msg:'ビンゴのように「？」をめくると番号が出ます。\n今の並びは置き換わります（残したいなら先に📂で保存）', err,
+      inputs:[{type:'number', ph:'1', value:'1', label:'何番から'},{type:'number', ph:'75', value:'75', label:'何番まで'}], ok:'生成'});
+    if(!r.ok) return;
+    const a = parseInt(r.values[0],10), b = parseInt(r.values[1],10);
+    if(isNaN(a) || isNaN(b) || a > b){ err = '数字を正しく入れてね'; continue; }
+    if(b - a + 1 > 300){ err = '300個までにしてね'; continue; }
+    state.items = [];
+    for(let n=a; n<=b; n++) state.items.push({img:null, done:false, label:String(n)});
+    shuffleItems();
+    state.blind = true; state.groupName = `番号 ${a}〜${b}`; page = 0;
+    save(); applyModes(); render();
+    return;
+  }
+});
+document.getElementById('plGroup').addEventListener('click', ()=>{ closePlay(); openGroups(); });
+document.getElementById('plSign').addEventListener('click', ()=>{
+  closePlay();
+  if(!(state.items.length && state.items.every(x=>x.done))){
+    dlg({title:'まだ確認が残っています', msg:'全部確認済みになると署名できます', ok:'OK', cancel:false}); return;
+  }
+  openSign();
+});
+document.getElementById('plHard').addEventListener('click', async ()=>{
+  closePlay();
+  if(state.hard){
+    if(!(await askPw('🔓 ハードモードを解除', ''))) return;
+    state.hard = false; state.signed = false;
+    save(); applyModes(); render();
+    return;
+  }
+  if(!state.items.length){ dlg({title:'カードがありません', msg:'先に➕で確認項目を登録してね', ok:'OK', cancel:false}); return; }
+  if(state.pwHash){ if(!(await askPw('🔒 ハードモードを開始', ''))) return; }
+  else { if(!(await setPw())) return; }
+  const ok = await confirmDlg('🔒 ハードモード', 'タップ＝拡大して見る（ダブルタップで拡縮）\n長押し＝YES/NOで確認済みに\n確認の取り消し・↺・解除＝パスワード\n全部確認したら署名付きPNGを保存\n\n今のチェックは全部白黒に戻して始めます', {ok:'開始'});
+  if(!ok) return;
+  state.hard = true; state.blind = false; state.signed = false;
+  state.items.forEach(i=>{ i.done = false; i.at = null; });
+  if(editing) toggleEdit(false);
+  save(); applyModes(); render();
 });
 document.getElementById('plCancel').addEventListener('click', closePlay);
 playBack.addEventListener('click', e=>{ if(e.target===playBack) closePlay(); });
 
-/* ===== 下部バー ===== */
-document.getElementById('resetBtn').addEventListener('click', ()=>{
-  state.items.forEach(i=>i.done=false);
+/* ===== グループ（保存・呼び出し） ===== */
+const grpBack = document.getElementById('grpBack');
+function openGroups(){
+  const list = document.getElementById('grpList');
+  list.innerHTML = '';
+  document.getElementById('grpEmpty').style.display = state.groups.length ? 'none' : '';
+  state.groups.forEach((g, gi)=>{
+    const row = document.createElement('div'); row.className = 'row';
+    const nm = document.createElement('button'); nm.className = 'nm';
+    nm.innerHTML = `${escapeHtml(g.name)}<small>${g.items.length}枚</small>`;
+    nm.addEventListener('click', async ()=>{
+      if(state.hard){ return; }
+      grpBack.classList.remove('show');
+      if(state.items.length && state.groupName !== g.name){
+        const ok = await confirmDlg(`📂 「${g.name}」を呼び出す`, '今の並びは置き換わります（保存していなければ消えます）', {ok:'呼び出す'});
+        if(!ok) return;
+      }
+      state.items = g.items.map(it=>({img:it.img, label:it.label, done:false}));
+      state.groupName = g.name; state.blind = false; page = 0;
+      save(); applyModes(); render();
+    });
+    const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = '✕';
+    rm.addEventListener('click', async ()=>{
+      grpBack.classList.remove('show');
+      const ok = await confirmDlg('🗑 グループを削除', `「${g.name}」を削除します（今の並びはそのまま）`, {ok:'削除', danger:true});
+      if(!ok) return;
+      state.groups.splice(gi,1); save();
+    });
+    row.appendChild(nm); row.appendChild(rm); list.appendChild(row);
+  });
+  grpBack.classList.add('show');
+}
+document.getElementById('grpSave').addEventListener('click', async ()=>{
+  grpBack.classList.remove('show');
+  if(!state.items.length){ dlg({title:'カードがありません', msg:'保存するものが無いよ', ok:'OK', cancel:false}); return; }
+  const r = await dlg({title:'💾 グループを保存', msg:'名前を付けてね（同じ名前なら上書き）', inputs:[{ph:'例：出勤セット', value:state.groupName||'', maxlength:20}], ok:'保存'});
+  if(!r.ok) return;
+  const name = r.values[0].trim();
+  if(!name) return;
+  const items = state.items.map(it=>({img:it.img, label:it.label}));
+  const ex = state.groups.findIndex(g=>g.name===name);
+  if(ex >= 0) state.groups[ex] = {name, items, at:Date.now()};
+  else state.groups.push({name, items, at:Date.now()});
+  state.groupName = name;
   save(); render();
+});
+document.getElementById('grpCancel').addEventListener('click', ()=>grpBack.classList.remove('show'));
+grpBack.addEventListener('click', e=>{ if(e.target===grpBack) grpBack.classList.remove('show'); });
+
+/* ===== ハードモード：長押し確認／PWで取り消し ===== */
+async function hardLongPress(i){
+  const it = state.items[i];
+  if(navigator.vibrate) navigator.vibrate(20);
+  if(!it.done){
+    const ok = await dlg({title:'確認済みにしますか？', msg:itemName(it,i), ok:'YES', cancel:'NO'});
+    if(!ok.ok) return;
+    it.done = true; it.at = Date.now(); state.lastTap = Date.now();
+    save(); render();
+    if(navigator.vibrate) navigator.vibrate(30);
+    checkAllDone();
+  }else{
+    const ok = await askPw('🔓 確認を取り消す', `${itemName(it,i)}\n上長のパスワードが必要です`);
+    if(!ok) return;
+    it.done = false; it.at = null; state.signed = false;
+    save(); render();
+  }
+}
+
+/* ===== ライトボックス：タップで閉じる／ダブルタップで拡縮／拡大中はドラッグ ===== */
+const lb = document.getElementById('lb');
+const lbBody = document.getElementById('lbBody');
+let lbEl = null, lbS = 1, lbTx = 0, lbTy = 0, lbW = 0, lbH = 0;
+let lbLastTap = 0, lbTapTimer = null, lbPtr = null;
+function openLightbox(i){
+  const it = state.items[i];
+  lbBody.innerHTML = '';
+  if(it.img){ lbEl = document.createElement('img'); lbEl.src = it.img; }
+  else { lbEl = document.createElement('div'); lbEl.className = 'tx'; lbEl.textContent = it.label; }
+  lbBody.appendChild(lbEl);
+  document.getElementById('lbCap').textContent = `${i+1}. ${itemName(it,i)}${it.done ? '  ✅ 確認済み' : ''}　｜　タップで戻る・ダブルタップで拡大`;
+  lbS = 1; lbTx = 0; lbTy = 0;
+  lb.classList.add('show');
+  const r = lbEl.getBoundingClientRect(); lbW = r.width; lbH = r.height;
+  if(lbEl.tagName === 'IMG') lbEl.onload = ()=>{ const r2 = lbEl.getBoundingClientRect(); lbW = r2.width; lbH = r2.height; };
+  lbApply();
+}
+function lbApply(){
+  const mx = (lbS-1)*lbW/2, my = (lbS-1)*lbH/2;
+  lbTx = Math.max(-mx, Math.min(mx, lbTx));
+  lbTy = Math.max(-my, Math.min(my, lbTy));
+  lbEl.style.transform = `translate(${lbTx}px,${lbTy}px) scale(${lbS})`;
+  lbEl.style.transition = 'transform .15s';
+}
+function lbClose(){ lb.classList.remove('show'); lbBody.innerHTML = ''; lbEl = null; }
+function lbToggleZoom(cx, cy){
+  if(lbS > 1){ lbS = 1; lbTx = 0; lbTy = 0; }
+  else {
+    lbS = 2.5;
+    const px = cx - innerWidth/2, py = cy - innerHeight/2;
+    lbTx = px*(1-lbS); lbTy = py*(1-lbS);
+  }
+  lbApply();
+}
+lb.addEventListener('pointerdown', e=>{
+  lbPtr = {x:e.clientX, y:e.clientY, moved:false};
+  try{ lb.setPointerCapture(e.pointerId); }catch(err){}
+});
+lb.addEventListener('pointermove', e=>{
+  if(!lbPtr) return;
+  const dx = e.clientX - lbPtr.x, dy = e.clientY - lbPtr.y;
+  if(lbS > 1){
+    lbTx += dx; lbTy += dy; lbEl.style.transition = 'none';
+    const mx = (lbS-1)*lbW/2, my = (lbS-1)*lbH/2;
+    lbTx = Math.max(-mx, Math.min(mx, lbTx)); lbTy = Math.max(-my, Math.min(my, lbTy));
+    lbEl.style.transform = `translate(${lbTx}px,${lbTy}px) scale(${lbS})`;
+    if(Math.hypot(dx,dy) > 4) lbPtr.moved = true;
+    lbPtr.x = e.clientX; lbPtr.y = e.clientY;
+  }else if(Math.hypot(dx,dy) > 10) lbPtr.moved = true;
+});
+lb.addEventListener('pointerup', e=>{
+  if(!lbPtr) return;
+  const moved = lbPtr.moved; lbPtr = null;
+  if(moved) return;
+  const now = Date.now();
+  if(now - lbLastTap < DBL_MS){
+    clearTimeout(lbTapTimer); lbLastTap = 0;
+    lbToggleZoom(e.clientX, e.clientY);
+  }else{
+    lbLastTap = now;
+    clearTimeout(lbTapTimer);
+    lbTapTimer = setTimeout(()=>{ lbLastTap = 0; lbClose(); }, DBL_MS);
+  }
+});
+lb.addEventListener('pointercancel', ()=>{ lbPtr = null; });
+lb.addEventListener('wheel', e=>{
+  if(!lbEl) return; e.preventDefault();
+  lbS = Math.max(1, Math.min(5, lbS * (e.deltaY<0 ? 1.15 : 1/1.15)));
+  if(lbS === 1){ lbTx = 0; lbTy = 0; }
+  lbApply();
+}, {passive:false});
+
+/* ===== 署名→PNG保存（ハードモード完了の記録） ===== */
+const signOv = document.getElementById('signOv');
+const signPad = document.getElementById('signPad');
+const spCtx = signPad.getContext('2d');
+let spDrawing = false, spHas = false;
+function signPadInit(){
+  const r = signPad.getBoundingClientRect();
+  const dpr = Math.min(2, devicePixelRatio||1);
+  signPad.width = Math.round(r.width*dpr); signPad.height = Math.round(r.height*dpr);
+  spCtx.setTransform(dpr,0,0,dpr,0,0);
+  spCtx.fillStyle = '#fff'; spCtx.fillRect(0,0,r.width,r.height);
+  spCtx.lineWidth = 3; spCtx.lineCap = 'round'; spCtx.lineJoin = 'round'; spCtx.strokeStyle = '#111';
+  spHas = false;
+}
+function spPos(e){ const r = signPad.getBoundingClientRect(); return [e.clientX-r.left, e.clientY-r.top]; }
+signPad.addEventListener('pointerdown', e=>{
+  try{ signPad.setPointerCapture(e.pointerId); }catch(err){}
+  spDrawing = true; const [x,y] = spPos(e); spCtx.beginPath(); spCtx.moveTo(x,y);
+});
+signPad.addEventListener('pointermove', e=>{
+  if(!spDrawing) return; const [x,y] = spPos(e); spCtx.lineTo(x,y); spCtx.stroke(); spHas = true;
+});
+const spEnd = ()=>{ spDrawing = false; };
+signPad.addEventListener('pointerup', spEnd);
+signPad.addEventListener('pointercancel', spEnd);
+document.getElementById('signClear').addEventListener('click', signPadInit);
+document.getElementById('signCancel').addEventListener('click', ()=>signOv.classList.remove('show'));
+function openSign(){
+  doneOverlay.classList.remove('show');
+  document.getElementById('signName').value = state.signerName || '';
+  signOv.classList.add('show');
+  signPadInit();
+}
+function loadImg(src){ return new Promise(res=>{ const im = new Image(); im.onload = ()=>res(im); im.onerror = ()=>res(null); im.src = src; }); }
+function fmtDT(t){ const d = new Date(t); const z = n=>String(n).padStart(2,'0'); return `${d.getFullYear()}/${z(d.getMonth()+1)}/${z(d.getDate())} ${z(d.getHours())}:${z(d.getMinutes())}`; }
+function fmtT(t){ const d = new Date(t); const z = n=>String(n).padStart(2,'0'); return `${z(d.getHours())}:${z(d.getMinutes())}`; }
+async function buildRecordPng(name){
+  const W = 1080, P = 40, COLS = 6, CELL = 160, G = 12, ROWH = CELL + 56;
+  const items = state.items;
+  const rows = Math.ceil(items.length / COLS);
+  const headH = 170, sigH = 300;
+  const H = P + headH + rows*ROWH + sigH + P;
+  const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  c.fillStyle = '#fff'; c.fillRect(0,0,W,H);
+  c.fillStyle = '#111'; c.font = 'bold 40px sans-serif'; c.textBaseline = 'top';
+  c.fillText('タップチェック 確認記録', P, P);
+  c.font = '28px sans-serif'; c.fillStyle = '#333';
+  c.fillText((state.groupName ? `グループ：${state.groupName}　` : '') + `全${items.length}項目 すべて確認済み`, P, P+58);
+  c.fillText(`保存日時：${fmtDT(Date.now())}`, P, P+100);
+  c.strokeStyle = '#ccc'; c.lineWidth = 2; c.beginPath(); c.moveTo(P, P+150); c.lineTo(W-P, P+150); c.stroke();
+  const imgs = await Promise.all(items.map(it=>it.img ? loadImg(it.img) : null));
+  items.forEach((it,i)=>{
+    const x = P + (i%COLS)*(CELL+G), y = P + headH + Math.floor(i/COLS)*ROWH;
+    c.save();
+    c.beginPath(); c.roundRect(x, y, CELL, CELL, 14); c.clip();
+    if(imgs[i]) c.drawImage(imgs[i], x, y, CELL, CELL);
+    else{
+      c.fillStyle = '#ffb347'; c.fillRect(x,y,CELL,CELL);
+      c.fillStyle = '#1a1a2e'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      const fs = Math.max(16, Math.min(56, 220/Math.max(1,(it.label||'').length)));
+      c.font = `bold ${fs}px sans-serif`; c.fillText(it.label||'', x+CELL/2, y+CELL/2, CELL-16);
+    }
+    c.restore();
+    c.strokeStyle = '#ffb347'; c.lineWidth = 4; c.beginPath(); c.roundRect(x+2, y+2, CELL-4, CELL-4, 12); c.stroke();
+    c.fillStyle = '#ffb347'; c.beginPath(); c.arc(x+22, y+22, 18, 0, Math.PI*2); c.fill();
+    c.fillStyle = '#1a1a2e'; c.font = 'bold 20px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(String(i+1), x+22, y+23);
+    c.fillStyle = '#111'; c.font = '20px sans-serif'; c.textBaseline = 'top';
+    c.fillText(it.label || `No.${i+1}`, x+CELL/2, y+CELL+6, CELL);
+    c.fillStyle = '#2e7d32'; c.font = '18px sans-serif';
+    c.fillText('✓ ' + (it.at ? fmtT(it.at) : ''), x+CELL/2, y+CELL+30, CELL);
+    c.textAlign = 'left';
+  });
+  const sy = P + headH + rows*ROWH + 20;
+  c.strokeStyle = '#ccc'; c.lineWidth = 2; c.beginPath(); c.moveTo(P, sy); c.lineTo(W-P, sy); c.stroke();
+  c.fillStyle = '#111'; c.font = 'bold 28px sans-serif'; c.textAlign = 'left'; c.textBaseline = 'top';
+  c.fillText('署名：' + (name || ''), P, sy+16);
+  const bx = P, by = sy+60, bw = W-P*2, bh = 200;
+  c.strokeStyle = '#999'; c.lineWidth = 2; c.strokeRect(bx, by, bw, bh);
+  const sr = signPad.width / signPad.height;
+  let dw = bw-20, dh = dw/sr; if(dh > bh-20){ dh = bh-20; dw = dh*sr; }
+  c.drawImage(signPad, bx+10, by+10, dw, dh);
+  return cv;
+}
+document.getElementById('signOk').addEventListener('click', async ()=>{
+  const name = document.getElementById('signName').value.trim();
+  if(!name && !spHas){ dlg({title:'署名がありません', msg:'名前を入れるか、枠に署名してね', ok:'OK', cancel:false}); return; }
+  const cv = await buildRecordPng(name);
+  const d = new Date(); const z = n=>String(n).padStart(2,'0');
+  const fname = `tapcheck_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}.png`;
+  const blob = await new Promise(res=>cv.toBlob(res, 'image/png'));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 10000);
+  state.signed = true; state.signerName = name; save();
+  signOv.classList.remove('show');
+  let shared = false;
+  try{
+    const file = new File([blob], fname, {type:'image/png'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ await navigator.share({files:[file], title:'タップチェック 確認記録'}); shared = true; }
+  }catch(e){}
+  await dlg({title:'💾 保存しました', msg:`${fname}\n${shared ? '共有しました' : 'ダウンロードに保存しました'}`, ok:'OK', cancel:false});
+  document.getElementById('hdNext').style.display = '';
+  doneOverlay.classList.add('show');
+});
+document.getElementById('hdSign').addEventListener('click', e=>{ e.stopPropagation(); openSign(); });
+document.getElementById('hdClose').addEventListener('click', e=>{ e.stopPropagation(); doneOverlay.classList.remove('show'); });
+document.getElementById('hdNext').addEventListener('click', e=>{ e.stopPropagation(); doneOverlay.classList.remove('show'); resetAll(); });
+function resetAll(){
+  state.items.forEach(i=>{ i.done=false; i.at=null; });
+  state.signed = false; page = 0;
+  save(); render();
+}
+
+/* ===== 下部バー ===== */
+document.getElementById('resetBtn').addEventListener('click', async ()=>{
+  if(editing){ setSelecting(true); return; }
+  if(state.hard && !state.signed){
+    if(!(await askPw('↺ 全部戻す', '確認の途中で戻すには上長のパスワードが必要です'))) return;
+  }
+  resetAll();
 });
 document.getElementById('playBtn').addEventListener('click', openPlay);
 document.getElementById('addBtn').addEventListener('click', ()=>showSetup(false));
-document.getElementById('editBtn').addEventListener('click', ()=>{
-  editing = !editing;
+function toggleEdit(on){
+  editing = on;
+  if(!on && selecting){ selecting = false; selSet = new Set(); document.body.classList.remove('selecting'); }
   document.body.classList.toggle('editing', editing);
   document.getElementById('editBtn').classList.toggle('on', editing);
   render();
-});
-doneOverlay.addEventListener('click', ()=>doneOverlay.classList.remove('show'));
+}
+document.getElementById('editBtn').addEventListener('click', ()=>toggleEdit(!editing));
+doneOverlay.addEventListener('click', ()=>{ if(!state.hard) doneOverlay.classList.remove('show'); });
 window.addEventListener('resize', render);
 
 /* ===== 起動 ===== */
-applyModes();
-render();
-if(state.items.length === 0) showSetup(false); // 初回は登録から
+(async function init(){
+  state = await load();
+  // 起動時オートリセット：全部そろった後の再訪 or 8時間放置なら白黒に戻す（ハードモード中は記録を守るため戻さない）
+  if(!state.hard){
+    const allDone = state.items.length>0 && state.items.every(i=>i.done);
+    const stale = state.lastTap && (Date.now()-state.lastTap > RESET_AFTER_MS);
+    if(allDone || stale){ state.items.forEach(i=>{ i.done=false; i.at=null; }); save(); }
+  }
+  applyModes();
+  render();
+  if(state.items.length === 0) showSetup(false); // 初回は登録から
+})();
 
 if('serviceWorker' in navigator){
   navigator.serviceWorker.register('sw.js').catch(()=>{});
