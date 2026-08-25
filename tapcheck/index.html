@@ -520,7 +520,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.4';
+const APP_VERSION = '0.7.5';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -712,7 +712,7 @@ function txFont(label, size){
   return Math.max(11, Math.min(size*0.36, size*1.5/len));
 }
 function itemPages(){ return Math.max(1, Math.ceil(state.items.length / PER_PAGE)); }
-function hasSum(){ return !!(state.bingo && state.items.length); }
+function hasSum(){ return state.items.length>0 && state.items.every(it=>!it.img && it.label && /^\d+$/.test(it.label)); }
 function pageCount(){ return itemPages(); }
 
 function render(){
@@ -1389,7 +1389,11 @@ function openGroups(){
         if(!ok) return;
       }
       state.items = g.items.map(it=>({img:it.img, label:it.label, done:false}));
-      state.groupName = g.name; state.blind = false; state.bingo = null; page = 0;
+      state.groupName = g.name; page = 0;
+      // 数字だけのグループ＝ビンゴとして再開（混ぜ直し＋ブラインドON）。ふつうのグループは従来どおり
+      const isBingo = hasSum();
+      if(isBingo) shuffleItems();
+      state.blind = isBingo;
       save(); applyModes(); render();
     });
     const rm = document.createElement('button'); rm.className = 'rm'; rm.textContent = '✕';
