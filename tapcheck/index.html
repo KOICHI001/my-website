@@ -27,8 +27,9 @@ header h1{font-size:15px; font-weight:700; letter-spacing:1px; color:var(--sub);
 #gname{flex:1; font-size:13px; color:var(--sub); text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 #progress{
   font-size:15px; font-weight:700; color:var(--accent); white-space:nowrap;
-  background:var(--card); border-radius:12px; padding:3px 12px;
+  background:var(--card); border-radius:12px; padding:3px 12px; border:1px solid transparent;
 }
+#progress.tappable{border-color:var(--accent); cursor:pointer}
 body.hard #progress{color:#ff8a80}
 
 /* ===== メイン：1ページ=最大18枚を必ず1画面に（ページは横スワイプ） ===== */
@@ -46,10 +47,14 @@ body.hard #progress{color:#ff8a80}
 #dots.show{display:flex}
 #dots span{width:7px; height:7px; border-radius:50%; background:#44446a}
 #dots span.on{background:var(--accent)}
-#dots span.sum{border-radius:2px}
-/* ビンゴ：最後のページ＝全番号の一覧（開いた番号が光る・見るだけ） */
-.sumpage{flex-direction:column; gap:6px; padding:6px}
-.sumhead{font-size:14px; font-weight:700; color:var(--sub); flex:0 0 auto}
+/* ビンゴ：全番号の開票一覧（右上「n/総数 全体」タップでどのページからでも開く） */
+#sumOv{
+  position:fixed; inset:0; z-index:40; background:var(--bg);
+  display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+  padding:12px; padding-top:calc(12px + env(safe-area-inset-top)); cursor:pointer;
+}
+#sumOv.show{display:flex; animation:fadein .2s}
+.sumhead{font-size:16px; font-weight:700; color:var(--sub); flex:0 0 auto}
 .sumhead b{color:var(--accent)}
 .sumgrid{display:flex; flex-wrap:wrap; align-content:center; justify-content:center}
 .bn{
@@ -420,6 +425,12 @@ body:not(.hard) .hardonly{display:none}
   </div>
 </div>
 
+<div id="sumOv">
+  <div class="sumhead"></div>
+  <div class="sumgrid"></div>
+  <div class="hint">タップで戻る</div>
+</div>
+
 <div id="doneOverlay">
   <div class="big">✨</div>
   <div class="msg">全部そろった！</div>
@@ -509,7 +520,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="galInput" accept="image/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.3';
+const APP_VERSION = '0.7.4';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -702,7 +713,7 @@ function txFont(label, size){
 }
 function itemPages(){ return Math.max(1, Math.ceil(state.items.length / PER_PAGE)); }
 function hasSum(){ return !!(state.bingo && state.items.length); }
-function pageCount(){ return itemPages() + (hasSum() ? 1 : 0); }
+function pageCount(){ return itemPages(); }
 
 function render(){
   const n = state.items.length;
@@ -742,32 +753,31 @@ function render(){
       pg.appendChild(g);
       pagesEl.appendChild(pg);
     }
-    if(hasSum()) pagesEl.appendChild(buildSumPage(W, H-12));
   }
   pagesEl.style.transition = 'none';
   pagesEl.style.transform = `translateX(${-page*100}%)`;
   requestAnimationFrame(()=>{ pagesEl.style.transition = ''; });
   dotsEl.innerHTML = '';
   dotsEl.classList.toggle('show', pc > 1);
-  for(let p=0; p<pc; p++){ const s = document.createElement('span'); s.className = (p===page ? 'on ' : '') + (hasSum() && p===pc-1 ? 'sum' : ''); dotsEl.appendChild(s); }
+  for(let p=0; p<pc; p++){ const s = document.createElement('span'); if(p===page) s.className='on'; dotsEl.appendChild(s); }
   updateProgress();
   updateBar();
 }
-/* ビンゴの一覧ページ：数字の札を番号順に全部並べ、開いた札を光らせる */
-function buildSumPage(W, H){
-  const pg = document.createElement('div'); pg.className = 'page sumpage';
-  const nums = state.items.map((it,i)=>({n:parseInt(it.label,10), done:it.done, i}))
+/* ビンゴの開票一覧：数字の札を番号順に全部並べ、開いた札を光らせる（右上バッジからどのページでも開ける） */
+const sumOv = document.getElementById('sumOv');
+function openSum(){
+  const nums = state.items.map(it=>({n:parseInt(it.label,10), done:it.done}))
     .filter(x=>!isNaN(x.n)).sort((a,b)=>a.n-b.n);
+  if(!nums.length) return;
   const opened = nums.filter(x=>x.done).length;
-  const head = document.createElement('div'); head.className = 'sumhead';
-  head.innerHTML = `開いた番号 <b>${opened}</b> / ${nums.length}`;
-  pg.appendChild(head);
-  const g = document.createElement('div'); g.className = 'sumgrid';
-  const SG = 3;
+  sumOv.querySelector('.sumhead').innerHTML = `🎰 開いた番号 <b>${opened}</b> / ${nums.length}`;
+  const g = sumOv.querySelector('.sumgrid');
+  g.innerHTML = '';
+  const W = innerWidth - 24, H = innerHeight - 110, SG = 3;
   let best = {cols:1, size:0};
   for(let cols=1; cols<=nums.length; cols++){
     const rows = Math.ceil(nums.length/cols);
-    const size = Math.min((W - 12 - SG*(cols-1))/cols, (H - 40 - SG*(rows-1))/rows);
+    const size = Math.min((W - SG*(cols-1))/cols, (H - SG*(rows-1))/rows);
     if(size > best.size) best = {cols, size};
   }
   const size = Math.floor(best.size);
@@ -781,9 +791,10 @@ function buildSumPage(W, H){
     d.textContent = x.n;
     g.appendChild(d);
   });
-  pg.appendChild(g);
-  return pg;
+  sumOv.classList.add('show');
 }
+sumOv.addEventListener('click', ()=>sumOv.classList.remove('show'));
+progress.addEventListener('click', ()=>{ if(hasSum()) openSum(); });
 function gotoPage(p){
   page = Math.max(0, Math.min(pageCount()-1, p));
   pagesEl.style.transform = `translateX(${-page*100}%)`;
@@ -867,7 +878,8 @@ function deleteItem(i){
 }
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
-  progress.textContent = (state.hard ? '🔒 ' : '') + (state.blind ? '🙈 ' : '') + `${d}/${state.items.length}`;
+  progress.textContent = (state.hard ? '🔒 ' : '') + (state.blind ? '🙈 ' : '') + `${d}/${state.items.length}` + (hasSum() ? ' 全体' : '');
+  progress.classList.toggle('tappable', hasSum());
 }
 function updateBar(){
   const rb = document.getElementById('resetBtn');
