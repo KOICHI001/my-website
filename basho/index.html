@@ -172,7 +172,7 @@
 
   /* ライトボックス */
   .lb{position:fixed;inset:0;background:rgba(10,14,13,.93);z-index:70;display:none;
-    align-items:center;justify-content:center}
+    align-items:center;justify-content:center;overflow:hidden}
   .lb.on{display:flex}
   .lb img{max-width:96vw;max-height:92vh;object-fit:contain;border-radius:6px}
   .lbnav{position:fixed;top:50%;transform:translateY(-50%);border:0;background:rgba(0,0,0,.35);
@@ -1091,7 +1091,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.74.2";
+const VER = "0.74.3";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -2004,6 +2004,42 @@ lb.addEventListener("touchend",e=>{
   }
 },{passive:true});
 lb.onclick=()=>{ if(lbSwiped) return; lbClose(); };
+/* ★PC(マウス)対応 v0.74.3: ホイール=拡縮(カーソル位置を軸・上限はピンチと同じ6倍)・
+   拡大中ドラッグ=パン・拡大中クリック=等倍に戻す＝スマホのピンチ＋指パンと同じ挙動をマウスで。
+   タッチ操作には影響なし（拡大中タップの等倍戻しはtouchend側が先に処理→合成mousedownはs===1で素通り） */
+lb.addEventListener("wheel",e=>{
+  const im=lb.querySelector("img"); if(!im) return;
+  e.preventDefault();
+  const r=im.getBoundingClientRect();
+  const vx=r.left+r.width/2, vy=r.top+r.height/2;        /* 今見えている画像の中心 */
+  const s2=Math.min(6,Math.max(1,LZ.s*(e.deltaY<0?1.2:1/1.2)));
+  if(s2===1){ lbZoomReset(); return; }
+  const qx=(e.clientX-vx)/LZ.s, qy=(e.clientY-vy)/LZ.s;  /* カーソル直下の画像内の点を軸に固定 */
+  LZ.x=e.clientX-(vx-LZ.x)-s2*qx;
+  LZ.y=e.clientY-(vy-LZ.y)-s2*qy;
+  LZ.s=s2; lbApply();
+},{passive:false});
+let lbMd=null;
+lb.addEventListener("mousedown",e=>{
+  if(e.button!==0||LZ.s===1) return;
+  lbMd={x:e.clientX,y:e.clientY,x0:LZ.x,y0:LZ.y,moved:false};
+  e.preventDefault();                                     /* 画像そのもののドラッグ(ゴースト)防止 */
+});
+window.addEventListener("mousemove",e=>{
+  if(!lbMd) return;
+  const dx=e.clientX-lbMd.x, dy=e.clientY-lbMd.y;
+  if(Math.hypot(dx,dy)>3) lbMd.moved=true;
+  LZ.x=lbMd.x0+dx; LZ.y=lbMd.y0+dy; lbApply();
+});
+window.addEventListener("mouseup",()=>{
+  if(!lbMd) return;
+  if(lbMd.moved||LZ.s>1){
+    if(!lbMd.moved) lbZoomReset();                        /* 拡大中のクリック=等倍に戻す(タッチと同じ) */
+    lbSwiped=true; setTimeout(()=>{lbSwiped=false;},400); /* 直後のclickで閉じない */
+  }
+  lbMd=null;
+});
+lb.addEventListener("dragstart",e=>e.preventDefault());
 
 /* ───── 写真の縦閲覧 ─────
    カードの写真タップで開く。縦に連ねてフリックでスクロール（ループなし・一番下で止まる）＝
