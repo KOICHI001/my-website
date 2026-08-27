@@ -1091,7 +1091,7 @@ html.bs-lock::-webkit-scrollbar,html.bs-lock body::-webkit-scrollbar{display:non
 <script>
 (function(){
 "use strict";
-const VER = "0.74.1";
+const VER = "0.74.2";
 
 /* 表示切替アイコン（v0.49.0）: 文字「タイル/一覧」ではタイル表示の存在に気づけなかった（テスターFB）。
    一般的な図形に倣う＝リスト:横長バー2本 / タイル:小さい□4つの田の字。ボタンには「押したら切り替わる先」を出す */
@@ -4454,6 +4454,7 @@ function menu(){
   document.getElementById("m_help").onclick=()=>{ closeSheet(); helpOpen(); };
   document.getElementById("m_adv").onclick=()=>{ closeSheet(); advOpen(); };
   document.getElementById("m_exp").onclick=async()=>{
+    toast("書き出しの準備をしています…");
     const images={};
     for(const p of places) for(const id of (p.ph||[])){ const du=await phGet(id); if(du) images[id]=du; }
     /* 添付（URLカードのアイコン・PDF本体）も同梱=機種変更で丸ごと引き継げる */
@@ -4463,11 +4464,41 @@ function menu(){
     for(const cn in COVERS){ const c=covOf(cn); if(!c)continue;
       for(const k of [c.id,c.src]){ if(!k)continue; const du=await phGet(k); if(du) images[k]=du; } }
     const nImg=Object.keys(images).length;
-    const blob=new Blob([JSON.stringify({app:"basho",ver:VER,places:places,images:images,
-      cats:CATS.filter(x=>x.n!==CAT_OTHER.n),covers:COVERS})],{type:"application/json"});
-    const a=document.createElement("a"); const t=new Date(), p2=n=>String(n).padStart(2,"0");
+    const json=JSON.stringify({app:"basho",ver:VER,places:places,images:images,
+      cats:CATS.filter(x=>x.n!==CAT_OTHER.n),covers:COVERS});
+    const t=new Date(), p2=n=>String(n).padStart(2,"0");
+    const fn="basho_"+t.getFullYear()+p2(t.getMonth()+1)+p2(t.getDate())+".json";
+    /* ★APK版(Capacitor): WebViewはblobダウンロード非対応＝a.click()では何も起きない（v0.74.1まで無反応だった真因）。
+       Filesystemでキャッシュに書き、共有シートで渡す＝保存先もクイック共有(機種変更の新端末へ直行)も端末側で選べる。
+       写真同梱で数百MBになり得るため、一括ではなくappendFileで分割転送（絵文字のサロゲートペアは跨いで切らない） */
+    const CP=window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform()
+      &&window.Capacitor.Plugins;
+    if(CP&&CP.Filesystem&&CP.Share){
+      try{
+        await CP.Filesystem.writeFile({path:fn,data:"",directory:"CACHE",encoding:"utf8"});
+        const STEP=2*1024*1024; let i=0;
+        while(i<json.length){
+          let e=Math.min(i+STEP,json.length);
+          const c=json.charCodeAt(e-1);
+          if(c>=0xD800&&c<=0xDBFF&&e<json.length)e++;
+          await CP.Filesystem.appendFile({path:fn,data:json.slice(i,e),directory:"CACHE",encoding:"utf8"});
+          i=e;
+          toast("書き出しています… "+Math.round(i/json.length*100)+"%");
+        }
+        const u=await CP.Filesystem.getUri({path:fn,directory:"CACHE"});
+        closeSheet();
+        await CP.Share.share({title:fn,files:[u.uri],dialogTitle:"バックアップの送り先"});
+        toast("書き出しました"+(nImg?"（写真"+nImg+"枚も同梱）":""));
+      }catch(err){
+        /* 共有シートを自分で閉じた時(cancel)は静かに引っ込む（ファイル自体は書けている） */
+        if(!/cancel/i.test(String(err&&err.message||err))) toast("書き出せませんでした");
+      }
+      return;
+    }
+    const blob=new Blob([json],{type:"application/json"});
+    const a=document.createElement("a");
     a.href=URL.createObjectURL(blob);
-    a.download="basho_"+t.getFullYear()+p2(t.getMonth()+1)+p2(t.getDate())+".json";
+    a.download=fn;
     a.click(); URL.revokeObjectURL(a.href); closeSheet();
     toast("書き出しました"+(nImg?"（写真"+nImg+"枚も同梱）":""));
   };
