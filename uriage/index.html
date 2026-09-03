@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1b1e26">
+<title>売上帳</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📒</text></svg>">
+<style>
+:root{--bg:#1b1e26;--card:#252a36;--card2:#2c3448;--acc:#ffb84d;--txt:#e8eaf0;--sub:#9aa3b5;--ok:#7fd47f;--line:#06c755;--ng:#ff8080}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:var(--bg);color:var(--txt);font-family:"Yu Gothic UI","Hiragino Sans",system-ui,sans-serif}
+body{padding:14px 12px calc(24px + env(safe-area-inset-bottom));max-width:560px;margin:0 auto}
+header{display:flex;align-items:baseline;gap:10px;margin-bottom:10px}
+h1{font-size:22px}
+#upd{font-size:11px;color:var(--sub);flex:1}
+#reload{background:var(--card);color:var(--txt);border:0;border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:14px;color:var(--sub);font-weight:600;margin-bottom:8px}
+#total .big{font-size:34px;font-weight:700;color:var(--acc);line-height:1.2}
+#total .big small{font-size:14px;color:var(--sub);font-weight:400}
+.note{font-size:11px;color:var(--sub);margin-top:6px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+th{color:var(--sub);font-weight:600;font-size:11px;text-align:right;padding:4px 6px;border-bottom:1px solid #3a4154}
+th:first-child,td:first-child{text-align:left}
+td{text-align:right;padding:6px;border-bottom:1px solid #303748}
+tr:last-child td{border-bottom:0}
+td.sum{color:var(--acc);font-weight:700}
+.kv{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.kv div{background:var(--card2);border-radius:10px;padding:8px 10px;flex:1 1 40%;min-width:120px}
+.kv .k{font-size:11px;color:var(--sub)}
+.kv .v{font-size:18px;font-weight:700}
+.kv .v small{font-size:11px;color:var(--sub);font-weight:400}
+.src-title{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:700;margin-bottom:2px}
+.dot{width:10px;height:10px;border-radius:50%}
+.badge{font-size:11px;color:var(--bg);background:var(--sub);border-radius:8px;padding:2px 8px}
+#gate{margin-top:30vh;text-align:center}
+#gate input{width:230px;background:var(--card);border:1px solid #3a4154;border-radius:10px;color:var(--txt);font-size:16px;padding:10px;text-align:center}
+#gate button{display:block;margin:14px auto 0;background:var(--acc);color:#222;border:0;border-radius:10px;font-size:15px;font-weight:700;padding:10px 30px;cursor:pointer}
+#gate .msg{color:var(--ng);font-size:13px;margin-top:10px;min-height:18px}
+#err{color:var(--ng);font-size:13px;margin:8px 0}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="gate" hidden>
+  <div style="font-size:40px">📒</div>
+  <div style="font-size:18px;font-weight:700;margin:6px 0 16px">売上帳</div>
+  <input id="pw" type="password" placeholder="合言葉" autocomplete="off">
+  <button id="go">ひらく</button>
+  <div class="msg" id="gmsg"></div>
+</div>
+
+<div id="app" hidden>
+<header>
+  <h1>📒 売上帳</h1>
+  <span id="upd"></span>
+  <button id="reload">🔄 更新</button>
+</header>
+<div id="err" hidden></div>
+
+<div class="card" id="total">
+  <h2>💰 受け取り見込み（概算）</h2>
+  <div class="big" id="t-net"></div>
+  <div class="note" id="t-gross"></div>
+  <table id="t-months"></table>
+  <div class="note">場所帳=¥400×件数の85%（ストア手数料15%引き後）／Kindle=推計ロイヤリティ／LINE=クリエイター分配額。<br>2026年9月からの記録です。</div>
+</div>
+
+<div class="card">
+  <div class="src-title"><span class="dot" style="background:#4a9df0"></span>場所帳（Google Play）</div>
+  <div class="kv" id="play-kv"></div>
+</div>
+
+<div class="card">
+  <div class="src-title"><span class="dot" style="background:#f0a04a"></span>Kindle（KDP）</div>
+  <div class="kv" id="kdp-kv"></div>
+  <table id="kdp-months"></table>
+</div>
+
+<div class="card">
+  <div class="src-title"><span class="dot" style="background:var(--line)"></span>LINEスタンプ <span class="badge" id="line-badge"></span></div>
+  <div class="kv" id="line-kv" hidden></div>
+  <div class="note" id="line-note"></div>
+</div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const enc8 = s => new TextEncoder().encode(s);
+const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const yen = n => "¥" + Math.round(n).toLocaleString("ja-JP");
+
+function getKey(){ try{ return localStorage.getItem("ub_key") || ""; }catch(e){ return ""; } }
+function setKey(k){ try{ localStorage.setItem("ub_key", k); }catch(e){} }
+
+async function decrypt(encJson, pass){
+  const o = JSON.parse(encJson);
+  const salt = b64d(o.salt), nonce = b64d(o.nonce), ct = b64d(o.ct), mac = b64d(o.mac);
+  const base = await crypto.subtle.importKey("raw", enc8(pass), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    {name:"PBKDF2", hash:"SHA-256", salt, iterations:100000}, base, 256);
+  const key = new Uint8Array(bits);
+  const hk = await crypto.subtle.importKey("raw", key, {name:"HMAC", hash:"SHA-256"}, false, ["verify"]);
+  const nc = new Uint8Array(nonce.length + ct.length);
+  nc.set(nonce); nc.set(ct, nonce.length);
+  if(!await crypto.subtle.verify("HMAC", hk, mac, nc)) throw new Error("badkey");
+  const out = new Uint8Array(ct.length);
+  const blk = new Uint8Array(key.length + nonce.length + 4);
+  blk.set(key); blk.set(nonce, key.length);
+  for(let i = 0; i * 32 < ct.length; i++){
+    const dv = new DataView(blk.buffer); dv.setUint32(key.length + nonce.length, i);
+    const ks = new Uint8Array(await crypto.subtle.digest("SHA-256", blk));
+    for(let j = 0; j < 32 && i*32+j < ct.length; j++) out[i*32+j] = ct[i*32+j] ^ ks[j];
+  }
+  return new TextDecoder().decode(out);
+}
+
+function monthLabel(m){ const [y,mo] = m.split("-"); return `${y}年${+mo}月`; }
+
+function render(d){
+  $("upd").textContent = "更新 " + (d.updated || "?");
+  // 月ごと集計
+  const playM = {};
+  for(const e of (d.play.events || [])){
+    const m = (e.d || "").slice(0,7); if(!m) continue;
+    playM[m] = (playM[m] || 0) + (e.n || 0);
+  }
+  const kdpM = d.kdp.months || {}, lineM = d.line.months || {};
+  const months = [...new Set([...Object.keys(playM), ...Object.keys(kdpM), ...Object.keys(lineM)])].sort().reverse();
+  const NET = n => n * d.play.unit * (1 - d.play.fee);
+  let rows = "<tr><th>月</th><th>場所帳</th><th>Kindle</th><th>LINE</th><th>合計</th></tr>";
+  for(const m of months){
+    const p = playM[m] || 0, k = (kdpM[m] && kdpM[m].royalty) || 0, l = lineM[m] || 0;
+    rows += `<tr><td>${monthLabel(m)}</td><td>${p ? yen(NET(p)) + `<br><small style="color:var(--sub)">${p}件</small>` : "—"}</td>`
+          + `<td>${k ? yen(k) : "—"}</td><td>${d.line.ok ? (l ? yen(l) : "—") : "—"}</td><td class="sum">${yen(NET(p)+k+l)}</td></tr>`;
+  }
+  $("t-months").innerHTML = rows;
+  const kdpTotal = Object.values(kdpM).reduce((a,v) => a + (v.royalty || 0), 0);
+  const lineTotal = d.line.total_yen || 0;
+  const net = NET(d.play.orders_total || 0) + kdpTotal + lineTotal;
+  const gross = (d.play.orders_total || 0) * d.play.unit + kdpTotal + lineTotal;
+  $("t-net").innerHTML = yen(net) + " <small>累計</small>";
+  $("t-gross").textContent = `販売額ベースの累計: ${yen(gross)}（場所帳を¥400満額で数えた場合）`;
+  // 場所帳
+  const p = d.play;
+  $("play-kv").innerHTML =
+    kv("累計注文", `${p.orders_total ?? "?"}<small> 件</small>`) +
+    kv("受取見込み", yen(NET(p.orders_total || 0))) +
+    kv("表示回数(28日)", `${p.impressions ?? "?"}<small> 回</small>`) +
+    kv("獲得(28日)", `${p.acquisitions ?? "?"}<small> 台</small>`) +
+    kv("初回起動(28日)", `${p.first_opens ?? "?"}<small> 台</small>`) +
+    kv("インストール中", `${p.installed ?? "?"}<small> 人</small>`);
+  // Kindle
+  let cur = null;
+  for(const m of months){ if(kdpM[m]){ cur = kdpM[m]; break; } }
+  $("kdp-kv").innerHTML =
+    kv("累計ロイヤリティ", yen(kdpTotal)) +
+    kv("今月の注文", `${cur ? cur.orders : 0}<small> 件</small>`) +
+    kv("今月の既読KENP", `${cur ? cur.kenp : 0}<small> ページ</small>`);
+  let krows = "";
+  for(const m of Object.keys(kdpM).sort().reverse())
+    krows += `<tr><td>${monthLabel(m)}</td><td>${yen(kdpM[m].royalty || 0)}</td><td>${kdpM[m].orders || 0}件</td><td>KENP ${kdpM[m].kenp || 0}</td></tr>`;
+  $("kdp-months").innerHTML = krows;
+  // LINE
+  if(d.line.ok){
+    $("line-badge").textContent = "連携中";
+    $("line-badge").style.background = "var(--ok)";
+    $("line-kv").hidden = false;
+    $("line-kv").innerHTML =
+      kv("累計分配額", d.line.total_yen != null ? yen(d.line.total_yen) : "—") +
+      (d.line.sales_count != null ? kv("販売数", `${d.line.sales_count}<small> 個</small>`) : "");
+    $("line-note").textContent = d.line.total_yen == null ? "金額はまだ読み取れていません（次回チェックで再挑戦します）" : "";
+  }else{
+    $("line-badge").textContent = "未連携";
+    $("line-note").textContent = "PCの「お知らせハブ」→🔗連携→「🟩 LINEにログイン」→「🟩② LINE接続テスト」で監視が始まります。";
+  }
+}
+function kv(k, v){ return `<div><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+
+async function load(pass){
+  const r = await fetch("data.enc?t=" + Date.now(), {cache:"no-store"});
+  if(!r.ok) throw new Error("fetch");
+  const d = JSON.parse(await decrypt(await r.text(), pass));
+  render(d);
+}
+
+async function boot(){
+  let key = getKey();
+  const hm = location.hash.match(/k=([^&]+)/);
+  if(hm){ key = decodeURIComponent(hm[1]); setKey(key); history.replaceState(null, "", location.pathname); }
+  if(!key){ $("gate").hidden = false; return; }
+  $("app").hidden = false;
+  try{
+    await load(key);
+  }catch(e){
+    if(e.message === "badkey"){ try{ localStorage.removeItem("ub_key"); }catch(_){}
+      $("app").hidden = true; $("gate").hidden = false; $("gmsg").textContent = "合言葉が違うようです"; }
+    else{ $("err").hidden = false; $("err").textContent = "データを取得できませんでした。通信環境を確認して🔄更新を押してください。"; }
+  }
+}
+$("go").onclick = async () => {
+  const v = $("pw").value.trim();
+  if(!v) return;
+  $("gmsg").textContent = "確認中…";
+  try{
+    await load(v);
+    setKey(v); $("gate").hidden = true; $("app").hidden = false; $("gmsg").textContent = "";
+  }catch(e){
+    $("gmsg").textContent = e.message === "badkey" ? "合言葉が違うようです" : "データを取得できませんでした";
+  }
+};
+$("pw").addEventListener("keydown", e => { if(e.key === "Enter") $("go").click(); });
+$("reload").onclick = () => { $("err").hidden = true; boot(); };
+boot();
+</script>
+</body>
+</html>
