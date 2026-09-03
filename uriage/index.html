@@ -58,6 +58,7 @@ td.sum{color:var(--acc);font-weight:700}
   <button id="reload">🔄 更新</button>
 </header>
 <div id="err" hidden></div>
+<div class="note" id="stale" hidden style="background:var(--card);border-radius:10px;padding:8px 10px;margin-bottom:10px;color:var(--acc)">⏰ この数字は少し前のものです。ご自宅のPCが起動すると自動で新しくなります（見るだけならこのままでOK）。</div>
 
 <div class="card" id="total">
   <h2>💰 受け取り見込み（概算）</h2>
@@ -119,8 +120,21 @@ async function decrypt(encJson, pass){
 
 function monthLabel(m){ const [y,mo] = m.split("-"); return `${y}年${+mo}月`; }
 
+function ageText(updated){
+  const up = updated ? new Date(updated.replace(" ", "T")) : null;
+  if(!up || isNaN(up)) return {txt: "", stale: false};
+  const h = (Date.now() - up.getTime()) / 3600000;
+  if(h < 0) return {txt: "", stale: false};
+  const txt = h < 1 ? `（${Math.max(1, Math.round(h * 60))}分前）`
+            : h < 48 ? `（${Math.round(h)}時間前）`
+            : `（${Math.round(h / 24)}日前）`;
+  return {txt, stale: h >= 24};
+}
+
 function render(d){
-  $("upd").textContent = "更新 " + (d.updated || "?");
+  const age = ageText(d.updated);
+  $("upd").textContent = "更新 " + (d.updated || "?") + age.txt;
+  $("stale").hidden = !age.stale;
   // 月ごと集計
   const playM = {};
   for(const e of (d.play.events || [])){
