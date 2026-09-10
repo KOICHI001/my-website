@@ -380,6 +380,27 @@ body:not(.hard) .hardonly{display:none}
   flex:0 0 auto; text-align:center; color:#ddd; font-size:13px; padding:6px 10px;
   background:#000; text-shadow:0 1px 3px #000;
 }
+/* シークバー（全体の長さが見える・ドラッグで再生位置が動く） */
+#vpSeek{
+  flex:0 0 auto; display:flex; align-items:center; gap:6px;
+  background:#000; padding:4px 12px 0; color:#bbb; font-size:12px;
+}
+#vpSeek span{flex:0 0 auto; min-width:3em; text-align:center; font-variant-numeric:tabular-nums}
+#vpRange{
+  flex:1 1 auto; -webkit-appearance:none; appearance:none; height:30px;
+  background:transparent; cursor:pointer; margin:0; min-width:0;
+}
+#vpRange::-webkit-slider-runnable-track{
+  height:6px; border-radius:3px;
+  background:linear-gradient(var(--accent) 0 0) 0/var(--p,0%) 100% no-repeat #3a3a5c;
+}
+#vpRange::-webkit-slider-thumb{
+  -webkit-appearance:none; width:18px; height:18px; border-radius:50%;
+  background:var(--accent); margin-top:-6px; box-shadow:0 1px 4px rgba(0,0,0,.7);
+}
+#vpRange::-moz-range-track{height:6px; border-radius:3px; background:#3a3a5c}
+#vpRange::-moz-range-progress{height:6px; border-radius:3px; background:var(--accent)}
+#vpRange::-moz-range-thumb{width:18px; height:18px; border:none; border-radius:50%; background:var(--accent)}
 #vpBar{
   flex:0 0 auto; display:flex; gap:8px; background:#000;
   padding:8px 12px calc(8px + env(safe-area-inset-bottom));
@@ -536,6 +557,11 @@ body:not(.hard) .hardonly{display:none}
 
 <div id="vp">
   <div id="vpStage"><video id="vpVideo" playsinline webkit-playsinline preload="auto"></video></div>
+  <div id="vpSeek">
+    <span id="vpCur">0:00</span>
+    <input type="range" id="vpRange" min="0" max="0" step="0.01" value="0">
+    <span id="vpDur">0:00</span>
+  </div>
   <div id="vpCap"></div>
   <div id="vpBar"><button id="vpClose">✕ 閉じる</button></div>
 </div>
@@ -571,7 +597,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="packInput" hidden>
 
 <script>
-const APP_VERSION = '0.9.1';
+const APP_VERSION = '0.9.2';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -1872,9 +1898,60 @@ async function openPlayer(i){
   vpVideo.src = u;
   vp.classList.add('show');
   vpUpdateCap();
+  vpSeekReset();
   vpVideo.currentTime = 0;
   vpVideo.play().catch(()=>{});
 }
+/* --- シークバー --- */
+const vpRange = document.getElementById('vpRange');
+const vpCur = document.getElementById('vpCur');
+const vpDur = document.getElementById('vpDur');
+let vpScrub = false, vpRaf = 0, vpWasPlaying = false;
+function vpFmt(s){ // 秒→「M:SS」（※fmtTは確認時刻用で別物）
+  if(!isFinite(s) || s < 0) s = 0;
+  s = Math.round(s);
+  return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0');
+}
+function vpSeekReset(){
+  vpScrub = false;
+  vpRange.max = 0; vpRange.value = 0;
+  vpCur.textContent = '0:00'; vpDur.textContent = '0:00';
+  vpRange.style.setProperty('--p','0%');
+}
+function vpSync(){
+  const d = vpVideo.duration;
+  if(isFinite(d) && d > 0){ vpRange.max = d; vpDur.textContent = vpFmt(d); }
+  if(!vpScrub){
+    vpRange.value = vpVideo.currentTime || 0;
+    vpCur.textContent = vpFmt(vpVideo.currentTime);
+    vpRange.style.setProperty('--p', (vpRange.max > 0 ? vpRange.value/vpRange.max*100 : 0) + '%');
+  }
+}
+function vpTick(){ vpSync(); vpRaf = requestAnimationFrame(vpTick); }
+vpVideo.addEventListener('play', ()=>{ cancelAnimationFrame(vpRaf); vpRaf = requestAnimationFrame(vpTick); });
+vpVideo.addEventListener('pause', ()=>cancelAnimationFrame(vpRaf));
+vpVideo.addEventListener('loadedmetadata', vpSync);
+vpVideo.addEventListener('durationchange', vpSync);
+vpVideo.addEventListener('timeupdate', vpSync);
+vpRange.addEventListener('input', ()=>{
+  if(!vpScrub){ vpWasPlaying = !vpVideo.paused; vpVideo.pause(); } // ドラッグ中は一時停止
+  vpScrub = true;
+  const t = parseFloat(vpRange.value) || 0;
+  const d = vpVideo.duration;
+  // 端までドラッグした瞬間にループで先頭へ飛ばないよう少し手前まで
+  if(isFinite(d) && d > 0) vpVideo.currentTime = Math.min(t, Math.max(0, d - 0.05));
+  vpCur.textContent = vpFmt(t);
+  vpRange.style.setProperty('--p', (vpRange.max > 0 ? t/vpRange.max*100 : 0) + '%');
+});
+function vpScrubEnd(){
+  if(!vpScrub) return;
+  vpScrub = false;
+  if(vpWasPlaying) vpVideo.play().catch(()=>{}); // 離したら続きから再生
+  vpSync();
+}
+vpRange.addEventListener('change', vpScrubEnd);
+vpRange.addEventListener('pointerup', vpScrubEnd);
+vpRange.addEventListener('pointercancel', vpScrubEnd);
 function vpUpdateCap(){
   const it = state.items[vpIndex];
   if(!it) return;
@@ -1883,6 +1960,7 @@ function vpUpdateCap(){
 }
 function closePlayer(){
   vp.classList.remove('show');
+  cancelAnimationFrame(vpRaf);
   vpVideo.pause();
   vpVideo.removeAttribute('src');
   vpVideo.load();
