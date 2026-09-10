@@ -507,6 +507,9 @@ body:not(.hard) .hardonly{display:none}
     <button id="grpSave" class="nohard">💾 今の並びを名前を付けて保存</button>
     <div id="grpList"></div>
     <div id="grpEmpty">保存したグループはまだありません</div>
+    <div class="title">📼 作品ファイル（動画ごと1ファイル）</div>
+    <button id="packSave" class="nohard">📼 書き出し（保存・人に渡せる）</button>
+    <button id="packOpen" class="nohard">📼 作品ファイルを開く</button>
     <button id="grpCancel">やめる</button>
   </div>
 </div>
@@ -560,9 +563,10 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
 <input type="file" id="vidInput" accept="video/*" capture="environment" hidden>
 <input type="file" id="galInput" accept="image/*,video/*" hidden>
+<input type="file" id="packInput" hidden>
 
 <script>
-const APP_VERSION = '0.8.0';
+const APP_VERSION = '0.9.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -622,7 +626,7 @@ async function idbKeys(){
     t.onsuccess = ()=>res(t.result); t.onerror = ()=>rej(t.error);
   });
 }
-function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false, bingo:null}; }
+function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false, bingo:null, pack:null}; }
 function normalize(s){
   if(!s || !Array.isArray(s.items)) return null;
   const st = Object.assign(defaults(), s);
@@ -800,7 +804,7 @@ function render(){
         t.innerHTML =
           (it.img ? `<img src="${it.img}" alt="">`
                   : `<div class="tx" style="font-size:${txFont(it.label, size)}px">${escapeHtml(it.label||'')}</div>`) +
-          (it.vid ? `<div class="pv">▶</div>` : '') +
+          ((it.vid || it.fvid) ? `<div class="pv">▶</div>` : '') +
           `<div class="num">${i+1}</div>` +
           (it.label && it.img ? `<div class="label">${escapeHtml(it.label)}</div>` : '') +
           `<button class="del">✕</button><div class="chk">${selSet.has(i) ? '✓':''}</div>`;
@@ -869,7 +873,7 @@ function onTileDown(e, i){
   if(editing || selecting) return;
   if(state.hard){
     lpTimer = setTimeout(()=>{ lpFired = true; hardLongPress(i); }, LONG_MS);
-  }else if(state.items[i] && state.items[i].vid){
+  }else if(state.items[i] && (state.items[i].vid || state.items[i].fvid)){
     // 動画カード：タップ=再生・長押し=✔完了（もう一度長押しで戻す）
     lpTimer = setTimeout(()=>{ lpFired = true; toggle(i); }, LONG_MS);
   }
@@ -917,10 +921,10 @@ function onTileClick(e, i){
   }
   const it = state.items[i];
   if(state.hard){
-    if(it && it.vid){ openPlayer(i); return; } // ハード中の動画もタップ=再生（確認は長押し）
+    if(it && (it.vid || it.fvid)){ openPlayer(i); return; } // ハード中の動画もタップ=再生（確認は長押し）
     openLightbox(i); return;
   }
-  if(it && it.vid){ openPlayer(i); return; }
+  if(it && (it.vid || it.fvid)){ openPlayer(i); return; }
   toggle(i);
 }
 
@@ -966,6 +970,7 @@ function commitDataUrl(data){
     const it = state.items[pendingIndex];
     it.img = data;           // 差し替え（名前は維持）
     if(it.vid){ delete it.vid; gcVids(); } // 動画カード→写真に戻したら動画本体は掃除
+    delete it.fvid;
   }else{
     state.items.push({img: data, done: false, label: pendingLabel || null});
   }
@@ -1052,6 +1057,7 @@ async function commitVideo(file){
   if(pendingIndex >= 0 && pendingIndex < state.items.length){
     const it = state.items[pendingIndex];
     it.img = poster; it.vid = id;      // 差し替え（名前は維持）
+    delete it.fvid;
   }else{
     state.items.push({img: poster, vid: id, done: false, label: pendingLabel || null});
   }
@@ -1069,6 +1075,7 @@ function commitText(){
     const it = state.items[sheetIndex];
     it.img = null; it.label = v;
     if(it.vid){ delete it.vid; gcVids(); }
+    delete it.fvid;
     save(); txtInput.value = ''; replaceMode = false; closeSetup(); return;
   }
   state.items.push({img:null, done:false, label:v});
@@ -1410,7 +1417,7 @@ function openSheet(i){
   const it = state.items[i];
   document.getElementById('shRetake').textContent = it.img ? '📷 撮り直す（写真に）' : '📷 写真を撮って付ける';
   document.getElementById('shGallery').textContent = it.img ? '📁 保存した画像・動画から選び直す' : '📁 保存した画像・動画を付ける';
-  document.getElementById('shVideo').textContent = it.vid ? '🎬 動画を撮り直す' : '🎬 動画を撮って付ける';
+  document.getElementById('shVideo').textContent = (it.vid || it.fvid) ? '🎬 動画を撮り直す' : '🎬 動画を撮って付ける';
   document.getElementById('shWeb').textContent = it.img ? '🌐 Webから選び直す／文字だけに' : '🌐 Webから画像を付ける';
   sheetBack.classList.add('show');
 }
@@ -1517,6 +1524,7 @@ document.getElementById('plGen').addEventListener('click', async ()=>{
     for(let n=a; n<=b; n++) state.items.push({img:null, done:false, label:String(n)});
     shuffleItems();
     state.blind = true; state.bingo = {a, b}; state.groupName = `番号 ${a}〜${b}`; page = 0;
+    clearPackSession(); state.pack = null;
     save(); gcVids(); applyModes(); render();
     return;
   }
@@ -1568,6 +1576,7 @@ function openGroups(){
         if(!ok) return;
       }
       state.items = g.items.map(it=>({img:it.img, label:it.label, vid:it.vid||undefined, done:false}));
+      clearPackSession(); state.pack = null;
       gcVids();
       state.groupName = g.name; page = 0;
       // 数字だけのグループ＝ビンゴとして再開（混ぜ直し＋ブラインドON）。ふつうのグループは従来どおり
@@ -1590,6 +1599,10 @@ function openGroups(){
 document.getElementById('grpSave').addEventListener('click', async ()=>{
   grpBack.classList.remove('show');
   if(!state.items.length){ dlg({title:'カードがありません', msg:'保存するものが無いよ', ok:'OK', cancel:false}); return; }
+  if(state.items.some(it=>it.fvid)){
+    dlg({title:'💾 保存できません', msg:'📼作品ファイルの動画カードは、アプリ内グループには入れられません。\n📼書き出しで保存してね', ok:'OK', cancel:false});
+    return;
+  }
   const r = await dlg({title:'💾 グループを保存', msg:'名前を付けてね（同じ名前なら上書き）', inputs:[{ph:'例：出勤セット', value:state.groupName||'', maxlength:20}], ok:'保存'});
   if(!r.ok) return;
   const name = r.values[0].trim();
@@ -1603,6 +1616,138 @@ document.getElementById('grpSave').addEventListener('click', async ()=>{
 });
 document.getElementById('grpCancel').addEventListener('click', ()=>grpBack.classList.remove('show'));
 grpBack.addEventListener('click', e=>{ if(e.target===grpBack) grpBack.classList.remove('show'); });
+
+/* ===== 📼 作品ファイル：カード＋動画を1ファイルに書き出し／ファイルから直接再生 =====
+   形式: "TAPCHECK1\n"(10B) + JSON長(4B LE) + JSON(名前・ラベル・ポスター・動画の位置) + 動画バイナリ連結
+   読み込んだ動画は File.slice でファイルから直接再生＝アプリ側の容量はゼロ。
+   アプリを開き直した後は📼で同じファイルを選び直す（カードの並びと✔は覚えている） ===== */
+let packFile = null;            // 今つながっている作品ファイル（セッション中のみ）
+const packUrls = new Map();     // "off:len" -> objectURL
+let packPlayIndex = -1;         // ファイルを開き直したら続きで再生するカード
+const packInput = document.getElementById('packInput');
+const PACK_MAGIC = 'TAPCHECK1\n';
+function packSig(name, itemCount, size){ return `${name}:${itemCount}:${size}`; }
+async function parsePack(file){
+  try{
+    if(file.size < 15) return null;
+    const head = new Uint8Array(await file.slice(0,14).arrayBuffer());
+    if(new TextDecoder().decode(head.slice(0,10)) !== PACK_MAGIC) return null;
+    const jlen = new DataView(head.buffer, head.byteOffset).getUint32(10, true);
+    if(jlen <= 0 || 14 + jlen > file.size) return null;
+    const meta = JSON.parse(await file.slice(14, 14+jlen).text());
+    if(!meta || !Array.isArray(meta.items)) return null;
+    meta._dataStart = 14 + jlen;
+    return meta;
+  }catch(e){ return null; }
+}
+/* カードの動画URL（IDB保存の動画 or 作品ファイル直接） */
+async function itemVidUrl(it){
+  if(it.vid) return vidUrl(it.vid);
+  if(it.fvid){
+    if(!packFile) return 'NOFILE';
+    const k = it.fvid.off + ':' + it.fvid.len;
+    if(!packUrls.has(k)) packUrls.set(k, URL.createObjectURL(packFile.slice(it.fvid.off, it.fvid.off + it.fvid.len, it.fvid.type || 'video/mp4')));
+    return packUrls.get(k);
+  }
+  return null;
+}
+function clearPackSession(){
+  packUrls.forEach(u=>URL.revokeObjectURL(u));
+  packUrls.clear();
+  packFile = null;
+}
+async function exportPack(){
+  grpBack.classList.remove('show');
+  if(!state.items.length){ dlg({title:'カードがありません', msg:'書き出すものが無いよ', ok:'OK', cancel:false}); return; }
+  if(state.items.some(it=>it.fvid) && !packFile){
+    dlg({title:'📼 先にファイルを開いてね', msg:'ファイル読み込みの動画カードがあるので、元の作品ファイルを📼で開いてから書き出してね', ok:'OK', cancel:false});
+    return;
+  }
+  const r = await dlg({title:'📼 作品ファイルに書き出し', msg:'カードと動画を1つのファイルにまとめます。\nダウンロードに保存され、人に渡すこともできます',
+    inputs:[{ph:'作品名（例：木彫りのくま）', value:state.groupName||'', maxlength:30}], ok:'書き出す'});
+  if(!r.ok) return;
+  const name = r.values[0].trim() || '作品';
+  const metaItems = [], parts = [];
+  let rel = 0;
+  for(const it of state.items){
+    let bin = null, type = null;
+    if(it.vid){
+      try{ bin = await idbGet('vid:'+it.vid); }catch(e){}
+      type = bin && bin.type;
+    }else if(it.fvid && packFile){
+      bin = packFile.slice(it.fvid.off, it.fvid.off + it.fvid.len, it.fvid.type || 'video/mp4');
+      type = it.fvid.type;
+    }
+    const m = {label: it.label || null, img: it.img || null};
+    if(bin && bin.size){
+      m.vid = {rel, len: bin.size, type: type || 'video/mp4'};
+      parts.push(bin); rel += bin.size;
+    }
+    metaItems.push(m);
+  }
+  const json = new TextEncoder().encode(JSON.stringify({v:1, name, at:Date.now(), items:metaItems}));
+  const lenBuf = new ArrayBuffer(4);
+  new DataView(lenBuf).setUint32(0, json.length, true);
+  const blob = new Blob([PACK_MAGIC, lenBuf, json, ...parts], {type:'application/octet-stream'});
+  const d = new Date(); const z = n=>String(n).padStart(2,'0');
+  const safe = name.replace(/[\\/:*?"<>|]/g, '_');
+  const fname = `${safe}_${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}.tapcheck`;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 30000);
+  state.groupName = name; save(); render();
+  let shared = false;
+  try{
+    const f = new File([blob], fname, {type:'application/octet-stream'});
+    if(navigator.canShare && navigator.canShare({files:[f]})){ await navigator.share({files:[f], title:name}); shared = true; }
+  }catch(e){}
+  await dlg({title:'📼 書き出したよ', msg:`${fname}（${(blob.size/1024/1024).toFixed(1)}MB）\n${shared ? '共有しました' : 'ダウンロードに保存しました'}`, ok:'OK', cancel:false});
+}
+async function loadPackFile(file){
+  const meta = await parsePack(file);
+  if(!meta){
+    packPlayIndex = -1;
+    dlg({title:'開けなかった', msg:'タップチェックの作品ファイル（.tapcheck）を選んでね', ok:'OK', cancel:false});
+    return;
+  }
+  const sig = packSig(meta.name, meta.items.length, file.size);
+  // 同じ作品を開き直した＝つなぎ直すだけ（カードの✔はそのまま）
+  if(state.pack && state.pack.sig === sig && state.items.length === meta.items.length){
+    clearPackSession();
+    packFile = file;
+    const i = packPlayIndex; packPlayIndex = -1;
+    if(i >= 0) openPlayer(i);
+    return;
+  }
+  packPlayIndex = -1;
+  if(state.items.length){
+    const ok = await confirmDlg(`📼 「${meta.name}」を開く`, `${meta.items.length}枚のカードを読み込みます。\n今の並びは置き換わります（残したいなら先に💾か📼で保存）`, {ok:'開く'});
+    if(!ok) return;
+  }
+  clearPackSession();
+  packFile = file;
+  state.items = meta.items.map(m=>{
+    const it = {img: m.img || null, label: m.label || null, done: false};
+    if(m.vid) it.fvid = {off: meta._dataStart + m.vid.rel, len: m.vid.len, type: m.vid.type || 'video/mp4'};
+    return it;
+  });
+  state.groupName = meta.name;
+  state.pack = {name: meta.name, sig};
+  state.blind = false; page = 0;
+  save(); gcVids(); applyModes(); render();
+}
+packInput.addEventListener('change', ()=>{
+  const f = packInput.files[0];
+  packInput.value = '';
+  if(f) loadPackFile(f);
+  else packPlayIndex = -1;
+});
+document.getElementById('packSave').addEventListener('click', exportPack);
+document.getElementById('packOpen').addEventListener('click', ()=>{
+  grpBack.classList.remove('show');
+  packPlayIndex = -1;
+  packInput.click();
+});
 
 /* ===== ハードモード：長押し確認／PWで取り消し ===== */
 async function hardLongPress(i){
@@ -1702,10 +1847,17 @@ const vpStage = document.getElementById('vpStage');
 const vpVideo = document.getElementById('vpVideo');
 const vpCap = document.getElementById('vpCap');
 let vpIndex = -1, vpLpTimer = null, vpLpFired = false, vpPtr = null;
+vpVideo.loop = true; // 動画は一度タップしたら閉じるまで繰り返し再生（作業しながら何度でも見る）
 async function openPlayer(i){
   const it = state.items[i];
-  if(!it || !it.vid) return;
-  const u = await vidUrl(it.vid);
+  if(!it || !(it.vid || it.fvid)) return;
+  const u = await itemVidUrl(it);
+  if(u === 'NOFILE'){
+    // アプリを開き直した後：作品ファイルを選び直せばそのまま続きを再生
+    const r = await dlg({title:'📼 作品ファイルを開き直してね', msg:'アプリを開き直した後は、動画の入った作品ファイルをもう一度選ぶと再生できます', ok:'ファイルを開く'});
+    if(r.ok){ packPlayIndex = i; packInput.click(); }
+    return;
+  }
   if(!u){
     dlg({title:'動画が見つからない', msg:'✕編集からもう一度動画を付け直してね', ok:'OK', cancel:false});
     return;
