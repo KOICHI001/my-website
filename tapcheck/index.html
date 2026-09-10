@@ -101,6 +101,15 @@ body.hard #progress{color:#ff8a80}
   font-size:.85em; padding:.15em .3em; text-align:center;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
+/* 動画カードの▶バッジ（タップ=再生・長押し=完了） */
+.tile .pv{
+  position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+  width:36%; max-width:46px; aspect-ratio:1; border-radius:50%;
+  background:rgba(20,20,40,.62); color:#fff; border:2px solid rgba(255,255,255,.55);
+  display:flex; align-items:center; justify-content:center;
+  font-size:1.1em; pointer-events:none; padding-left:.15em;
+}
+.tile.done .pv{background:rgba(255,179,71,.88); color:#1a1a2e; border-color:transparent}
 @keyframes pop{0%{transform:scale(1)}45%{transform:scale(1.07)}100%{transform:scale(1)}}
 /* 番号の表示/非表示 */
 body.nonum .tile .num{display:none}
@@ -108,6 +117,7 @@ body.nonum .tile .num{display:none}
 body.blind:not(.editing) .tile:not(.done) img,
 body.blind:not(.editing) .tile:not(.done) .tx{visibility:hidden}
 body.blind:not(.editing) .tile:not(.done) .label{display:none}
+body.blind:not(.editing) .tile:not(.done) .pv{display:none}
 body.blind:not(.editing) .tile:not(.done)::after{
   content:'？'; position:absolute; inset:0;
   display:flex; align-items:center; justify-content:center;
@@ -168,7 +178,7 @@ body.editing #resetBtn{font-size:15px}
 #bigNum .n{font-size:78px; font-weight:800; color:var(--accent); line-height:1}
 #bigNum .cam{font-size:28px}
 #bigNum .camhint{font-size:12px; color:var(--sub)}
-#galBtn{
+#galBtn,#vidBtn{
   width:min(86vw,360px); padding:12px 0; border:1px solid #44446a; border-radius:12px;
   background:var(--card); color:var(--text); font-size:15px; cursor:pointer;
 }
@@ -351,6 +361,29 @@ body:not(.hard) .hardonly{display:none}
   text-shadow:0 1px 3px #000;
 }
 
+/* ===== 動画プレイヤー（タップ=もう一回・長押し=完了） ===== */
+#vp{
+  position:fixed; inset:0; z-index:65; background:#000; display:none; flex-direction:column;
+}
+#vp.show{display:flex}
+#vpStage{flex:1 1 auto; min-height:0; position:relative; touch-action:none; display:flex}
+#vpStage video{
+  width:100%; height:100%; object-fit:contain; background:#000;
+  pointer-events:none; -webkit-user-drag:none;
+}
+#vpCap{
+  flex:0 0 auto; text-align:center; color:#ddd; font-size:13px; padding:6px 10px;
+  background:#000; text-shadow:0 1px 3px #000;
+}
+#vpBar{
+  flex:0 0 auto; display:flex; gap:8px; background:#000;
+  padding:8px 12px calc(8px + env(safe-area-inset-bottom));
+}
+#vpBar button{
+  flex:1; padding:12px 0; border:none; border-radius:14px;
+  background:var(--card); color:var(--text); font-size:16px; cursor:pointer;
+}
+
 /* ===== 署名画面（ハードモード完了時） ===== */
 #signOv{
   position:fixed; inset:0; z-index:70; background:var(--bg); display:none;
@@ -391,7 +424,8 @@ body:not(.hard) .hardonly{display:none}
       <div class="cam">📷</div>
       <div class="camhint">タップして撮影</div>
     </div>
-    <button id="galBtn">📁 保存した画像から選ぶ</button>
+    <button id="galBtn">📁 保存した画像・動画から選ぶ</button>
+    <button id="vidBtn">🎬 動画を撮って登録（タップで再生するカード）</button>
     <div id="webRow">
       <input type="text" id="webInput" maxlength="30" placeholder="🌐 Webから探す（例：なす）" enterkeyhint="search">
       <button id="webBtn">🔍</button>
@@ -446,6 +480,7 @@ body:not(.hard) .hardonly{display:none}
   <div id="sheet" class="sheet">
     <button id="shRetake">📷 撮り直す</button>
     <button id="shGallery">📁 保存した画像から選び直す</button>
+    <button id="shVideo">🎬 動画を撮って付ける</button>
     <button id="shWeb">🌐 Webから選び直す</button>
     <button id="shLabel">✏️ 名前を変更</button>
     <button id="shDel" class="danger">✕ 削除</button>
@@ -491,6 +526,12 @@ body:not(.hard) .hardonly{display:none}
   <div id="lbCap"></div>
 </div>
 
+<div id="vp">
+  <div id="vpStage"><video id="vpVideo" playsinline webkit-playsinline preload="auto"></video></div>
+  <div id="vpCap"></div>
+  <div id="vpBar"><button id="vpClose">✕ 閉じる</button></div>
+</div>
+
 <div id="signOv">
   <h2>✍️ 署名</h2>
   <input type="text" id="signName" maxlength="30" placeholder="名前（例：山田 太郎）">
@@ -517,10 +558,11 @@ body:not(.hard) .hardonly{display:none}
 </div>
 
 <input type="file" id="camInput" accept="image/*" capture="environment" hidden>
-<input type="file" id="galInput" accept="image/*" hidden>
+<input type="file" id="vidInput" accept="video/*" capture="environment" hidden>
+<input type="file" id="galInput" accept="image/*,video/*" hidden>
 
 <script>
-const APP_VERSION = '0.7.5';
+const APP_VERSION = '0.8.0';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -563,6 +605,21 @@ async function idbSet(k, v){
     const tx = db.transaction(DB_STORE, 'readwrite');
     tx.objectStore(DB_STORE).put(v, k);
     tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function idbDel(k){
+  const db = await idbOpen();
+  return new Promise((res, rej)=>{
+    const tx = db.transaction(DB_STORE, 'readwrite');
+    tx.objectStore(DB_STORE).delete(k);
+    tx.oncomplete = ()=>res(); tx.onerror = ()=>rej(tx.error);
+  });
+}
+async function idbKeys(){
+  const db = await idbOpen();
+  return new Promise((res, rej)=>{
+    const t = db.transaction(DB_STORE, 'readonly').objectStore(DB_STORE).getAllKeys();
+    t.onsuccess = ()=>res(t.result); t.onerror = ()=>rej(t.error);
   });
 }
 function defaults(){ return {items: [], lastTap: 0, hideNum:false, blind:false, hard:false, pwHash:null, groups:[], groupName:null, signed:false, bingo:null}; }
@@ -743,6 +800,7 @@ function render(){
         t.innerHTML =
           (it.img ? `<img src="${it.img}" alt="">`
                   : `<div class="tx" style="font-size:${txFont(it.label, size)}px">${escapeHtml(it.label||'')}</div>`) +
+          (it.vid ? `<div class="pv">▶</div>` : '') +
           `<div class="num">${i+1}</div>` +
           (it.label && it.img ? `<div class="label">${escapeHtml(it.label)}</div>` : '') +
           `<button class="del">✕</button><div class="chk">${selSet.has(i) ? '✓':''}</div>`;
@@ -808,8 +866,12 @@ let sw = null;          // スワイプ追跡
 function onTileDown(e, i){
   lpFired = false;
   clearTimeout(lpTimer);
-  if(state.hard && !editing && !selecting){
+  if(editing || selecting) return;
+  if(state.hard){
     lpTimer = setTimeout(()=>{ lpFired = true; hardLongPress(i); }, LONG_MS);
+  }else if(state.items[i] && state.items[i].vid){
+    // 動画カード：タップ=再生・長押し=✔完了（もう一度長押しで戻す）
+    lpTimer = setTimeout(()=>{ lpFired = true; toggle(i); }, LONG_MS);
   }
 }
 pagesEl.addEventListener('pointerdown', e=>{
@@ -853,7 +915,12 @@ function onTileClick(e, i){
     openSheet(i);
     return;
   }
-  if(state.hard){ openLightbox(i); return; }
+  const it = state.items[i];
+  if(state.hard){
+    if(it && it.vid){ openPlayer(i); return; } // ハード中の動画もタップ=再生（確認は長押し）
+    openLightbox(i); return;
+  }
+  if(it && it.vid){ openPlayer(i); return; }
   toggle(i);
 }
 
@@ -874,7 +941,7 @@ function checkAllDone(){
   }
 }
 function deleteItem(i){
-  state.items.splice(i,1); save(); render();
+  state.items.splice(i,1); save(); gcVids(); render();
 }
 function updateProgress(){
   const d = state.items.filter(i=>i.done).length;
@@ -896,12 +963,100 @@ function applyModes(){
 /* ===== 画像コミット（カメラ・Web共通） ===== */
 function commitDataUrl(data){
   if(pendingIndex >= 0 && pendingIndex < state.items.length){
-    state.items[pendingIndex].img = data;           // 差し替え（名前は維持）
+    const it = state.items[pendingIndex];
+    it.img = data;           // 差し替え（名前は維持）
+    if(it.vid){ delete it.vid; gcVids(); } // 動画カード→写真に戻したら動画本体は掃除
   }else{
     state.items.push({img: data, done: false, label: pendingLabel || null});
   }
   pendingLabel = null;
   save();
+  if(replaceMode){ replaceMode = false; closeSetup(); return; }
+  if(setup.classList.contains('show')) showShot();
+  else render();
+}
+
+/* ===== 動画カード：本体BlobはIDBに別キー（vid:xxx）で保存＝stateは軽いまま ===== */
+const vidUrls = new Map(); // id -> objectURL（セッション内キャッシュ）
+async function vidUrl(id){
+  if(vidUrls.has(id)) return vidUrls.get(id);
+  let b = null;
+  try{ b = await idbGet('vid:'+id); }catch(e){}
+  if(!b) return null;
+  const u = URL.createObjectURL(b);
+  vidUrls.set(id, u);
+  return u;
+}
+/* どのカード・グループからも使われていない動画Blobを削除 */
+async function gcVids(){
+  try{
+    const used = new Set();
+    state.items.forEach(it=>{ if(it.vid) used.add(it.vid); });
+    state.groups.forEach(g=>(g.items||[]).forEach(it=>{ if(it.vid) used.add(it.vid); }));
+    const keys = await idbKeys();
+    for(const k of keys){
+      if(typeof k === 'string' && k.startsWith('vid:') && !used.has(k.slice(4))){
+        await idbDel(k);
+        const u = vidUrls.get(k.slice(4));
+        if(u){ URL.revokeObjectURL(u); vidUrls.delete(k.slice(4)); }
+      }
+    }
+  }catch(e){}
+}
+/* 先頭付近のコマを正方形512pxに切ってサムネイル化（タイルは写真と同じ白黒→カラー） */
+function makePoster(url){
+  return new Promise(res=>{
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true; v.preload = 'auto';
+    let fin = false;
+    const finish = ()=>{
+      if(fin) return; fin = true;
+      clearTimeout(tm);
+      try{
+        const w = v.videoWidth, h = v.videoHeight;
+        if(!w || !h) return res(null);
+        const s = Math.min(w, h), OUT = 512;
+        const cv = document.createElement('canvas');
+        cv.width = OUT; cv.height = OUT;
+        cv.getContext('2d').drawImage(v, (w-s)/2, (h-s)/2, s, s, 0, 0, OUT, OUT);
+        res(cv.toDataURL('image/jpeg', .82));
+      }catch(e){ res(null); }
+    };
+    const tm = setTimeout(finish, 4000); // 保険：seekedが来ない環境でも今のコマで確定
+    v.onloadeddata = ()=>{ try{ v.currentTime = Math.min(0.1, (v.duration||1)); }catch(e){ finish(); } };
+    v.onseeked = finish;
+    v.onerror = ()=>{ if(!fin){ fin = true; clearTimeout(tm); res(null); } };
+    v.src = url;
+  });
+}
+async function commitVideo(file){
+  if(file.size > 200*1024*1024){
+    dlg({title:'動画が大きすぎるよ', msg:'200MBまでにしてね（短く切った動画がおすすめ）', ok:'OK', cancel:false});
+    return;
+  }
+  if(setup.classList.contains('show')) setupHint.textContent = '🎬 動画を取り込み中…';
+  const url = URL.createObjectURL(file);
+  const poster = await makePoster(url);
+  URL.revokeObjectURL(url);
+  if(!poster){
+    if(setup.classList.contains('show')) setupHint.textContent = 'この動画は使えなかった…別の動画を試してね';
+    else dlg({title:'この動画は使えなかった', msg:'別の動画を試してね', ok:'OK', cancel:false});
+    return;
+  }
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  try{ await idbSet('vid:'+id, file); }
+  catch(e){
+    dlg({title:'保存できなかった', msg:'空き容量が足りないかも', ok:'OK', cancel:false});
+    return;
+  }
+  if(pendingIndex >= 0 && pendingIndex < state.items.length){
+    const it = state.items[pendingIndex];
+    it.img = poster; it.vid = id;      // 差し替え（名前は維持）
+  }else{
+    state.items.push({img: poster, vid: id, done: false, label: pendingLabel || null});
+  }
+  pendingLabel = null;
+  save(); gcVids();
   if(replaceMode){ replaceMode = false; closeSetup(); return; }
   if(setup.classList.contains('show')) showShot();
   else render();
@@ -913,6 +1068,7 @@ function commitText(){
   if(replaceMode){
     const it = state.items[sheetIndex];
     it.img = null; it.label = v;
+    if(it.vid){ delete it.vid; gcVids(); }
     save(); txtInput.value = ''; replaceMode = false; closeSetup(); return;
   }
   state.items.push({img:null, done:false, label:v});
@@ -958,7 +1114,17 @@ function handleFilePick(inp, useCrop){
   img.src = url;
 }
 camInput.addEventListener('change', ()=>handleFilePick(camInput, false));
-galInput.addEventListener('change', ()=>handleFilePick(galInput, true));
+galInput.addEventListener('change', ()=>{
+  const f = galInput.files[0];
+  if(f && f.type && f.type.startsWith('video')){ galInput.value = ''; commitVideo(f); }
+  else handleFilePick(galInput, true);
+});
+const vidInput = document.getElementById('vidInput');
+vidInput.addEventListener('change', ()=>{
+  const f = vidInput.files[0];
+  vidInput.value = '';
+  if(f) commitVideo(f);
+});
 
 /* ===== トリミング（切り取り）画面：ドラッグ移動＋ピンチ/ホイール拡縮 ===== */
 const cropOv = document.getElementById('cropOv');
@@ -1186,7 +1352,7 @@ function showBigNum(){
   webResults.innerHTML = '';
   const num = replaceMode ? sheetIndex+1 : state.items.length+1;
   bigNum.querySelector('.n').textContent = num;
-  setupHint.textContent = replaceMode ? '撮影・Web・文字で差し替え' : '撮影・Webの画像・文字だけ、どれでも登録できるよ';
+  setupHint.textContent = replaceMode ? '撮影・動画・Web・文字で差し替え' : '撮影・動画・Webの画像・文字、どれでも登録できるよ';
 }
 function showShot(){
   const i = state.items.length-1;
@@ -1203,7 +1369,7 @@ function showShot(){
   pl.style.display = it.label ? 'block' : 'none';
   labelBtn.style.display = 'block';
   nextBtn.style.display = 'block';
-  setupHint.textContent = '写真をタップで撮り直し';
+  setupHint.textContent = it.vid ? '🎬 動画カードを登録したよ（タップで撮り直し）' : '写真をタップで撮り直し';
 }
 function closeSetup(){
   setup.classList.remove('show');
@@ -1220,7 +1386,14 @@ document.getElementById('galBtn').addEventListener('click', ()=>{
   pendingIndex = replaceMode ? sheetIndex : state.items.length;
   galInput.click();
 });
-shotPrev.addEventListener('click', ()=>{ pendingIndex = state.items.length-1; camInput.click(); });
+document.getElementById('vidBtn').addEventListener('click', ()=>{
+  pendingIndex = replaceMode ? sheetIndex : state.items.length;
+  vidInput.click();
+});
+shotPrev.addEventListener('click', ()=>{
+  pendingIndex = state.items.length-1;
+  (state.items[pendingIndex] && state.items[pendingIndex].vid ? vidInput : camInput).click();
+});
 labelBtn.addEventListener('click', async ()=>{
   const it = state.items[state.items.length-1];
   const r = await dlg({title:'✏️ 名前', msg:'空欄にすると消えます', inputs:[{ph:'名前', value:it.label||'', maxlength:20}], ok:'OK'});
@@ -1235,8 +1408,9 @@ finishBtn.addEventListener('click', closeSetup);
 function openSheet(i){
   sheetIndex = i;
   const it = state.items[i];
-  document.getElementById('shRetake').textContent = it.img ? '📷 撮り直す' : '📷 写真を撮って付ける';
-  document.getElementById('shGallery').textContent = it.img ? '📁 保存した画像から選び直す' : '📁 保存した画像を付ける';
+  document.getElementById('shRetake').textContent = it.img ? '📷 撮り直す（写真に）' : '📷 写真を撮って付ける';
+  document.getElementById('shGallery').textContent = it.img ? '📁 保存した画像・動画から選び直す' : '📁 保存した画像・動画を付ける';
+  document.getElementById('shVideo').textContent = it.vid ? '🎬 動画を撮り直す' : '🎬 動画を撮って付ける';
   document.getElementById('shWeb').textContent = it.img ? '🌐 Webから選び直す／文字だけに' : '🌐 Webから画像を付ける';
   sheetBack.classList.add('show');
 }
@@ -1250,6 +1424,11 @@ document.getElementById('shGallery').addEventListener('click', ()=>{
   closeSheet();
   pendingIndex = sheetIndex; replaceMode = false;
   galInput.click();
+});
+document.getElementById('shVideo').addEventListener('click', ()=>{
+  closeSheet();
+  pendingIndex = sheetIndex; replaceMode = false;
+  vidInput.click();
 });
 document.getElementById('shWeb').addEventListener('click', ()=>{
   closeSheet();
@@ -1290,7 +1469,7 @@ document.getElementById('selDel').addEventListener('click', async ()=>{
   const ok = await confirmDlg(all ? '🗑 全部削除' : '🗑 削除', all ? `全部（${selSet.size}件）を削除します。\n戻せません` : `${selSet.size}件を削除します`, {ok:'削除', danger:true});
   if(!ok) return;
   state.items = state.items.filter((_,i)=>!selSet.has(i));
-  save();
+  save(); gcVids();
   setSelecting(false);
 });
 document.getElementById('selCancel').addEventListener('click', ()=>setSelecting(false));
@@ -1338,7 +1517,7 @@ document.getElementById('plGen').addEventListener('click', async ()=>{
     for(let n=a; n<=b; n++) state.items.push({img:null, done:false, label:String(n)});
     shuffleItems();
     state.blind = true; state.bingo = {a, b}; state.groupName = `番号 ${a}〜${b}`; page = 0;
-    save(); applyModes(); render();
+    save(); gcVids(); applyModes(); render();
     return;
   }
 });
@@ -1388,7 +1567,8 @@ function openGroups(){
         const ok = await confirmDlg(`📂 「${g.name}」を呼び出す`, '今の並びは置き換わります（保存していなければ消えます）', {ok:'呼び出す'});
         if(!ok) return;
       }
-      state.items = g.items.map(it=>({img:it.img, label:it.label, done:false}));
+      state.items = g.items.map(it=>({img:it.img, label:it.label, vid:it.vid||undefined, done:false}));
+      gcVids();
       state.groupName = g.name; page = 0;
       // 数字だけのグループ＝ビンゴとして再開（混ぜ直し＋ブラインドON）。ふつうのグループは従来どおり
       const isBingo = hasSum();
@@ -1401,7 +1581,7 @@ function openGroups(){
       grpBack.classList.remove('show');
       const ok = await confirmDlg('🗑 グループを削除', `「${g.name}」を削除します（今の並びはそのまま）`, {ok:'削除', danger:true});
       if(!ok) return;
-      state.groups.splice(gi,1); save();
+      state.groups.splice(gi,1); save(); gcVids();
     });
     row.appendChild(nm); row.appendChild(rm); list.appendChild(row);
   });
@@ -1414,7 +1594,7 @@ document.getElementById('grpSave').addEventListener('click', async ()=>{
   if(!r.ok) return;
   const name = r.values[0].trim();
   if(!name) return;
-  const items = state.items.map(it=>({img:it.img, label:it.label}));
+  const items = state.items.map(it=>({img:it.img, label:it.label, vid:it.vid||undefined}));
   const ex = state.groups.findIndex(g=>g.name===name);
   if(ex >= 0) state.groups[ex] = {name, items, at:Date.now()};
   else state.groups.push({name, items, at:Date.now()});
@@ -1515,6 +1695,84 @@ lb.addEventListener('wheel', e=>{
   if(lbS === 1){ lbTx = 0; lbTy = 0; }
   lbApply();
 }, {passive:false});
+
+/* ===== 動画プレイヤー：タップ=もう一回再生／長押し=✔完了（ハード中は長押し=確認） ===== */
+const vp = document.getElementById('vp');
+const vpStage = document.getElementById('vpStage');
+const vpVideo = document.getElementById('vpVideo');
+const vpCap = document.getElementById('vpCap');
+let vpIndex = -1, vpLpTimer = null, vpLpFired = false, vpPtr = null;
+async function openPlayer(i){
+  const it = state.items[i];
+  if(!it || !it.vid) return;
+  const u = await vidUrl(it.vid);
+  if(!u){
+    dlg({title:'動画が見つからない', msg:'✕編集からもう一度動画を付け直してね', ok:'OK', cancel:false});
+    return;
+  }
+  vpIndex = i;
+  vpVideo.src = u;
+  vp.classList.add('show');
+  vpUpdateCap();
+  vpVideo.currentTime = 0;
+  vpVideo.play().catch(()=>{});
+}
+function vpUpdateCap(){
+  const it = state.items[vpIndex];
+  if(!it) return;
+  const lp = state.hard ? '確認' : (it.done ? '✔を戻す' : '✔完了');
+  vpCap.textContent = `${vpIndex+1}. ${itemName(it,vpIndex)}${it.done ? '  ✅' : ''}　｜　タップ=もう一回 ／ 長押し=${lp}`;
+}
+function closePlayer(){
+  vp.classList.remove('show');
+  vpVideo.pause();
+  vpVideo.removeAttribute('src');
+  vpVideo.load();
+  vpIndex = -1; vpPtr = null;
+  clearTimeout(vpLpTimer);
+}
+document.getElementById('vpClose').addEventListener('click', closePlayer);
+vp.addEventListener('contextmenu', e=>e.preventDefault());
+vpStage.addEventListener('pointerdown', e=>{
+  vpPtr = {x:e.clientX, y:e.clientY, moved:false};
+  vpLpFired = false;
+  clearTimeout(vpLpTimer);
+  vpLpTimer = setTimeout(()=>{
+    vpLpFired = true;
+    if(vpIndex < 0) return;
+    if(navigator.vibrate) navigator.vibrate(30);
+    const i = vpIndex;
+    if(state.hard){
+      closePlayer();
+      hardLongPress(i);
+    }else{
+      const it = state.items[i];
+      it.done = !it.done;
+      it.at = it.done ? Date.now() : null;
+      state.lastTap = Date.now();
+      save(); render();
+      if(it.done){ closePlayer(); checkAllDone(); }
+      else vpUpdateCap();
+    }
+  }, LONG_MS);
+});
+vpStage.addEventListener('pointermove', e=>{
+  if(!vpPtr) return;
+  if(Math.hypot(e.clientX-vpPtr.x, e.clientY-vpPtr.y) > 10){
+    vpPtr.moved = true;
+    clearTimeout(vpLpTimer);
+  }
+});
+vpStage.addEventListener('pointerup', e=>{
+  clearTimeout(vpLpTimer);
+  const p = vpPtr; vpPtr = null;
+  if(vpLpFired || !p || p.moved){ vpLpFired = false; return; }
+  // 短いタップ＝最初からもう一回
+  if(vpIndex < 0) return;
+  vpVideo.currentTime = 0;
+  vpVideo.play().catch(()=>{});
+});
+vpStage.addEventListener('pointercancel', ()=>{ clearTimeout(vpLpTimer); vpPtr = null; });
 
 /* ===== 署名→PNG保存（ハードモード完了の記録） ===== */
 const signOv = document.getElementById('signOv');
