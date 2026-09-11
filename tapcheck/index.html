@@ -380,6 +380,16 @@ body:not(.hard) .hardonly{display:none}
   flex:0 0 auto; text-align:center; color:#ddd; font-size:13px; padding:6px 10px;
   background:#000; text-shadow:0 1px 3px #000;
 }
+/* 一時停止中の▶バッジ（タップで続きから再生できる合図） */
+#vpStage::after{
+  content:'▶'; position:absolute; inset:0; margin:auto;
+  width:84px; height:84px; border-radius:50%;
+  background:rgba(0,0,0,.55); color:#fff; font-size:36px;
+  display:none; align-items:center; justify-content:center;
+  padding-left:6px; box-sizing:border-box;
+  text-shadow:0 1px 6px rgba(0,0,0,.6);
+}
+#vpStage.vppause::after{display:flex}
 /* シークバー（全体の長さが見える・ドラッグで再生位置が動く） */
 #vpSeek{
   flex:0 0 auto; display:flex; align-items:center; gap:6px;
@@ -597,7 +607,7 @@ body:not(.hard) .hardonly{display:none}
 <input type="file" id="packInput" hidden>
 
 <script>
-const APP_VERSION = '0.9.2';
+const APP_VERSION = '0.9.3';
 const LS_KEY = 'routine_cho_v1';
 const RESET_AFTER_MS = 8 * 60 * 60 * 1000; // 8時間放置で自動リセット
 const GAP = 6, PAD = 6;
@@ -1873,7 +1883,7 @@ lb.addEventListener('wheel', e=>{
   lbApply();
 }, {passive:false});
 
-/* ===== 動画プレイヤー：タップ=もう一回再生／長押し=✔完了（ハード中は長押し=確認） ===== */
+/* ===== 動画プレイヤー：タップ=一時停止⇄続きから再生／長押し=✔完了（ハード中は長押し=確認） ===== */
 const vp = document.getElementById('vp');
 const vpStage = document.getElementById('vpStage');
 const vpVideo = document.getElementById('vpVideo');
@@ -1928,14 +1938,15 @@ function vpSync(){
   }
 }
 function vpTick(){ vpSync(); vpRaf = requestAnimationFrame(vpTick); }
-vpVideo.addEventListener('play', ()=>{ cancelAnimationFrame(vpRaf); vpRaf = requestAnimationFrame(vpTick); });
-vpVideo.addEventListener('pause', ()=>cancelAnimationFrame(vpRaf));
+// 一時停止中だけ▶バッジを見せる（シークバードラッグ中の内部的な停止では出さない）
+function vpBadgeSync(){ vpStage.classList.toggle('vppause', vpIndex >= 0 && vpVideo.paused && !vpScrub); }
+vpVideo.addEventListener('play', ()=>{ cancelAnimationFrame(vpRaf); vpRaf = requestAnimationFrame(vpTick); vpBadgeSync(); });
+vpVideo.addEventListener('pause', ()=>{ cancelAnimationFrame(vpRaf); vpBadgeSync(); });
 vpVideo.addEventListener('loadedmetadata', vpSync);
 vpVideo.addEventListener('durationchange', vpSync);
 vpVideo.addEventListener('timeupdate', vpSync);
 vpRange.addEventListener('input', ()=>{
-  if(!vpScrub){ vpWasPlaying = !vpVideo.paused; vpVideo.pause(); } // ドラッグ中は一時停止
-  vpScrub = true;
+  if(!vpScrub){ vpScrub = true; vpWasPlaying = !vpVideo.paused; vpVideo.pause(); vpBadgeSync(); } // ドラッグ中は一時停止＋▶バッジは隠す（コマを見せる）
   const t = parseFloat(vpRange.value) || 0;
   const d = vpVideo.duration;
   // 端までドラッグした瞬間にループで先頭へ飛ばないよう少し手前まで
@@ -1947,7 +1958,7 @@ function vpScrubEnd(){
   if(!vpScrub) return;
   vpScrub = false;
   if(vpWasPlaying) vpVideo.play().catch(()=>{}); // 離したら続きから再生
-  vpSync();
+  vpSync(); vpBadgeSync();
 }
 vpRange.addEventListener('change', vpScrubEnd);
 vpRange.addEventListener('pointerup', vpScrubEnd);
@@ -1956,7 +1967,7 @@ function vpUpdateCap(){
   const it = state.items[vpIndex];
   if(!it) return;
   const lp = state.hard ? '確認' : (it.done ? '✔を戻す' : '✔完了');
-  vpCap.textContent = `${vpIndex+1}. ${itemName(it,vpIndex)}${it.done ? '  ✅' : ''}　｜　タップ=もう一回 ／ 長押し=${lp}`;
+  vpCap.textContent = `${vpIndex+1}. ${itemName(it,vpIndex)}${it.done ? '  ✅' : ''}　｜　タップ=停止⇄再生 ／ 長押し=${lp}`;
 }
 function closePlayer(){
   vp.classList.remove('show');
@@ -1965,6 +1976,7 @@ function closePlayer(){
   vpVideo.removeAttribute('src');
   vpVideo.load();
   vpIndex = -1; vpPtr = null;
+  vpStage.classList.remove('vppause');
   clearTimeout(vpLpTimer);
 }
 document.getElementById('vpClose').addEventListener('click', closePlayer);
@@ -2003,10 +2015,10 @@ vpStage.addEventListener('pointerup', e=>{
   clearTimeout(vpLpTimer);
   const p = vpPtr; vpPtr = null;
   if(vpLpFired || !p || p.moved){ vpLpFired = false; return; }
-  // 短いタップ＝最初からもう一回
+  // 短いタップ＝一時停止⇄続きから再生
   if(vpIndex < 0) return;
-  vpVideo.currentTime = 0;
-  vpVideo.play().catch(()=>{});
+  if(vpVideo.paused) vpVideo.play().catch(()=>{});
+  else vpVideo.pause();
 });
 vpStage.addEventListener('pointercancel', ()=>{ clearTimeout(vpLpTimer); vpPtr = null; });
 
