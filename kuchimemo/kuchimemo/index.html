@@ -30,7 +30,7 @@
   nav button{flex:1;background:none;border:0;padding:12px 0 10px;font:inherit;font-size:14px;
     color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
   nav button[aria-selected="true"]{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
-  main{flex:1;overflow-y:auto;padding:14px 14px 200px;-webkit-overflow-scrolling:touch}
+  main{flex:1;overflow-y:auto;padding:14px 14px 210px;-webkit-overflow-scrolling:touch}
   .empty{color:var(--muted);font-size:14px;text-align:center;padding:56px 24px;line-height:2}
   .memo{background:var(--sheet);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;
     display:flex;gap:10px;align-items:flex-start}
@@ -75,17 +75,24 @@
     background:var(--sheet);color:var(--ink);padding:10px 12px}
   .row input{flex:1;min-width:0}
   .row button{cursor:pointer;white-space:nowrap}
-  #send{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700;flex:1}
+  #send{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700;flex:2}
+  #paste{flex:1}
   #send:disabled{opacity:.4}
   .thumb{width:100%;border-radius:10px;margin-top:9px;display:block}
-  dialog{border:0;border-radius:var(--r);padding:20px;width:min(92vw,380px);background:var(--sheet);color:var(--ink);font:inherit}
+  dialog{border:0;border-radius:var(--r);padding:20px;width:min(94vw,420px);background:var(--sheet);color:var(--ink);font:inherit}
   dialog::backdrop{background:rgba(31,42,46,.45)}
+  dialog h3{margin:0 0 4px;font-size:17px}
+  dialog p{font-size:13.5px;color:var(--muted);margin:6px 0 0}
+  dialog ol{font-size:13.5px;color:var(--muted);margin:8px 0 0;padding-left:1.3em;line-height:1.9}
   dialog label{display:block;font-size:13px;color:var(--muted);margin:14px 0 4px}
-  dialog input,dialog select{width:100%;font:inherit;font-size:15px;padding:9px 11px;
+  dialog input,dialog textarea{width:100%;font:inherit;font-size:15px;padding:9px 11px;
     border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
-  dialog .acts{display:flex;gap:8px;margin-top:20px}
-  dialog .acts button{flex:1;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:none;cursor:pointer}
+  dialog textarea{min-height:130px;resize:vertical;font-size:14px;line-height:1.6}
+  dialog img{width:100%;border-radius:10px;margin-top:12px;display:block}
+  dialog .acts{display:flex;gap:8px;margin-top:18px}
+  dialog .acts button{flex:1;font:inherit;padding:11px;border-radius:10px;border:1px solid var(--line);background:none;cursor:pointer}
   dialog .acts button.primary{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
+  dialog .acts button.go{background:var(--sort);color:#fff;border-color:var(--sort);font-weight:700}
   :focus-visible{outline:2px solid var(--sort);outline-offset:2px}
 </style>
 </head>
@@ -119,24 +126,60 @@
     <button id="add">追加</button>
   </div>
   <div class="row">
-    <button id="send">まとめて整理してもらう</button>
+    <button id="send">Claudeに整理を頼む</button>
+    <button id="paste">結果を貼る</button>
   </div>
 </footer>
 
 <input type="file" id="file" accept="image/*" capture="environment" hidden>
 
+<dialog id="askDlg">
+  <h3>Claudeに渡します</h3>
+  <ol>
+    <li>「Claudeアプリへ送る」を押す</li>
+    <li>共有先の一覧からClaudeを選ぶ</li>
+    <li>Claudeが整理して、最後にJSONを出します</li>
+    <li>そのJSONをコピーして、くちメモの「結果を貼る」へ</li>
+  </ol>
+  <p id="askNote"></p>
+  <div class="acts">
+    <button id="askClose">やめる</button>
+    <button id="askCopy">文章をコピー</button>
+    <button id="askShare" class="go">Claudeアプリへ送る</button>
+  </div>
+</dialog>
+
+<dialog id="pasteDlg">
+  <h3>結果を貼る</h3>
+  <p>Claudeが最後に出したJSONを、まるごと貼り付けてください。前後に文章が付いていても大丈夫です。</p>
+  <textarea id="pasteBox" placeholder='{ "summary": ...'></textarea>
+  <p id="pasteErr"></p>
+  <div class="acts">
+    <button id="pasteClose">やめる</button>
+    <button id="pasteOk" class="primary">取り込む</button>
+  </div>
+</dialog>
+
+<dialog id="refDlg">
+  <h3>資料に入れる</h3>
+  <p>この写真をClaudeに読ませて、書き起こしを貼ってください。一度入れておけば、以後の整理に毎回付いていきます。</p>
+  <img id="refPreview" alt="">
+  <label for="refTitle">名前</label>
+  <input id="refTitle" placeholder="例: ○○行きバス時刻表 平日">
+  <label for="refBody">書き起こし</label>
+  <textarea id="refBody" placeholder="平日 7時台: 05, 22, 48 ..."></textarea>
+  <div class="acts">
+    <button id="refCancel">やめる</button>
+    <button id="refShare" class="go">写真をClaudeへ</button>
+    <button id="refSave" class="primary">保存</button>
+  </div>
+</dialog>
+
 <dialog id="cfg">
-  <strong>設定</strong>
-  <label for="key">APIキー（この端末にだけ保存されます）</label>
-  <input id="key" type="password" placeholder="sk-ant-...">
-  <label for="model">モデル</label>
-  <select id="model">
-    <option value="claude-sonnet-5">claude-sonnet-5（標準）</option>
-    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5（速い・安い）</option>
-    <option value="claude-opus-5">claude-opus-5（賢い）</option>
-  </select>
-  <label for="home">帰る場所（バスの案内に使います）</label>
-  <input id="home" placeholder="例: 職場から自宅まで、バス＋徒歩10分">
+  <h3>設定</h3>
+  <label for="home">移動の前提（バスの案内に使います）</label>
+  <input id="home" placeholder="例: 職場から自宅までバス、最寄りは○○停">
+  <p>整理はClaudeアプリ側でやるので、APIキーは要りません。</p>
   <div class="acts">
     <button id="cfgClose">閉じる</button>
     <button id="cfgSave" class="primary">保存</button>
@@ -149,7 +192,7 @@ const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs"};
 let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
 let result = JSON.parse(localStorage.getItem(LS.result) || "null");
 let refs   = JSON.parse(localStorage.getItem(LS.refs)   || "[]");
-let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"key":"","model":"claude-sonnet-5","home":""}');
+let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"home":""}');
 
 const $ = id => document.getElementById(id);
 const save = () => {
@@ -203,7 +246,7 @@ async function renderRaw(){
 $("viewRaw").addEventListener("click", e=>{
   const b = e.target.closest(".del"); if(!b) return;
   const m = memos.find(x=>x.id===b.dataset.id);
-  if(m?.img) imgDel(m.img);
+  if(m && m.img) imgDel(m.img);
   memos = memos.filter(x=>x.id!==b.dataset.id); save(); renderRaw();
 });
 
@@ -247,24 +290,19 @@ $("add").addEventListener("click", ()=>{ addMemo($("typed").value); $("typed").v
 $("typed").addEventListener("keydown", e=>{ if(e.key==="Enter"){ addMemo($("typed").value); $("typed").value=""; }});
 
 /* ========== 写真 ========== */
-/* Capacitor実機ではCameraプラグイン、ブラウザではfile inputに落ちる */
-let shotMode = "memo";
-async function shoot(){
-  if(window.Capacitor?.Plugins?.Camera){
-    const p = await window.Capacitor.Plugins.Camera.getPhoto(
-      {quality:70, allowEditing:false, resultType:"dataUrl", width:1600, source:"CAMERA"});
-    return p.dataUrl;
-  }
+function shoot(){
   return new Promise(ok=>{
     $("file").onchange = e=>{
-      const f = e.target.files[0]; if(!f) return ok(null);
-      const r = new FileReader(); r.onload = ()=>ok(shrink(r.result)); r.readAsDataURL(f);
-      e.target.value = "";
+      const f = e.target.files[0]; e.target.value="";
+      if(!f) return ok(null);
+      const r = new FileReader();
+      r.onload = ()=> shrink(r.result).then(ok);
+      r.readAsDataURL(f);
     };
     $("file").click();
   });
 }
-/* 長辺1600pxに落としてJPEGへ。時刻表の細かい数字が潰れない範囲 */
+/* 長辺1600pxに落としてJPEGへ。時刻表の数字が潰れない範囲 */
 function shrink(dataUrl){
   return new Promise(ok=>{
     const im = new Image();
@@ -279,6 +317,12 @@ function shrink(dataUrl){
     im.src = dataUrl;
   });
 }
+function toFile(dataUrl,name){
+  const b = atob(dataUrl.split(",")[1]);
+  const u = new Uint8Array(b.length);
+  for(let i=0;i<b.length;i++) u[i]=b.charCodeAt(i);
+  return new File([u], name, {type:"image/jpeg"});
+}
 $("snap").addEventListener("click", async ()=>{
   const d = await shoot(); if(!d) return;
   const id = "i"+Date.now();
@@ -287,31 +331,33 @@ $("snap").addEventListener("click", async ()=>{
   $("live").textContent = "写真を添えました";
 });
 
-/* ========== 資料（時刻表など・一度だけ読ませて表にする） ========== */
+/* ========== 資料（時刻表など） ========== */
+let pendingRefImg = null;
 $("refShot").addEventListener("click", async ()=>{
-  if(!cfg.key){ $("cfg").showModal(); return; }
   const d = await shoot(); if(!d) return;
-  $("live").textContent = "資料を読み取っています…";
-  try{
-    const data = await api({
-      model: cfg.model, max_tokens: 3000,
-      system:`画像から情報を抜き出し、あとから何度でも参照できる形に書き起こします。出力はJSONのみ。
-{"title":"何の資料か（例: ○○行き バス時刻表 平日）","summary":"一行説明","body":"本文。時刻表なら「平日 7時台: 05, 22, 48」のように時刻をすべて漏らさず書く。注記や運休条件も残す"}
-読み取れない箇所は推測せず「不明」と書くこと。`,
-      messages:[{role:"user",content:[
-        {type:"image",source:{type:"base64",media_type:"image/jpeg",data:d.split(",")[1]}},
-        {type:"text",text:"この資料を書き起こしてください。"}]},
-        {role:"assistant",content:"{"}]
-    });
-    const r = JSON.parse("{" + textOf(data));
-    const id = "r"+Date.now();
-    await imgPut(id, d);
-    refs.unshift({id, title:r.title, summary:r.summary, body:r.body, ts:Date.now()});
-    save(); renderRef(); switchTab("ref");
-    $("live").textContent = "資料に入れました";
-  }catch(err){ $("live").textContent = "読み取れませんでした"; console.error(err); }
+  pendingRefImg = d;
+  $("refPreview").src = d;
+  $("refTitle").value = ""; $("refBody").value = "";
+  $("refDlg").showModal();
 });
-async function renderRef(){
+$("refShare").addEventListener("click", async ()=>{
+  const msg = "この写真を、あとから参照できるように書き起こしてください。時刻表なら「平日 7時台: 05, 22, 48」のように時刻をすべて漏らさず、注記や運休条件も残してください。読み取れない箇所は推測せず「不明」と書いてください。";
+  try{
+    const f = toFile(pendingRefImg, "shiryo.jpg");
+    if(navigator.canShare && navigator.canShare({files:[f]})) await navigator.share({text:msg, files:[f]});
+    else { await navigator.clipboard.writeText(msg); alert("お願いの文章をコピーしました。Claudeアプリで写真と一緒に貼ってください。"); }
+  }catch(_){}
+});
+$("refCancel").addEventListener("click", ()=>{ pendingRefImg=null; $("refDlg").close(); });
+$("refSave").addEventListener("click", async ()=>{
+  const body = $("refBody").value.trim();
+  if(!body){ $("refBody").focus(); return; }
+  const id = "r"+Date.now();
+  if(pendingRefImg) await imgPut(id, pendingRefImg);
+  refs.unshift({id, title:$("refTitle").value.trim()||"資料", body, ts:Date.now()});
+  pendingRefImg = null; save(); renderRef(); $("refDlg").close(); switchTab("ref");
+});
+function renderRef(){
   const v = $("viewRef");
   if(!refs.length){
     v.innerHTML = `<div class="empty">📋 で撮ったものがここに貯まります。<br>時刻表や掲示物を入れておくと、整理のときに毎回参照されます。</div>`;
@@ -320,7 +366,6 @@ async function renderRef(){
   v.innerHTML = refs.map(r=>`
     <div class="card">
       <div class="t">${esc(r.title)}</div>
-      <div class="note">${esc(r.summary)}</div>
       <pre>${esc(r.body)}</pre>
       <button class="more" data-show="${r.id}">元の写真</button>
       <button class="more" data-drop="${r.id}">捨てる</button>
@@ -330,152 +375,160 @@ async function renderRef(){
 $("viewRef").addEventListener("click", async e=>{
   const s = e.target.closest("[data-show]"), d = e.target.closest("[data-drop]");
   if(s){
-    const el = $("viewRef").querySelector(`[data-slot="${s.dataset.show}"]`);
+    const el = $("viewRef").querySelector('[data-slot="'+s.dataset.show+'"]');
     if(el.hidden){ el.src = await imgGet(s.dataset.show); el.hidden=false; } else el.hidden=true;
   }
   if(d){ imgDel(d.dataset.drop); refs = refs.filter(r=>r.id!==d.dataset.drop); save(); renderRef(); }
 });
 
-/* ========== APIへ ========== */
-const textOf = data => data.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
-
-async function api(body){
-  const h = {"content-type":"application/json","x-api-key":cfg.key,
-             "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
-  if(window.Capacitor?.CapacitorHttp){
-    const r = await window.Capacitor.CapacitorHttp.post({url:"https://api.anthropic.com/v1/messages",headers:h,data:body});
-    if(r.status>=400) throw new Error(JSON.stringify(r.data));
-    return typeof r.data==="string" ? JSON.parse(r.data) : r.data;
-  }
-  const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:h,body:JSON.stringify(body)});
-  if(!r.ok) throw new Error(await r.text());
-  return r.json();
-}
-
-const SYSTEM = `あなたは持ち主の頭の中の整理係です。思いついた順に喋られた断片的なメモを受け取り、実際に動ける形に整理します。
-出力はJSONオブジェクトのみ。前置き・説明・コードフェンスは一切書かないこと。
-{
+/* ========== Claudeに渡す文章 ========== */
+const SCHEMA = `{
  "summary":"今日の頭の中をひとことで",
- "advice":[{"text":"資料（時刻表など）を使った具体的な助言。例: 18時に出るなら18時22分のバス。次は19時05分まで無い"}],
- "schedule":[{"title":"","when":"人が読む形","when_iso":"2026-09-20T12:00:00 形式。日付だけの予定もこの形で12:00等を入れる。不明ならnull","all_day":false,"note":""}],
+ "advice":[{"text":"資料を使った具体的な助言。例: 18時に出るなら18時22分のバス。次は19時05分まで無い"}],
+ "schedule":[{"title":"","when":"人が読む形","when_iso":"2026-09-20T12:00:00 形式。不明ならnull","all_day":false,"note":""}],
  "tasks":[{"title":"","priority":"高|中|低","note":"最初の一歩を具体的に"}],
  "ideas":[{"theme":"関連するメモを束ねた名前","items":["要点"],"develop":"膨らませる方向の提案"}],
- "notes":[{"text":""}]
-}
-規則:
-- 日時が読み取れたものは必ず schedule に入れ、when_iso を埋める。「何月何日、お昼は弁当あり」なら its日付の12:00、all_day は false。年が無ければ今日以降の直近の年月日と解釈する。
-- 推測で日付を作らない。曖昧なら when_iso を null にし、when に「来週のどこか」と書く。
-- 資料が与えられている場合、帰る時刻・移動の話が出たら advice で具体的な便名や時刻を示す。資料に無い時刻は絶対に作らない。
-- 添付画像はそのメモの補足として読む。
-- 関連するアイデアは束ねる。空配列は [] のままでよい。
-- 音声認識の誤変換は文脈から補正してよい。`;
+ "notes":[{"text":"どれにも当てはまらない記録"}]
+}`;
 
-$("send").addEventListener("click", async ()=>{
-  if(!cfg.key){ $("cfg").showModal(); return; }
+function buildPrompt(target){
+  const today = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+  let t = "あなたは私の頭の中の整理係です。思いついた順に喋った断片的なメモを渡すので、実際に動ける形に整理してください。\n";
+  t += "気づいたことは自由に話してくれて構いませんが、返事の最後に必ず下の形のJSONだけをコードブロックで1つ出してください。\n\n";
+  t += SCHEMA + "\n\n";
+  t += "【決まりごと】\n";
+  t += "・日時が読み取れたものは schedule に入れ、when_iso を埋める。年が無ければ今日以降の直近と解釈する。\n";
+  t += "・推測で日付を作らない。曖昧なら when_iso は null にし、when に「来週のどこか」と書く。\n";
+  t += "・資料がある場合、帰る時刻や移動の話が出たら advice で具体的な時刻を示す。資料に無い時刻は絶対に作らない。\n";
+  t += "・関連するアイデアは束ねる。該当なしの項目は空配列でよい。\n";
+  t += "・音声認識の誤変換は文脈から補正してよい。\n\n";
+  t += "今日は" + today + "です。\n";
+  if(cfg.home) t += "移動の前提: " + cfg.home + "\n";
+  if(refs.length){
+    t += "\n【手元の資料】\n";
+    t += refs.map(r=>"## "+r.title+"\n"+r.body).join("\n\n") + "\n";
+  }
+  t += "\n【思いついた順のメモ】\n";
+  t += target.map((m,i)=>(i+1)+". ["+hhmm(m.ts)+"] "+(m.text||"（写真のみ・添付を見てください）")).join("\n");
+  const withImg = target.filter(m=>m.img).length;
+  if(withImg) t += "\n\n※写真が"+withImg+"枚付いています。該当するメモの補足として見てください。";
+  return t;
+}
+
+let pending = null;
+$("send").addEventListener("click", ()=>{
   const target = memos.filter(m=>!m.sent);
   if(!target.length) return;
-  const btn=$("send"); btn.disabled=true; btn.textContent="整理してもらっています…";
-  try{
-    const today = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
-    const blocks = [];
-    let head = `今日は${today}です。`;
-    if(cfg.home) head += `\n移動の前提: ${cfg.home}`;
-    if(refs.length) head += `\n\n【参照できる資料】\n` +
-      refs.map(r=>`## ${r.title}（${r.summary}）\n${r.body}`).join("\n\n");
-    head += `\n\n【思いついた順のメモ】`;
-    blocks.push({type:"text",text:head});
-    for(const [i,m] of target.entries()){
-      blocks.push({type:"text",text:`${i+1}. [${hhmm(m.ts)}] ${m.text||"（写真のみ）"}`});
-      if(m.img){
-        const d = await imgGet(m.img);
-        if(d) blocks.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:d.split(",")[1]}});
-      }
-    }
-    const data = await api({model:cfg.model, max_tokens:4000, system:SYSTEM,
-      messages:[{role:"user",content:blocks},{role:"assistant",content:"{"}]});
-    result = JSON.parse("{" + textOf(data));
-    target.forEach(m=>m.sent=true);
-    save(); renderRaw(); renderSorted(); switchTab("sorted");
-  }catch(err){
-    $("live").textContent = "整理できませんでした。APIキーと通信を確認してください。";
-    console.error(err);
-  }finally{
-    btn.textContent="まとめて整理してもらう"; renderRaw();
+  pending = {target, text:buildPrompt(target)};
+  const n = target.filter(m=>m.img).length;
+  $("askNote").textContent = n ? "メモ"+target.length+"件と写真"+n+"枚を渡します。" : "メモ"+target.length+"件を渡します。";
+  $("askDlg").showModal();
+});
+$("askClose").addEventListener("click", ()=>$("askDlg").close());
+$("askCopy").addEventListener("click", async ()=>{
+  try{ await navigator.clipboard.writeText(pending.text); $("askNote").textContent = "コピーしました。Claudeアプリに貼ってください。"; }
+  catch(_){ $("askNote").textContent = "コピーできませんでした。共有ボタンをお使いください。"; }
+});
+$("askShare").addEventListener("click", async ()=>{
+  const files = [];
+  for(const m of pending.target){
+    if(!m.img) continue;
+    const d = await imgGet(m.img);
+    if(d) files.push(toFile(d, "memo"+(files.length+1)+".jpg"));
   }
+  try{
+    if(files.length && navigator.canShare && navigator.canShare({files}))
+      await navigator.share({text:pending.text, files});
+    else if(navigator.share) await navigator.share({text:pending.text});
+    else { await navigator.clipboard.writeText(pending.text); alert("コピーしました。Claudeアプリに貼ってください。"); }
+    $("askDlg").close(); $("pasteDlg").showModal();
+  }catch(_){ /* 共有をやめただけ */ }
+});
+
+/* ========== 結果を貼り戻す ========== */
+$("paste").addEventListener("click", ()=>{
+  $("pasteBox").value=""; $("pasteErr").textContent=""; $("pasteDlg").showModal();
+});
+$("pasteClose").addEventListener("click", ()=>$("pasteDlg").close());
+$("pasteOk").addEventListener("click", ()=>{
+  const raw = $("pasteBox").value;
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fence ? fence[1] : raw;
+  const s = body.indexOf("{"), e = body.lastIndexOf("}");
+  if(s < 0 || e < s){ $("pasteErr").textContent = "JSONが見つかりません。{ から } までが入っているか確認してください。"; return; }
+  try{
+    result = JSON.parse(body.slice(s, e+1));
+  }catch(err){
+    $("pasteErr").textContent = "うまく読めませんでした。途中で切れていないか確認してください。"; return;
+  }
+  memos.forEach(m=>{ if(!m.sent) m.sent = true; });
+  save(); renderRaw(); renderSorted(); $("pasteDlg").close(); switchTab("sorted");
 });
 
 /* ========== 整理結果 ========== */
 function renderSorted(){
   const v = $("viewSorted");
-  if(!result){ v.innerHTML = `<div class="empty">整理するとここに戻ってきます。</div>`; return; }
+  if(!result){ v.innerHTML = `<div class="empty">整理して貼り戻すと、ここに並びます。</div>`; return; }
   let h="";
   if(result.summary) h += `<div class="summary">${esc(result.summary)}</div>`;
-  if(result.advice?.length) h += result.advice.map(a=>`<div class="advice">${esc(a.text)}</div>`).join("");
-  if(result.schedule?.length) h += `<section class="group"><h2>予定</h2>` + result.schedule.map((s,i)=>`
-    <div class="card"><div class="t">${esc(s.title)}</div>
-      <div class="when">${esc(s.when)}</div>
-      ${s.note?`<div class="note">${esc(s.note)}</div>`:""}
-      ${s.when_iso?`<button class="ics" data-i="${i}">カレンダーに入れる</button>`:""}
-    </div>`).join("") + `</section>`;
-  if(result.tasks?.length) h += `<section class="group"><h2>やること</h2>` + result.tasks.map(t=>`
-    <div class="card"><div class="t">${esc(t.title)}<span class="when"> ${esc(t.priority)}</span></div>
-      ${t.note?`<div class="note">${esc(t.note)}</div>`:""}</div>`).join("") + `</section>`;
-  if(result.ideas?.length) h += `<section class="group"><h2>アイデア</h2>` + result.ideas.map(g=>`
-    <div class="card"><div class="t">${esc(g.theme)}</div>
-      <ul>${(g.items||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
-      ${g.develop?`<div class="note">${esc(g.develop)}</div>`:""}</div>`).join("") + `</section>`;
-  if(result.notes?.length) h += `<section class="group"><h2>そのほか</h2>` + result.notes.map(n=>`
-    <div class="card">${esc(n.text)}</div>`).join("") + `</section>`;
+  if(result.advice && result.advice.length)
+    h += result.advice.map(a=>`<div class="advice">${esc(a.text)}</div>`).join("");
+  if(result.schedule && result.schedule.length)
+    h += `<section class="group"><h2>予定</h2>` + result.schedule.map((s,i)=>`
+      <div class="card"><div class="t">${esc(s.title)}</div>
+        <div class="when">${esc(s.when)}</div>
+        ${s.note?`<div class="note">${esc(s.note)}</div>`:""}
+        ${s.when_iso?`<button class="ics" data-i="${i}">カレンダーに入れる</button>`:""}
+      </div>`).join("") + `</section>`;
+  if(result.tasks && result.tasks.length)
+    h += `<section class="group"><h2>やること</h2>` + result.tasks.map(t=>`
+      <div class="card"><div class="t">${esc(t.title)}<span class="when"> ${esc(t.priority)}</span></div>
+        ${t.note?`<div class="note">${esc(t.note)}</div>`:""}</div>`).join("") + `</section>`;
+  if(result.ideas && result.ideas.length)
+    h += `<section class="group"><h2>アイデア</h2>` + result.ideas.map(g=>`
+      <div class="card"><div class="t">${esc(g.theme)}</div>
+        <ul>${(g.items||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+        ${g.develop?`<div class="note">${esc(g.develop)}</div>`:""}</div>`).join("") + `</section>`;
+  if(result.notes && result.notes.length)
+    h += `<section class="group"><h2>そのほか</h2>` + result.notes.map(n=>`
+      <div class="card">${esc(n.text)}</div>`).join("") + `</section>`;
   v.innerHTML = h || `<div class="empty">整理するものがありませんでした。</div>`;
 }
 
 /* ========== カレンダーへ ========== */
-/* 1. 実機: 端末カレンダーに直接書く（Googleアカウントのカレンダーを選べばそのまま同期される）
-   2. それ以外: Googleカレンダーの登録画面を開く（ワンタップで保存） */
-$("viewSorted").addEventListener("click", async e=>{
+$("viewSorted").addEventListener("click", e=>{
   const b = e.target.closest(".ics"); if(!b) return;
   const s = result.schedule[+b.dataset.i];
   const st = new Date(s.when_iso);
+  if(isNaN(st.getTime())){ b.textContent = "日時が読めません"; return; }
   const en = new Date(st.getTime() + (s.all_day ? 86400000 : 3600000));
-  const Cal = window.Capacitor?.Plugins?.CapacitorCalendar;
-  try{
-    if(Cal){
-      await Cal.requestWritePermission?.();
-      await Cal.createEvent({title:s.title, notes:s.note||"", isAllDay:!!s.all_day,
-        startDate:st.getTime(), endDate:en.getTime()});
-      b.textContent = "入れました"; b.classList.add("done"); b.disabled = true;
-      return;
-    }
-    const z = n => String(n).padStart(2,"0");
-    const d = x => s.all_day
-      ? `${x.getFullYear()}${z(x.getMonth()+1)}${z(x.getDate())}`
-      : `${x.getFullYear()}${z(x.getMonth()+1)}${z(x.getDate())}T${z(x.getHours())}${z(x.getMinutes())}00`;
-    const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
-      + `&text=${encodeURIComponent(s.title)}`
-      + `&dates=${d(st)}/${d(en)}&ctz=Asia/Tokyo`
-      + `&details=${encodeURIComponent(s.note||"")}`;
-    window.open(url,"_blank");
-    b.textContent = "開きました"; b.classList.add("done");
-  }catch(err){ b.textContent = "入れられませんでした"; console.error(err); }
+  const z = n => String(n).padStart(2,"0");
+  const d = x => s.all_day
+    ? ""+x.getFullYear()+z(x.getMonth()+1)+z(x.getDate())
+    : ""+x.getFullYear()+z(x.getMonth()+1)+z(x.getDate())+"T"+z(x.getHours())+z(x.getMinutes())+"00";
+  const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+    + "&text=" + encodeURIComponent(s.title)
+    + "&dates=" + d(st) + "/" + d(en) + "&ctz=Asia/Tokyo"
+    + "&details=" + encodeURIComponent(s.note||"");
+  window.open(url,"_blank");
+  b.textContent = "開きました"; b.classList.add("done");
 });
 
 /* ========== タブ・設定 ========== */
 function switchTab(which){
   const map = {raw:["tabRaw","viewRaw"], sorted:["tabSorted","viewSorted"], ref:["tabRef","viewRef"]};
-  for(const [k,[tab,view]] of Object.entries(map)){
-    $(tab).setAttribute("aria-selected", k===which);
-    $(view).hidden = k!==which;
+  for(const k in map){
+    $(map[k][0]).setAttribute("aria-selected", k===which);
+    $(map[k][1]).hidden = k!==which;
   }
 }
 $("tabRaw").addEventListener("click", ()=>switchTab("raw"));
 $("tabSorted").addEventListener("click", ()=>switchTab("sorted"));
 $("tabRef").addEventListener("click", ()=>switchTab("ref"));
-$("openCfg").addEventListener("click", ()=>{
-  $("key").value=cfg.key; $("model").value=cfg.model; $("home").value=cfg.home||""; $("cfg").showModal();
-});
+$("openCfg").addEventListener("click", ()=>{ $("home").value = cfg.home||""; $("cfg").showModal(); });
 $("cfgClose").addEventListener("click", ()=>$("cfg").close());
 $("cfgSave").addEventListener("click", ()=>{
-  cfg = {key:$("key").value.trim(), model:$("model").value, home:$("home").value.trim()};
+  cfg = {home:$("home").value.trim()};
   localStorage.setItem(LS.cfg, JSON.stringify(cfg)); $("cfg").close();
 });
 
