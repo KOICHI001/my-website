@@ -252,39 +252,76 @@ $("viewRaw").addEventListener("click", e=>{
 
 /* ========== 音声 ========== */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let sr=null, listening=false, buf="";
+let sr=null, listening=false, buf="", interim="", srOn=false, wake=null, t0=0, tick=null;
+
 if(SR){
   sr = new SR(); sr.lang="ja-JP"; sr.continuous=true; sr.interimResults=true;
+  sr.onstart = ()=>{ srOn = true; };
   sr.onresult = e=>{
-    let interim="";
+    interim = "";
     for(let i=e.resultIndex;i<e.results.length;i++){
       const t=e.results[i][0].transcript;
       if(e.results[i].isFinal) buf+=t; else interim+=t;
     }
-    $("live").textContent = buf+interim;
+    paint();
   };
-  sr.onerror = e=>{ $("live").textContent = e.error==="not-allowed"
-      ? "マイクが使えません。端末の設定で許可してください。"
-      : "うまく聞き取れませんでした。もう一度どうぞ。"; stopRec(true); };
-  sr.onend = ()=>{ if(listening) stopRec(); };
+  sr.onerror = e=>{
+    /* 無音や一時的な切断は失敗ではない。onend で勝手に再開する */
+    if(e.error==="not-allowed" || e.error==="service-not-allowed"){
+      $("live").textContent = "マイクが使えません。端末の設定で許可してください。";
+      stopRec(true);
+    }
+  };
+  /* Androidは無音が続くとセッションを切る。止めたのが自分でなければ即座に再開する */
+  sr.onend = ()=>{
+    srOn = false;
+    if(listening) setTimeout(()=>{ if(listening) tryStart(); }, 150);
+  };
 }else{
   $("live").textContent = "この環境では音声が使えません。下の入力欄をどうぞ。";
   $("rec").disabled = true;
 }
+function tryStart(){
+  if(srOn) return;
+  try{ sr.start(); }
+  catch(_){ setTimeout(()=>{ if(listening && !srOn){ try{ sr.start(); }catch(__){} } }, 400); }
+}
+const mmss = s => Math.floor(s/60)+":"+String(s%60).padStart(2,"0");
+function paint(){
+  const said = (buf+interim).trim();
+  const el = Math.floor((Date.now()-t0)/1000);
+  $("live").textContent = said || ("聞いています… " + mmss(el));
+}
+async function keepAwake(on){
+  try{
+    if(on && "wakeLock" in navigator) wake = await navigator.wakeLock.request("screen");
+    else if(wake){ await wake.release(); wake = null; }
+  }catch(_){}
+}
 function startRec(){
-  buf=""; listening=true;
+  buf=""; interim=""; listening=true; t0=Date.now();
   $("rec").textContent="とめる"; $("rec").classList.add("listening");
-  $("live").classList.add("on"); $("live").textContent="聞いています…";
-  try{ sr.start(); }catch(_){}
+  $("live").classList.add("on");
+  paint();
+  tick = setInterval(paint, 1000);
+  keepAwake(true);
+  tryStart();
 }
 function stopRec(discard){
   listening=false;
+  clearInterval(tick); tick=null;
+  keepAwake(false);
   $("rec").textContent="録音"; $("rec").classList.remove("listening");
   $("live").classList.remove("on");
-  try{ sr.stop(); }catch(_){}
-  if(!discard){ addMemo(buf); $("live").textContent = buf ? "入れました" : "ボタンを押して話す"; }
-  buf="";
+  try{ sr.abort(); }catch(_){}
+  const text = (buf+interim).trim();
+  if(!discard){ addMemo(text); $("live").textContent = text ? "入れました" : "何も聞き取れませんでした"; }
+  buf=""; interim="";
 }
+/* 画面を伏せて戻ってきたら画面保持を取り直す */
+document.addEventListener("visibilitychange", ()=>{
+  if(listening && document.visibilityState==="visible"){ keepAwake(true); tryStart(); }
+});
 $("rec").addEventListener("click", ()=> listening ? stopRec() : startRec());
 $("add").addEventListener("click", ()=>{ addMemo($("typed").value); $("typed").value=""; });
 $("typed").addEventListener("keydown", e=>{ if(e.key==="Enter"){ addMemo($("typed").value); $("typed").value=""; }});
