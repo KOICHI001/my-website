@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>くちメモ</title>
+<link rel="manifest" href="./manifest.webmanifest">
+<meta name="theme-color" content="#B5342A">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="icon" href="./icon-192.png">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<style>
+  :root{
+    --bg:#DCE1E3; --sheet:#F7F9F9; --ink:#1F2A2E; --muted:#63737C;
+    --line:#C3CCD0; --rec:#B5342A; --sort:#2E6B6B; --r:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%;margin:0}
+  body{
+    background:var(--bg);color:var(--ink);
+    font-family:"Noto Sans JP","Hiragino Sans","Yu Gothic UI",sans-serif;
+    font-size:16px;line-height:1.7;display:flex;flex-direction:column;
+    padding-top:env(safe-area-inset-top);
+  }
+  header{display:flex;align-items:baseline;gap:10px;padding:14px 18px 10px;border-bottom:1px solid var(--line)}
+  h1{font-size:19px;font-weight:700;letter-spacing:.06em;margin:0}
+  header .count{font-size:13px;color:var(--muted);margin-left:auto}
+  .icon{background:none;border:0;color:var(--muted);font-size:19px;padding:4px 6px;cursor:pointer;line-height:1}
+  nav{display:flex;border-bottom:1px solid var(--line)}
+  nav button{flex:1;background:none;border:0;padding:12px 0 10px;font:inherit;font-size:14px;
+    color:var(--muted);border-bottom:2px solid transparent;cursor:pointer}
+  nav button[aria-selected="true"]{color:var(--ink);font-weight:700;border-bottom-color:var(--ink)}
+  main{flex:1;overflow-y:auto;padding:14px 14px 200px;-webkit-overflow-scrolling:touch}
+  .empty{color:var(--muted);font-size:14px;text-align:center;padding:56px 24px;line-height:2}
+  .memo{background:var(--sheet);border-radius:var(--r);padding:12px 14px;margin-bottom:8px;
+    display:flex;gap:10px;align-items:flex-start}
+  .memo p{margin:0;flex:1;white-space:pre-wrap;word-break:break-word}
+  .memo time{display:block;font-size:11px;color:var(--muted);margin-top:4px}
+  .memo img{width:100%;border-radius:9px;margin-top:8px;display:block}
+  .memo .del{background:none;border:0;color:var(--line);font-size:18px;padding:0 2px;cursor:pointer}
+  .memo.sent{opacity:.45}
+  .group{margin-bottom:22px}
+  .group h2{font-size:14px;font-weight:700;margin:0 0 8px;color:var(--sort);display:flex;align-items:center;gap:8px}
+  .group h2::after{content:"";flex:1;height:1px;background:var(--line)}
+  .card{background:var(--sheet);border-radius:var(--r);padding:13px 15px;margin-bottom:8px}
+  .card .t{font-weight:700}
+  .card .when{font-size:13px;color:var(--sort);margin-top:2px}
+  .card .note{font-size:14px;color:var(--muted);margin-top:5px}
+  .card ul{margin:6px 0 0;padding-left:1.1em;font-size:15px}
+  .card pre{margin:8px 0 0;font-size:13px;line-height:1.6;white-space:pre-wrap;
+    font-family:ui-monospace,monospace;color:var(--muted)}
+  .card .ics,.card .more{margin-top:9px;margin-right:6px;background:none;border:1px solid var(--line);
+    border-radius:8px;padding:5px 11px;font:inherit;font-size:13px;color:var(--sort);cursor:pointer}
+  .card .ics.done{color:var(--muted);border-style:dashed}
+  .summary{background:none;border:1px dashed var(--line);border-radius:var(--r);
+    padding:13px 15px;font-size:14px;color:var(--muted);margin-bottom:20px}
+  .advice{background:var(--sort);color:#fff;border-radius:var(--r);padding:13px 15px;margin-bottom:8px}
+  footer{position:fixed;left:0;right:0;bottom:0;
+    background:linear-gradient(to top,var(--bg) 72%,rgba(220,225,227,0));
+    padding:26px 16px calc(14px + env(safe-area-inset-bottom));
+    display:flex;flex-direction:column;align-items:center;gap:11px}
+  .live{font-size:14px;color:var(--muted);min-height:1.7em;text-align:center;width:100%}
+  .live.on{color:var(--ink)}
+  .pad{display:flex;align-items:center;gap:18px}
+  #rec{width:82px;height:82px;border-radius:50%;background:var(--rec);border:0;color:#fff;
+    font:inherit;font-size:15px;font-weight:700;letter-spacing:.08em;
+    box-shadow:0 6px 18px rgba(181,52,42,.32);cursor:pointer}
+  #rec.listening{animation:pulse 1.4s ease-in-out infinite}
+  @keyframes pulse{50%{box-shadow:0 6px 18px rgba(181,52,42,.32),0 0 0 16px rgba(181,52,42,.13)}}
+  @media (prefers-reduced-motion:reduce){#rec.listening{animation:none;outline:3px solid rgba(181,52,42,.3);outline-offset:6px}}
+  .shoot{width:56px;height:56px;border-radius:50%;background:var(--sheet);
+    border:1px solid var(--line);font-size:22px;cursor:pointer;color:var(--ink)}
+  .row{display:flex;gap:8px;width:100%}
+  .row button,.row input{font:inherit;font-size:14px;border-radius:10px;border:1px solid var(--line);
+    background:var(--sheet);color:var(--ink);padding:10px 12px}
+  .row input{flex:1;min-width:0}
+  .row button{cursor:pointer;white-space:nowrap}
+  #send{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700;flex:1}
+  #send:disabled{opacity:.4}
+  .thumb{width:100%;border-radius:10px;margin-top:9px;display:block}
+  dialog{border:0;border-radius:var(--r);padding:20px;width:min(92vw,380px);background:var(--sheet);color:var(--ink);font:inherit}
+  dialog::backdrop{background:rgba(31,42,46,.45)}
+  dialog label{display:block;font-size:13px;color:var(--muted);margin:14px 0 4px}
+  dialog input,dialog select{width:100%;font:inherit;font-size:15px;padding:9px 11px;
+    border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
+  dialog .acts{display:flex;gap:8px;margin-top:20px}
+  dialog .acts button{flex:1;font:inherit;padding:10px;border-radius:10px;border:1px solid var(--line);background:none;cursor:pointer}
+  dialog .acts button.primary{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700}
+  :focus-visible{outline:2px solid var(--sort);outline-offset:2px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>くちメモ</h1>
+  <span class="count" id="count"></span>
+  <button class="icon" id="openCfg" aria-label="設定">⚙</button>
+</header>
+
+<nav role="tablist">
+  <button role="tab" id="tabRaw" aria-selected="true">思いついた順</button>
+  <button role="tab" id="tabSorted" aria-selected="false">整理ずみ</button>
+  <button role="tab" id="tabRef" aria-selected="false">資料</button>
+</nav>
+
+<main id="viewRaw"></main>
+<main id="viewSorted" hidden></main>
+<main id="viewRef" hidden></main>
+
+<footer>
+  <div class="live" id="live">ボタンを押して話す</div>
+  <div class="pad">
+    <button class="shoot" id="snap" aria-label="写真を撮ってメモに添える">📷</button>
+    <button id="rec">録音</button>
+    <button class="shoot" id="refShot" aria-label="資料として撮る">📋</button>
+  </div>
+  <div class="row">
+    <input id="typed" placeholder="打ち込みでも追加できる" enterkeyhint="done">
+    <button id="add">追加</button>
+  </div>
+  <div class="row">
+    <button id="send">まとめて整理してもらう</button>
+  </div>
+</footer>
+
+<input type="file" id="file" accept="image/*" capture="environment" hidden>
+
+<dialog id="cfg">
+  <strong>設定</strong>
+  <label for="key">APIキー（この端末にだけ保存されます）</label>
+  <input id="key" type="password" placeholder="sk-ant-...">
+  <label for="model">モデル</label>
+  <select id="model">
+    <option value="claude-sonnet-5">claude-sonnet-5（標準）</option>
+    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5（速い・安い）</option>
+    <option value="claude-opus-5">claude-opus-5（賢い）</option>
+  </select>
+  <label for="home">帰る場所（バスの案内に使います）</label>
+  <input id="home" placeholder="例: 職場から自宅まで、バス＋徒歩10分">
+  <div class="acts">
+    <button id="cfgClose">閉じる</button>
+    <button id="cfgSave" class="primary">保存</button>
+  </div>
+</dialog>
+
+<script>
+/* ========== 保存まわり ========== */
+const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs"};
+let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
+let result = JSON.parse(localStorage.getItem(LS.result) || "null");
+let refs   = JSON.parse(localStorage.getItem(LS.refs)   || "[]");
+let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"key":"","model":"claude-sonnet-5","home":""}');
+
+const $ = id => document.getElementById(id);
+const save = () => {
+  localStorage.setItem(LS.memos, JSON.stringify(memos));
+  localStorage.setItem(LS.result, JSON.stringify(result));
+  localStorage.setItem(LS.refs, JSON.stringify(refs));
+};
+const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const hhmm = ts => new Date(ts).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
+
+/* 画像は重いのでIndexedDBへ。localStorageにはIDだけ持つ */
+const db = new Promise((ok,ng)=>{
+  const r = indexedDB.open("kuchimemo",1);
+  r.onupgradeneeded = e => e.target.result.createObjectStore("img");
+  r.onsuccess = e => ok(e.target.result);
+  r.onerror = ng;
+});
+const imgPut = async (id,data)=> (await db).transaction("img","readwrite").objectStore("img").put(data,id);
+const imgGet = async id => new Promise(async ok=>{
+  const q = (await db).transaction("img").objectStore("img").get(id);
+  q.onsuccess = ()=>ok(q.result); q.onerror = ()=>ok(null);
+});
+const imgDel = async id => (await db).transaction("img","readwrite").objectStore("img").delete(id);
+
+/* ========== メモ ========== */
+function addMemo(text, img){
+  text = (text||"").trim();
+  if(!text && !img) return;
+  memos.unshift({id:Date.now()+""+Math.random(), text, img:img||null, ts:Date.now(), sent:false});
+  save(); renderRaw();
+}
+async function renderRaw(){
+  const unsent = memos.filter(m=>!m.sent).length;
+  $("count").textContent = memos.length ? `未整理 ${unsent} / 全 ${memos.length}` : "";
+  $("send").disabled = unsent === 0;
+  if(!memos.length){
+    $("viewRaw").innerHTML = `<div class="empty">まだ何も入っていません。<br>思いついたことを片っ端から話してください。</div>`;
+    return;
+  }
+  $("viewRaw").innerHTML = memos.map(m=>`
+    <div class="memo${m.sent?" sent":""}">
+      <p>${esc(m.text) || '<span style="color:var(--muted)">写真だけ</span>'}
+        ${m.img?`<img data-img="${m.img}" alt="">`:""}
+        <time>${hhmm(m.ts)}${m.sent?" ・整理ずみ":""}</time></p>
+      <button class="del" data-id="${m.id}" aria-label="消す">×</button>
+    </div>`).join("");
+  for(const el of $("viewRaw").querySelectorAll("[data-img]")){
+    const d = await imgGet(el.dataset.img); if(d) el.src = d;
+  }
+}
+$("viewRaw").addEventListener("click", e=>{
+  const b = e.target.closest(".del"); if(!b) return;
+  const m = memos.find(x=>x.id===b.dataset.id);
+  if(m?.img) imgDel(m.img);
+  memos = memos.filter(x=>x.id!==b.dataset.id); save(); renderRaw();
+});
+
+/* ========== 音声 ========== */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let sr=null, listening=false, buf="";
+if(SR){
+  sr = new SR(); sr.lang="ja-JP"; sr.continuous=true; sr.interimResults=true;
+  sr.onresult = e=>{
+    let interim="";
+    for(let i=e.resultIndex;i<e.results.length;i++){
+      const t=e.results[i][0].transcript;
+      if(e.results[i].isFinal) buf+=t; else interim+=t;
+    }
+    $("live").textContent = buf+interim;
+  };
+  sr.onerror = e=>{ $("live").textContent = e.error==="not-allowed"
+      ? "マイクが使えません。端末の設定で許可してください。"
+      : "うまく聞き取れませんでした。もう一度どうぞ。"; stopRec(true); };
+  sr.onend = ()=>{ if(listening) stopRec(); };
+}else{
+  $("live").textContent = "この環境では音声が使えません。下の入力欄をどうぞ。";
+  $("rec").disabled = true;
+}
+function startRec(){
+  buf=""; listening=true;
+  $("rec").textContent="とめる"; $("rec").classList.add("listening");
+  $("live").classList.add("on"); $("live").textContent="聞いています…";
+  try{ sr.start(); }catch(_){}
+}
+function stopRec(discard){
+  listening=false;
+  $("rec").textContent="録音"; $("rec").classList.remove("listening");
+  $("live").classList.remove("on");
+  try{ sr.stop(); }catch(_){}
+  if(!discard){ addMemo(buf); $("live").textContent = buf ? "入れました" : "ボタンを押して話す"; }
+  buf="";
+}
+$("rec").addEventListener("click", ()=> listening ? stopRec() : startRec());
+$("add").addEventListener("click", ()=>{ addMemo($("typed").value); $("typed").value=""; });
+$("typed").addEventListener("keydown", e=>{ if(e.key==="Enter"){ addMemo($("typed").value); $("typed").value=""; }});
+
+/* ========== 写真 ========== */
+/* Capacitor実機ではCameraプラグイン、ブラウザではfile inputに落ちる */
+let shotMode = "memo";
+async function shoot(){
+  if(window.Capacitor?.Plugins?.Camera){
+    const p = await window.Capacitor.Plugins.Camera.getPhoto(
+      {quality:70, allowEditing:false, resultType:"dataUrl", width:1600, source:"CAMERA"});
+    return p.dataUrl;
+  }
+  return new Promise(ok=>{
+    $("file").onchange = e=>{
+      const f = e.target.files[0]; if(!f) return ok(null);
+      const r = new FileReader(); r.onload = ()=>ok(shrink(r.result)); r.readAsDataURL(f);
+      e.target.value = "";
+    };
+    $("file").click();
+  });
+}
+/* 長辺1600pxに落としてJPEGへ。時刻表の細かい数字が潰れない範囲 */
+function shrink(dataUrl){
+  return new Promise(ok=>{
+    const im = new Image();
+    im.onload = ()=>{
+      const s = Math.min(1, 1600/Math.max(im.width,im.height));
+      const c = document.createElement("canvas");
+      c.width = im.width*s; c.height = im.height*s;
+      c.getContext("2d").drawImage(im,0,0,c.width,c.height);
+      ok(c.toDataURL("image/jpeg",0.75));
+    };
+    im.onerror = ()=>ok(dataUrl);
+    im.src = dataUrl;
+  });
+}
+$("snap").addEventListener("click", async ()=>{
+  const d = await shoot(); if(!d) return;
+  const id = "i"+Date.now();
+  await imgPut(id, d);
+  addMemo(buf.trim(), id); buf="";
+  $("live").textContent = "写真を添えました";
+});
+
+/* ========== 資料（時刻表など・一度だけ読ませて表にする） ========== */
+$("refShot").addEventListener("click", async ()=>{
+  if(!cfg.key){ $("cfg").showModal(); return; }
+  const d = await shoot(); if(!d) return;
+  $("live").textContent = "資料を読み取っています…";
+  try{
+    const data = await api({
+      model: cfg.model, max_tokens: 3000,
+      system:`画像から情報を抜き出し、あとから何度でも参照できる形に書き起こします。出力はJSONのみ。
+{"title":"何の資料か（例: ○○行き バス時刻表 平日）","summary":"一行説明","body":"本文。時刻表なら「平日 7時台: 05, 22, 48」のように時刻をすべて漏らさず書く。注記や運休条件も残す"}
+読み取れない箇所は推測せず「不明」と書くこと。`,
+      messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:"image/jpeg",data:d.split(",")[1]}},
+        {type:"text",text:"この資料を書き起こしてください。"}]},
+        {role:"assistant",content:"{"}]
+    });
+    const r = JSON.parse("{" + textOf(data));
+    const id = "r"+Date.now();
+    await imgPut(id, d);
+    refs.unshift({id, title:r.title, summary:r.summary, body:r.body, ts:Date.now()});
+    save(); renderRef(); switchTab("ref");
+    $("live").textContent = "資料に入れました";
+  }catch(err){ $("live").textContent = "読み取れませんでした"; console.error(err); }
+});
+async function renderRef(){
+  const v = $("viewRef");
+  if(!refs.length){
+    v.innerHTML = `<div class="empty">📋 で撮ったものがここに貯まります。<br>時刻表や掲示物を入れておくと、整理のときに毎回参照されます。</div>`;
+    return;
+  }
+  v.innerHTML = refs.map(r=>`
+    <div class="card">
+      <div class="t">${esc(r.title)}</div>
+      <div class="note">${esc(r.summary)}</div>
+      <pre>${esc(r.body)}</pre>
+      <button class="more" data-show="${r.id}">元の写真</button>
+      <button class="more" data-drop="${r.id}">捨てる</button>
+      <img class="thumb" data-slot="${r.id}" hidden alt="">
+    </div>`).join("");
+}
+$("viewRef").addEventListener("click", async e=>{
+  const s = e.target.closest("[data-show]"), d = e.target.closest("[data-drop]");
+  if(s){
+    const el = $("viewRef").querySelector(`[data-slot="${s.dataset.show}"]`);
+    if(el.hidden){ el.src = await imgGet(s.dataset.show); el.hidden=false; } else el.hidden=true;
+  }
+  if(d){ imgDel(d.dataset.drop); refs = refs.filter(r=>r.id!==d.dataset.drop); save(); renderRef(); }
+});
+
+/* ========== APIへ ========== */
+const textOf = data => data.content.filter(c=>c.type==="text").map(c=>c.text).join("").replace(/```json|```/g,"").trim();
+
+async function api(body){
+  const h = {"content-type":"application/json","x-api-key":cfg.key,
+             "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
+  if(window.Capacitor?.CapacitorHttp){
+    const r = await window.Capacitor.CapacitorHttp.post({url:"https://api.anthropic.com/v1/messages",headers:h,data:body});
+    if(r.status>=400) throw new Error(JSON.stringify(r.data));
+    return typeof r.data==="string" ? JSON.parse(r.data) : r.data;
+  }
+  const r = await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:h,body:JSON.stringify(body)});
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+const SYSTEM = `あなたは持ち主の頭の中の整理係です。思いついた順に喋られた断片的なメモを受け取り、実際に動ける形に整理します。
+出力はJSONオブジェクトのみ。前置き・説明・コードフェンスは一切書かないこと。
+{
+ "summary":"今日の頭の中をひとことで",
+ "advice":[{"text":"資料（時刻表など）を使った具体的な助言。例: 18時に出るなら18時22分のバス。次は19時05分まで無い"}],
+ "schedule":[{"title":"","when":"人が読む形","when_iso":"2026-09-20T12:00:00 形式。日付だけの予定もこの形で12:00等を入れる。不明ならnull","all_day":false,"note":""}],
+ "tasks":[{"title":"","priority":"高|中|低","note":"最初の一歩を具体的に"}],
+ "ideas":[{"theme":"関連するメモを束ねた名前","items":["要点"],"develop":"膨らませる方向の提案"}],
+ "notes":[{"text":""}]
+}
+規則:
+- 日時が読み取れたものは必ず schedule に入れ、when_iso を埋める。「何月何日、お昼は弁当あり」なら its日付の12:00、all_day は false。年が無ければ今日以降の直近の年月日と解釈する。
+- 推測で日付を作らない。曖昧なら when_iso を null にし、when に「来週のどこか」と書く。
+- 資料が与えられている場合、帰る時刻・移動の話が出たら advice で具体的な便名や時刻を示す。資料に無い時刻は絶対に作らない。
+- 添付画像はそのメモの補足として読む。
+- 関連するアイデアは束ねる。空配列は [] のままでよい。
+- 音声認識の誤変換は文脈から補正してよい。`;
+
+$("send").addEventListener("click", async ()=>{
+  if(!cfg.key){ $("cfg").showModal(); return; }
+  const target = memos.filter(m=>!m.sent);
+  if(!target.length) return;
+  const btn=$("send"); btn.disabled=true; btn.textContent="整理してもらっています…";
+  try{
+    const today = new Date().toLocaleDateString("ja-JP",{year:"numeric",month:"long",day:"numeric",weekday:"long"});
+    const blocks = [];
+    let head = `今日は${today}です。`;
+    if(cfg.home) head += `\n移動の前提: ${cfg.home}`;
+    if(refs.length) head += `\n\n【参照できる資料】\n` +
+      refs.map(r=>`## ${r.title}（${r.summary}）\n${r.body}`).join("\n\n");
+    head += `\n\n【思いついた順のメモ】`;
+    blocks.push({type:"text",text:head});
+    for(const [i,m] of target.entries()){
+      blocks.push({type:"text",text:`${i+1}. [${hhmm(m.ts)}] ${m.text||"（写真のみ）"}`});
+      if(m.img){
+        const d = await imgGet(m.img);
+        if(d) blocks.push({type:"image",source:{type:"base64",media_type:"image/jpeg",data:d.split(",")[1]}});
+      }
+    }
+    const data = await api({model:cfg.model, max_tokens:4000, system:SYSTEM,
+      messages:[{role:"user",content:blocks},{role:"assistant",content:"{"}]});
+    result = JSON.parse("{" + textOf(data));
+    target.forEach(m=>m.sent=true);
+    save(); renderRaw(); renderSorted(); switchTab("sorted");
+  }catch(err){
+    $("live").textContent = "整理できませんでした。APIキーと通信を確認してください。";
+    console.error(err);
+  }finally{
+    btn.textContent="まとめて整理してもらう"; renderRaw();
+  }
+});
+
+/* ========== 整理結果 ========== */
+function renderSorted(){
+  const v = $("viewSorted");
+  if(!result){ v.innerHTML = `<div class="empty">整理するとここに戻ってきます。</div>`; return; }
+  let h="";
+  if(result.summary) h += `<div class="summary">${esc(result.summary)}</div>`;
+  if(result.advice?.length) h += result.advice.map(a=>`<div class="advice">${esc(a.text)}</div>`).join("");
+  if(result.schedule?.length) h += `<section class="group"><h2>予定</h2>` + result.schedule.map((s,i)=>`
+    <div class="card"><div class="t">${esc(s.title)}</div>
+      <div class="when">${esc(s.when)}</div>
+      ${s.note?`<div class="note">${esc(s.note)}</div>`:""}
+      ${s.when_iso?`<button class="ics" data-i="${i}">カレンダーに入れる</button>`:""}
+    </div>`).join("") + `</section>`;
+  if(result.tasks?.length) h += `<section class="group"><h2>やること</h2>` + result.tasks.map(t=>`
+    <div class="card"><div class="t">${esc(t.title)}<span class="when"> ${esc(t.priority)}</span></div>
+      ${t.note?`<div class="note">${esc(t.note)}</div>`:""}</div>`).join("") + `</section>`;
+  if(result.ideas?.length) h += `<section class="group"><h2>アイデア</h2>` + result.ideas.map(g=>`
+    <div class="card"><div class="t">${esc(g.theme)}</div>
+      <ul>${(g.items||[]).map(x=>`<li>${esc(x)}</li>`).join("")}</ul>
+      ${g.develop?`<div class="note">${esc(g.develop)}</div>`:""}</div>`).join("") + `</section>`;
+  if(result.notes?.length) h += `<section class="group"><h2>そのほか</h2>` + result.notes.map(n=>`
+    <div class="card">${esc(n.text)}</div>`).join("") + `</section>`;
+  v.innerHTML = h || `<div class="empty">整理するものがありませんでした。</div>`;
+}
+
+/* ========== カレンダーへ ========== */
+/* 1. 実機: 端末カレンダーに直接書く（Googleアカウントのカレンダーを選べばそのまま同期される）
+   2. それ以外: Googleカレンダーの登録画面を開く（ワンタップで保存） */
+$("viewSorted").addEventListener("click", async e=>{
+  const b = e.target.closest(".ics"); if(!b) return;
+  const s = result.schedule[+b.dataset.i];
+  const st = new Date(s.when_iso);
+  const en = new Date(st.getTime() + (s.all_day ? 86400000 : 3600000));
+  const Cal = window.Capacitor?.Plugins?.CapacitorCalendar;
+  try{
+    if(Cal){
+      await Cal.requestWritePermission?.();
+      await Cal.createEvent({title:s.title, notes:s.note||"", isAllDay:!!s.all_day,
+        startDate:st.getTime(), endDate:en.getTime()});
+      b.textContent = "入れました"; b.classList.add("done"); b.disabled = true;
+      return;
+    }
+    const z = n => String(n).padStart(2,"0");
+    const d = x => s.all_day
+      ? `${x.getFullYear()}${z(x.getMonth()+1)}${z(x.getDate())}`
+      : `${x.getFullYear()}${z(x.getMonth()+1)}${z(x.getDate())}T${z(x.getHours())}${z(x.getMinutes())}00`;
+    const url = "https://calendar.google.com/calendar/render?action=TEMPLATE"
+      + `&text=${encodeURIComponent(s.title)}`
+      + `&dates=${d(st)}/${d(en)}&ctz=Asia/Tokyo`
+      + `&details=${encodeURIComponent(s.note||"")}`;
+    window.open(url,"_blank");
+    b.textContent = "開きました"; b.classList.add("done");
+  }catch(err){ b.textContent = "入れられませんでした"; console.error(err); }
+});
+
+/* ========== タブ・設定 ========== */
+function switchTab(which){
+  const map = {raw:["tabRaw","viewRaw"], sorted:["tabSorted","viewSorted"], ref:["tabRef","viewRef"]};
+  for(const [k,[tab,view]] of Object.entries(map)){
+    $(tab).setAttribute("aria-selected", k===which);
+    $(view).hidden = k!==which;
+  }
+}
+$("tabRaw").addEventListener("click", ()=>switchTab("raw"));
+$("tabSorted").addEventListener("click", ()=>switchTab("sorted"));
+$("tabRef").addEventListener("click", ()=>switchTab("ref"));
+$("openCfg").addEventListener("click", ()=>{
+  $("key").value=cfg.key; $("model").value=cfg.model; $("home").value=cfg.home||""; $("cfg").showModal();
+});
+$("cfgClose").addEventListener("click", ()=>$("cfg").close());
+$("cfgSave").addEventListener("click", ()=>{
+  cfg = {key:$("key").value.trim(), model:$("model").value, home:$("home").value.trim()};
+  localStorage.setItem(LS.cfg, JSON.stringify(cfg)); $("cfg").close();
+});
+
+renderRaw(); renderSorted(); renderRef();
+
+/* ホーム画面から起動できるようにする */
+if("serviceWorker" in navigator){
+  addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(e=>console.warn(e)));
+}
+</script>
+</body>
+</html>
