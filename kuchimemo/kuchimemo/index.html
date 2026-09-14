@@ -180,6 +180,7 @@
   <label for="home">移動の前提（バスの案内に使います）</label>
   <input id="home" placeholder="例: 職場から自宅までバス、最寄りは○○停">
   <p>整理はClaudeアプリ側でやるので、APIキーは要りません。</p>
+  <p id="ver" style="margin-top:12px"></p>
   <div class="acts">
     <button id="cfgClose">閉じる</button>
     <button id="cfgSave" class="primary">保存</button>
@@ -188,6 +189,7 @@
 
 <script>
 /* ========== 保存まわり ========== */
+const APP_VER = "0.3.7";
 const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs"};
 let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
 let result = JSON.parse(localStorage.getItem(LS.result) || "null");
@@ -589,7 +591,11 @@ function switchTab(which){
 $("tabRaw").addEventListener("click", ()=>switchTab("raw"));
 $("tabSorted").addEventListener("click", ()=>switchTab("sorted"));
 $("tabRef").addEventListener("click", ()=>switchTab("ref"));
-$("openCfg").addEventListener("click", ()=>{ $("home").value = cfg.home||""; $("cfg").showModal(); });
+$("openCfg").addEventListener("click", ()=>{
+  $("home").value = cfg.home||"";
+  $("ver").textContent = "版 " + APP_VER;
+  $("cfg").showModal();
+});
 $("cfgClose").addEventListener("click", ()=>$("cfg").close());
 $("cfgSave").addEventListener("click", ()=>{
   cfg = {home:$("home").value.trim()};
@@ -600,7 +606,15 @@ renderRaw(); renderSorted(); renderRef();
 
 /* ホーム画面から起動できるようにする */
 if("serviceWorker" in navigator){
-  addEventListener("load", ()=> navigator.serviceWorker.register("./sw.js").catch(e=>console.warn(e)));
+  let swapped = false;
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    if(!swapped){ swapped = true; location.reload(); }   /* 新しい版に入れ替わったら一度だけ読み直す */
+  });
+  addEventListener("load", ()=>{
+    navigator.serviceWorker.register("./sw.js")
+      .then(r=>{ r.update(); setInterval(()=>r.update(), 60*60*1000); })
+      .catch(e=>console.warn(e));
+  });
 }
 </script>
 </body>
