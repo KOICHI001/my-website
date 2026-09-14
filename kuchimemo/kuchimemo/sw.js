@@ -1,5 +1,5 @@
 /* 圏外でも起動できるように本体をキャッシュする。整理の送信だけは通信が要る */
-const CACHE = "kuchimemo-v4";
+const CACHE = "kuchimemo-v5";
 const FILES = ["./", "./index.html", "./manifest.webmanifest",
                "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
 
