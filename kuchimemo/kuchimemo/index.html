@@ -77,6 +77,7 @@
   .row button{cursor:pointer;white-space:nowrap}
   #send{background:var(--ink);color:#fff;border-color:var(--ink);font-weight:700;flex:2}
   #paste{flex:1}
+  #export{flex:1;color:var(--sort)}
   #send:disabled{opacity:.4}
   .thumb{width:100%;border-radius:10px;margin-top:9px;display:block}
   .box{background:var(--sheet);border-radius:var(--r);padding:8px 6px 6px;margin-bottom:10px}
@@ -146,6 +147,9 @@
     <button id="send">Claudeに整理を頼む</button>
     <button id="paste">結果を貼る</button>
   </div>
+  <div class="row">
+    <button id="export">メールに書き出す</button>
+  </div>
 </footer>
 
 <input type="file" id="file" accept="image/*" capture="environment" hidden>
@@ -204,6 +208,15 @@
   </div>
 </dialog>
 
+<dialog id="carryDlg">
+  <h3>昨日までの分があります</h3>
+  <p id="carryNote"></p>
+  <div class="acts">
+    <button id="carryLater">あとで</button>
+    <button id="carryGo" class="go">下書きにする</button>
+  </div>
+</dialog>
+
 <dialog id="cfg">
   <h3>設定</h3>
   <label for="home">移動の前提（バスの案内に使います）</label>
@@ -226,8 +239,9 @@
 
 <script>
 /* ========== 保存まわり ========== */
-const APP_VER = "0.5.0";
+const APP_VER = "0.6.0";
 const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs", lists:"km_lists"};
+const LSX = "km_exported";   /* 最後に書き出した日 */
 let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
 let result = JSON.parse(localStorage.getItem(LS.result) || "null");
 let refs   = JSON.parse(localStorage.getItem(LS.refs)   || "[]");
@@ -807,6 +821,93 @@ $("viewSorted").addEventListener("click", e=>{
   b.textContent = "開きました"; b.classList.add("done");
 });
 
+/* ========== Obsidian向けの書き出し ==========
+   未書き出しのメモ・整理結果・リストの新着をMarkdownにして、共有からGmailへ渡す。
+   下書き保存は本人が行う（アプリからGmailの下書きを直接作ることはできない） */
+const ymd = d => d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+
+function pendingForExport(){
+  return {
+    memos: memos.filter(m=>!m.exported),
+    items: lists.flatMap(l => l.items.filter(i=>!i.exported).map(i=>({box:l.name, text:i.text}))),
+    result: (result && !result.exported) ? result : null
+  };
+}
+function buildMarkdown(p){
+  const d = new Date();
+  let t = "## くちメモ " + ymd(d) + "\n\n";
+  if(p.result){
+    const r = p.result;
+    if(r.summary) t += "> " + r.summary + "\n\n";
+    if(r.advice && r.advice.length)
+      t += "### 助言\n" + r.advice.map(a=>"- "+a.text).join("\n") + "\n\n";
+    if(r.schedule && r.schedule.length)
+      t += "### 予定\n" + r.schedule.map(s=>
+        "- **"+s.title+"** — "+(s.when||"")+(s.note?"　"+s.note:"")).join("\n") + "\n\n";
+    if(r.tasks && r.tasks.length)
+      t += "### やること\n" + r.tasks.map(x=>
+        "- [ ] "+x.title+" ("+(x.priority||"")+")"+(x.note?"　"+x.note:"")).join("\n") + "\n\n";
+    if(r.ideas && r.ideas.length)
+      t += "### アイデア\n" + r.ideas.map(g=>
+        "- **"+g.theme+"**\n" + (g.items||[]).map(x=>"\t- "+x).join("\n") +
+        (g.develop?"\n\t- → "+g.develop:"")).join("\n") + "\n\n";
+    if(r.notes && r.notes.length)
+      t += "### そのほか\n" + r.notes.map(n=>"- "+n.text).join("\n") + "\n\n";
+  }
+  if(p.items.length){
+    t += "### リストに追加\n";
+    const by = {};
+    for(const it of p.items){ (by[it.box] = by[it.box] || []).push(it.text); }
+    for(const k in by) t += "- **"+k+"**: " + by[k].join("、") + "\n";
+    t += "\n";
+  }
+  if(p.memos.length){
+    t += "### 元のメモ\n";
+    t += p.memos.slice().reverse().map(m=>"- "+hhmm(m.ts)+"　"+(m.text||"（写真のみ）")).join("\n") + "\n";
+  }
+  return t.trim();
+}
+function markExported(p){
+  p.memos.forEach(m=>m.exported = true);
+  lists.forEach(l=>l.items.forEach(i=>i.exported = true));
+  if(p.result) p.result.exported = true;
+  localStorage.setItem(LSX, ymd(new Date()));
+  save();
+}
+async function doExport(){
+  const p = pendingForExport();
+  if(!p.memos.length && !p.items.length && !p.result){
+    $("live").textContent = "書き出すものがありません";
+    return;
+  }
+  const md = buildMarkdown(p);
+  const title = "くちメモ " + ymd(new Date());
+  try{
+    if(navigator.share) await navigator.share({title, text:md});
+    else { await navigator.clipboard.writeText(md); alert("コピーしました。メールに貼ってください。"); }
+    markExported(p);
+    $("live").textContent = "書き出しました";
+  }catch(_){ /* 共有をやめただけ。印は付けない */ }
+}
+$("export").addEventListener("click", doExport);
+
+/* 日付をまたいで未書き出しが残っていたら、開いたときに一度だけ確認する */
+function checkCarry(){
+  const today = ymd(new Date());
+  if(localStorage.getItem(LSX) === today) return;
+  const p = pendingForExport();
+  const old = p.memos.filter(m=>ymd(new Date(m.ts)) !== today);
+  if(!old.length && !p.items.length && !p.result) return;
+  if(!old.length) return;                      /* 今日の分しか無いなら急がない */
+  $("carryNote").textContent = "書き出していないメモが" + old.length + "件あります。Obsidian用に下書きへ回しますか。";
+  $("carryDlg").showModal();
+}
+$("carryLater").addEventListener("click", ()=>{
+  localStorage.setItem(LSX, ymd(new Date()));  /* 今日はもう聞かない */
+  $("carryDlg").close();
+});
+$("carryGo").addEventListener("click", ()=>{ $("carryDlg").close(); doExport(); });
+
 /* ========== タブ・設定 ========== */
 function switchTab(which){
   const map = {raw:["tabRaw","viewRaw"], sorted:["tabSorted","viewSorted"],
@@ -839,7 +940,7 @@ function labelSend(){
   $("refShare").textContent = cfg.key ? "この写真を読み取る" : "写真をClaudeへ";
 }
 
-renderRaw(); renderSorted(); renderLists(); renderRef(); labelSend();
+renderRaw(); renderSorted(); renderLists(); renderRef(); labelSend(); checkCarry();
 
 /* ホーム画面から起動できるようにする */
 if("serviceWorker" in navigator){
