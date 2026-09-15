@@ -100,7 +100,7 @@
   dialog p{font-size:13.5px;color:var(--muted);margin:6px 0 0}
   dialog ol{font-size:13.5px;color:var(--muted);margin:8px 0 0;padding-left:1.3em;line-height:1.9}
   dialog label{display:block;font-size:13px;color:var(--muted);margin:14px 0 4px}
-  dialog input,dialog textarea{width:100%;font:inherit;font-size:15px;padding:9px 11px;
+  dialog input,dialog textarea,dialog select{width:100%;font:inherit;font-size:15px;padding:9px 11px;
     border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink)}
   dialog textarea{min-height:130px;resize:vertical;font-size:14px;line-height:1.6}
   dialog img{width:100%;border-radius:10px;margin-top:12px;display:block}
@@ -208,7 +208,15 @@
   <h3>設定</h3>
   <label for="home">移動の前提（バスの案内に使います）</label>
   <input id="home" placeholder="例: 職場から自宅までバス、最寄りは○○停">
-  <p>整理はClaudeアプリ側でやるので、APIキーは要りません。</p>
+  <label for="key">APIキー（この端末にだけ保存されます）</label>
+  <input id="key" type="password" placeholder="sk-ant-... 空ならClaudeアプリに渡す方式">
+  <label for="model">モデル</label>
+  <select id="model">
+    <option value="claude-haiku-4-5-20251001">haiku 4.5（速い・安い）</option>
+    <option value="claude-sonnet-5">sonnet 5（標準）</option>
+    <option value="claude-opus-5">opus 5（賢い）</option>
+  </select>
+  <p>キーを入れるとボタン1つで整理まで終わります。空にすればClaudeアプリに渡す方式に戻ります。</p>
   <p id="ver" style="margin-top:12px"></p>
   <div class="acts">
     <button id="cfgClose">閉じる</button>
@@ -218,13 +226,13 @@
 
 <script>
 /* ========== 保存まわり ========== */
-const APP_VER = "0.4.0";
+const APP_VER = "0.5.0";
 const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs", lists:"km_lists"};
 let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
 let result = JSON.parse(localStorage.getItem(LS.result) || "null");
 let refs   = JSON.parse(localStorage.getItem(LS.refs)   || "[]");
 let lists  = JSON.parse(localStorage.getItem(LS.lists)  || "[]");   /* [{name, items:[{id,text,done,ts}]}] */
-let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"home":""}');
+let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"home":"","key":"","model":"claude-haiku-4-5-20251001"}');
 
 const $ = id => document.getElementById(id);
 const save = () => {
@@ -437,8 +445,30 @@ $("refShot").addEventListener("click", async ()=>{
   $("refTitle").value = ""; $("refBody").value = "";
   $("refDlg").showModal();
 });
+const REF_ASK = "この写真を、あとから参照できるように書き起こしてください。時刻表なら「平日 7時台: 05, 22, 48」のように時刻をすべて漏らさず、注記や運休条件も残してください。読み取れない箇所は推測せず「不明」と書いてください。";
+
+/* キーがあればその場で読み取って欄を埋める */
+async function readRef(){
+  const btn = $("refShare"), keep = btn.textContent;
+  btn.disabled = true; btn.textContent = "読み取り中…";
+  try{
+    const data = await api({model:cfg.model, max_tokens:3000,
+      messages:[{role:"user", content:[
+        {type:"image", source:{type:"base64", media_type:"image/jpeg", data:pendingRefImg.split(",")[1]}},
+        {type:"text", text:REF_ASK + '\n出力はJSONのみ。{"title":"何の資料か","body":"本文"}'}
+      ]}, {role:"assistant", content:"{"}]});
+    const r = grabJSON("{" + textOf(data));
+    $("refTitle").value = r.title || "資料";
+    $("refBody").value = r.body || "";
+  }catch(err){
+    $("refBody").value = "";
+    $("refTitle").placeholder = err.message || "読み取れませんでした";
+  }finally{ btn.disabled = false; btn.textContent = keep; }
+}
+
 $("refShare").addEventListener("click", async ()=>{
-  const msg = "この写真を、あとから参照できるように書き起こしてください。時刻表なら「平日 7時台: 05, 22, 48」のように時刻をすべて漏らさず、注記や運休条件も残してください。読み取れない箇所は推測せず「不明」と書いてください。";
+  if(cfg.key) return readRef();
+  const msg = REF_ASK;
   try{
     const f = toFile(pendingRefImg, "shiryo.jpg");
     if(navigator.canShare && navigator.canShare({files:[f]})) await navigator.share({text:msg, files:[f]});
@@ -521,10 +551,68 @@ function buildPrompt(target){
   return t;
 }
 
+/* ========== APIに直接投げる ========== */
+async function api(body){
+  const head = {"content-type":"application/json","x-api-key":cfg.key,
+    "anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"};
+  const r = await fetch("https://api.anthropic.com/v1/messages",
+    {method:"POST", headers:head, body:JSON.stringify(body)});
+  const txt = await r.text();
+  if(!r.ok){
+    let msg = "";
+    try{ msg = (JSON.parse(txt).error||{}).message || ""; }catch(_){}
+    if(r.status===401) throw new Error("APIキーが違うようです。設定を確認してください。");
+    if(r.status===400 && /credit|balance/i.test(msg)) throw new Error("残高が足りません。コンソールでチャージしてください。");
+    if(r.status===429) throw new Error("混み合っています。少し待ってもう一度どうぞ。");
+    throw new Error(msg || ("通信に失敗しました（" + r.status + "）"));
+  }
+  return JSON.parse(txt);
+}
+const textOf = d => (d.content||[]).filter(c=>c.type==="text").map(c=>c.text).join("");
+/* 前後に文章が付いていてもJSONを抜き出す */
+function grabJSON(raw){
+  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fence ? fence[1] : raw;
+  const s = body.indexOf("{"), e = body.lastIndexOf("}");
+  if(s < 0 || e < s) throw new Error("JSONが見つかりません");
+  return JSON.parse(body.slice(s, e+1));
+}
+/* 整理結果を取り込む。貼り戻しとAPIで共通 */
+function applyResult(r){
+  result = r;
+  const added = intoLists(r.lists);
+  memos.forEach(m=>{ if(!m.sent) m.sent = true; });
+  save(); renderRaw(); renderSorted(); renderLists();
+  switchTab(added ? "list" : "sorted");
+}
+
+async function runApi(target){
+  const btn = $("send"), keep = btn.textContent;
+  btn.disabled = true; btn.textContent = "整理してもらっています…";
+  try{
+    const blocks = [{type:"text", text:buildPrompt(target)}];
+    for(const m of target){
+      if(!m.img) continue;
+      const d = await imgGet(m.img);
+      if(d) blocks.push({type:"image", source:{type:"base64", media_type:"image/jpeg", data:d.split(",")[1]}});
+    }
+    const data = await api({model:cfg.model, max_tokens:4000,
+      messages:[{role:"user", content:blocks}, {role:"assistant", content:"{"}]});
+    applyResult(grabJSON("{" + textOf(data)));
+    $("live").textContent = "整理しました";
+  }catch(err){
+    $("live").textContent = err.message || "整理できませんでした";
+    console.error(err);
+  }finally{
+    btn.disabled = false; btn.textContent = keep; renderRaw();
+  }
+}
+
 let pending = null;
 $("send").addEventListener("click", ()=>{
   const target = memos.filter(m=>!m.sent);
   if(!target.length) return;
+  if(cfg.key) return runApi(target);          /* キーがあれば直接投げて終わり */
   pending = {target, text:buildPrompt(target)};
   const n = target.filter(m=>m.img).length;
   $("askNote").textContent = n ? "メモ"+target.length+"件と写真"+n+"枚を渡します。" : "メモ"+target.length+"件を渡します。";
@@ -567,10 +655,8 @@ $("pasteOk").addEventListener("click", ()=>{
   }catch(err){
     $("pasteErr").textContent = "うまく読めませんでした。途中で切れていないか確認してください。"; return;
   }
-  const added = intoLists(result.lists);
-  memos.forEach(m=>{ if(!m.sent) m.sent = true; });
-  save(); renderRaw(); renderSorted(); renderLists();
-  $("pasteDlg").close(); switchTab(added ? "list" : "sorted");
+  applyResult(result);
+  $("pasteDlg").close();
 });
 
 /* ========== リスト（消さずに溜まる箱） ========== */
@@ -736,16 +822,24 @@ $("tabList").addEventListener("click", ()=>switchTab("list"));
 $("tabRef").addEventListener("click", ()=>switchTab("ref"));
 $("openCfg").addEventListener("click", ()=>{
   $("home").value = cfg.home||"";
+  $("key").value = cfg.key||"";
+  $("model").value = cfg.model || "claude-haiku-4-5-20251001";
   $("ver").textContent = "版 " + APP_VER;
   $("cfg").showModal();
 });
 $("cfgClose").addEventListener("click", ()=>$("cfg").close());
 $("cfgSave").addEventListener("click", ()=>{
-  cfg = {home:$("home").value.trim()};
-  localStorage.setItem(LS.cfg, JSON.stringify(cfg)); $("cfg").close();
+  cfg = {home:$("home").value.trim(), key:$("key").value.trim(), model:$("model").value};
+  localStorage.setItem(LS.cfg, JSON.stringify(cfg));
+  $("cfg").close(); labelSend();
 });
+/* キーの有無でボタンの文言を変える */
+function labelSend(){
+  $("send").textContent   = cfg.key ? "まとめて整理してもらう" : "Claudeに整理を頼む";
+  $("refShare").textContent = cfg.key ? "この写真を読み取る" : "写真をClaudeへ";
+}
 
-renderRaw(); renderSorted(); renderLists(); renderRef();
+renderRaw(); renderSorted(); renderLists(); renderRef(); labelSend();
 
 /* ホーム画面から起動できるようにする */
 if("serviceWorker" in navigator){
