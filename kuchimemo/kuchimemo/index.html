@@ -79,6 +79,21 @@
   #paste{flex:1}
   #send:disabled{opacity:.4}
   .thumb{width:100%;border-radius:10px;margin-top:9px;display:block}
+  .box{background:var(--sheet);border-radius:var(--r);padding:8px 6px 6px;margin-bottom:10px}
+  .box .head{display:flex;align-items:center;gap:8px;padding:4px 9px 8px}
+  .box .head .t{font-weight:700;flex:1}
+  .box .head .n{font-size:12px;color:var(--muted)}
+  .box .head .edit{background:none;border:0;color:var(--muted);font-size:15px;padding:2px 6px;cursor:pointer}
+  .item{display:flex;align-items:flex-start;gap:11px;padding:9px 10px;border-top:1px solid var(--line)}
+  .item .chk{width:21px;height:21px;flex:none;border:1.5px solid var(--line);border-radius:6px;
+    background:none;cursor:pointer;color:var(--sort);font-size:13px;line-height:1;padding:0}
+  .item.done .chk{background:var(--sort);border-color:var(--sort);color:#fff}
+  .item.done .txt{color:var(--muted);text-decoration:line-through}
+  .item .txt{flex:1;word-break:break-word}
+  .item .x{background:none;border:0;color:var(--line);font-size:16px;padding:0 2px;cursor:pointer}
+  .boxfoot{display:flex;gap:8px;padding:8px 9px 3px}
+  .boxfoot button{background:none;border:1px solid var(--line);border-radius:8px;
+    padding:5px 11px;font:inherit;font-size:13px;color:var(--muted);cursor:pointer}
   dialog{border:0;border-radius:var(--r);padding:20px;width:min(94vw,420px);background:var(--sheet);color:var(--ink);font:inherit}
   dialog::backdrop{background:rgba(31,42,46,.45)}
   dialog h3{margin:0 0 4px;font-size:17px}
@@ -107,11 +122,13 @@
 <nav role="tablist">
   <button role="tab" id="tabRaw" aria-selected="true">思いついた順</button>
   <button role="tab" id="tabSorted" aria-selected="false">整理ずみ</button>
+  <button role="tab" id="tabList" aria-selected="false">リスト</button>
   <button role="tab" id="tabRef" aria-selected="false">資料</button>
 </nav>
 
 <main id="viewRaw"></main>
 <main id="viewSorted" hidden></main>
+<main id="viewList" hidden></main>
 <main id="viewRef" hidden></main>
 
 <footer>
@@ -175,6 +192,18 @@
   </div>
 </dialog>
 
+<dialog id="listDlg">
+  <h3>箱をなおす</h3>
+  <p>名前を変えられます。すでにある箱と同じ名前にすると、中身がひとつにまとまります。</p>
+  <label for="listName">名前</label>
+  <input id="listName">
+  <div class="acts">
+    <button id="listCancel">やめる</button>
+    <button id="listDrop">箱ごと捨てる</button>
+    <button id="listSave" class="primary">決定</button>
+  </div>
+</dialog>
+
 <dialog id="cfg">
   <h3>設定</h3>
   <label for="home">移動の前提（バスの案内に使います）</label>
@@ -189,11 +218,12 @@
 
 <script>
 /* ========== 保存まわり ========== */
-const APP_VER = "0.3.7";
-const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs"};
+const APP_VER = "0.4.0";
+const LS = {memos:"km_memos", result:"km_result", cfg:"km_cfg", refs:"km_refs", lists:"km_lists"};
 let memos  = JSON.parse(localStorage.getItem(LS.memos)  || "[]");
 let result = JSON.parse(localStorage.getItem(LS.result) || "null");
 let refs   = JSON.parse(localStorage.getItem(LS.refs)   || "[]");
+let lists  = JSON.parse(localStorage.getItem(LS.lists)  || "[]");   /* [{name, items:[{id,text,done,ts}]}] */
 let cfg    = JSON.parse(localStorage.getItem(LS.cfg)    || '{"home":""}');
 
 const $ = id => document.getElementById(id);
@@ -201,6 +231,7 @@ const save = () => {
   localStorage.setItem(LS.memos, JSON.stringify(memos));
   localStorage.setItem(LS.result, JSON.stringify(result));
   localStorage.setItem(LS.refs, JSON.stringify(refs));
+  localStorage.setItem(LS.lists, JSON.stringify(lists));
 };
 const esc = s => String(s ?? "").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const hhmm = ts => new Date(ts).toLocaleString("ja-JP",{month:"numeric",day:"numeric",hour:"2-digit",minute:"2-digit"});
@@ -454,6 +485,7 @@ const SCHEMA = `{
  "schedule":[{"title":"","when":"人が読む形","when_iso":"2026-09-20T12:00:00 形式。不明ならnull","all_day":false,"note":""}],
  "tasks":[{"title":"","priority":"高|中|低","note":"最初の一歩を具体的に"}],
  "ideas":[{"theme":"関連するメモを束ねた名前","items":["要点"],"develop":"膨らませる方向の提案"}],
+ "lists":[{"name":"箱の名前","items":["入れるもの"]}],
  "notes":[{"text":"どれにも当てはまらない記録"}]
 }`;
 
@@ -467,9 +499,17 @@ function buildPrompt(target){
   t += "・推測で日付を作らない。曖昧なら when_iso は null にし、when に「来週のどこか」と書く。\n";
   t += "・資料がある場合、帰る時刻や移動の話が出たら advice で具体的な時刻を示す。資料に無い時刻は絶対に作らない。\n";
   t += "・関連するアイデアは束ねる。該当なしの項目は空配列でよい。\n";
+  t += "・買い物や読みたい本のように、消さずに溜めて後から見返す性質のものは lists に入れる。\n";
+  t += "・lists は既にある箱を最優先で使う。同じ意味なら新しい名前を作らず、既存の名前をそのまま書く。\n";
+  t += "・lists の items は買う物・読む物など1つずつに分ける。「カップ麺とトマト」ではなく別々の要素にする。\n";
+  t += "・一度きりで終わる用事は lists ではなく tasks に入れる。\n";
   t += "・音声認識の誤変換は文脈から補正してよい。\n\n";
   t += "今日は" + today + "です。\n";
   if(cfg.home) t += "移動の前提: " + cfg.home + "\n";
+  if(lists.length){
+    t += "\n【いま手元にある箱】" + lists.map(l=>l.name).join("、") + "\n";
+    t += "これに当てはまるものは、必ずこの名前のままここへ入れてください。\n";
+  }
   if(refs.length){
     t += "\n【手元の資料】\n";
     t += refs.map(r=>"## "+r.title+"\n"+r.body).join("\n\n") + "\n";
@@ -527,8 +567,109 @@ $("pasteOk").addEventListener("click", ()=>{
   }catch(err){
     $("pasteErr").textContent = "うまく読めませんでした。途中で切れていないか確認してください。"; return;
   }
+  const added = intoLists(result.lists);
   memos.forEach(m=>{ if(!m.sent) m.sent = true; });
-  save(); renderRaw(); renderSorted(); $("pasteDlg").close(); switchTab("sorted");
+  save(); renderRaw(); renderSorted(); renderLists();
+  $("pasteDlg").close(); switchTab(added ? "list" : "sorted");
+});
+
+/* ========== リスト（消さずに溜まる箱） ========== */
+const norm = s => String(s||"").trim().replace(/\s+/g,"").toLowerCase();
+
+function findBox(name){
+  const n = norm(name);
+  return lists.find(l=>norm(l.name)===n) || null;
+}
+/* 同じ中身は二度入れない。新しい箱なら作る。入った件数を返す */
+function intoLists(incoming){
+  if(!incoming || !incoming.length) return 0;
+  let added = 0;
+  for(const g of incoming){
+    const name = String(g && g.name || "").trim();
+    const items = (g && g.items || []).map(x=>String(x).trim()).filter(Boolean);
+    if(!name || !items.length) continue;
+    let box = findBox(name);
+    if(!box){ box = {name, items:[]}; lists.unshift(box); }
+    for(const text of items){
+      if(box.items.some(it=>norm(it.text)===norm(text) && !it.done)) continue;
+      box.items.push({id:"l"+Date.now()+Math.random().toString(36).slice(2,6), text, done:false, ts:Date.now()});
+      added++;
+    }
+  }
+  return added;
+}
+function renderLists(){
+  const v = $("viewList");
+  if(!lists.length){
+    v.innerHTML = `<div class="empty">買い物や読みたい本のように、<br>溜めておきたいものがここに集まります。<br>箱の名前はClaudeが決めます。</div>`;
+    return;
+  }
+  v.innerHTML = lists.map((l,li)=>{
+    const rest = l.items.filter(i=>!i.done).length;
+    return `<div class="box">
+      <div class="head">
+        <span class="t">${esc(l.name)}</span>
+        <span class="n">${rest ? "残り"+rest : "ぜんぶ済み"}</span>
+        <button class="edit" data-edit="${li}" aria-label="箱をなおす">⋯</button>
+      </div>
+      ${l.items.map(it=>`
+        <div class="item${it.done?" done":""}">
+          <button class="chk" data-tick="${li}:${it.id}" aria-label="済み">${it.done?"✓":""}</button>
+          <span class="txt">${esc(it.text)}</span>
+          <button class="x" data-kill="${li}:${it.id}" aria-label="消す">×</button>
+        </div>`).join("")}
+      <div class="boxfoot">
+        ${l.items.some(i=>i.done)?`<button data-sweep="${li}">済みを片づける</button>`:""}
+      </div>
+    </div>`;
+  }).join("");
+}
+$("viewList").addEventListener("click", e=>{
+  const t = e.target.closest("[data-tick]"), k = e.target.closest("[data-kill]"),
+        s = e.target.closest("[data-sweep]"), ed = e.target.closest("[data-edit]");
+  if(t){
+    const [li,id] = t.dataset.tick.split(":");
+    const it = lists[li].items.find(x=>x.id===id);
+    if(it){ it.done = !it.done; save(); renderLists(); }
+  }
+  if(k){
+    const [li,id] = k.dataset.kill.split(":");
+    lists[li].items = lists[li].items.filter(x=>x.id!==id); save(); renderLists();
+  }
+  if(s){
+    const li = +s.dataset.sweep;
+    lists[li].items = lists[li].items.filter(x=>!x.done); save(); renderLists();
+  }
+  if(ed) openBox(+ed.dataset.edit);
+});
+
+/* 箱の名前を変える。既存と同じ名前にすると中身が合流する */
+let editing = -1;
+function openBox(li){
+  editing = li;
+  $("listName").value = lists[li].name;
+  $("listDlg").showModal();
+}
+$("listCancel").addEventListener("click", ()=>$("listDlg").close());
+$("listDrop").addEventListener("click", ()=>{
+  if(editing < 0) return;
+  lists.splice(editing,1); editing = -1;
+  save(); renderLists(); $("listDlg").close();
+});
+$("listSave").addEventListener("click", ()=>{
+  if(editing < 0) return;
+  const name = $("listName").value.trim();
+  if(!name){ $("listName").focus(); return; }
+  const me = lists[editing];
+  const other = lists.find((l,i)=>i!==editing && norm(l.name)===norm(name));
+  if(other){
+    for(const it of me.items){
+      if(!other.items.some(o=>norm(o.text)===norm(it.text) && o.done===it.done)) other.items.push(it);
+    }
+    lists.splice(editing,1);
+  }else me.name = name;
+  editing = -1;
+  save(); renderLists(); $("listDlg").close();
 });
 
 /* ========== 整理結果 ========== */
@@ -582,7 +723,8 @@ $("viewSorted").addEventListener("click", e=>{
 
 /* ========== タブ・設定 ========== */
 function switchTab(which){
-  const map = {raw:["tabRaw","viewRaw"], sorted:["tabSorted","viewSorted"], ref:["tabRef","viewRef"]};
+  const map = {raw:["tabRaw","viewRaw"], sorted:["tabSorted","viewSorted"],
+               list:["tabList","viewList"], ref:["tabRef","viewRef"]};
   for(const k in map){
     $(map[k][0]).setAttribute("aria-selected", k===which);
     $(map[k][1]).hidden = k!==which;
@@ -590,6 +732,7 @@ function switchTab(which){
 }
 $("tabRaw").addEventListener("click", ()=>switchTab("raw"));
 $("tabSorted").addEventListener("click", ()=>switchTab("sorted"));
+$("tabList").addEventListener("click", ()=>switchTab("list"));
 $("tabRef").addEventListener("click", ()=>switchTab("ref"));
 $("openCfg").addEventListener("click", ()=>{
   $("home").value = cfg.home||"";
@@ -602,7 +745,7 @@ $("cfgSave").addEventListener("click", ()=>{
   localStorage.setItem(LS.cfg, JSON.stringify(cfg)); $("cfg").close();
 });
 
-renderRaw(); renderSorted(); renderRef();
+renderRaw(); renderSorted(); renderLists(); renderRef();
 
 /* ホーム画面から起動できるようにする */
 if("serviceWorker" in navigator){
