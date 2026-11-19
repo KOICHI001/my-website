@@ -142,7 +142,30 @@ rt { font-size: .5em; letter-spacing: 0; }
 .cast-card .cr { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
 .cast-open { margin: 16px 8px 0; width: calc(100% - 16px); border: 1px solid var(--accent); background: var(--accent-soft); color: var(--ink); font: inherit; font-size: 14px; font-weight: 700; padding: 10px; border-radius: 8px; cursor: pointer; }
 .cv { position: fixed; inset: 0; z-index: 60; background: rgba(10, 12, 8, .72); overflow-y: auto; padding: 16px; padding-top: calc(16px + env(safe-area-inset-top, 0px)); box-sizing: border-box; }
-.cv-box { background: var(--paper); border-radius: 12px; max-width: 920px; margin: 0 auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); overflow: hidden; }
+.cv-box { background: var(--paper); border-radius: 12px; max-width: 920px; margin: 0 auto; box-shadow: 0 10px 40px rgba(0,0,0,.4); overflow: clip; }
+.cv-person { max-width: 1080px; }
+.cv-person .cv-top { position: sticky; top: -16px; z-index: 3; background: var(--paper); border-bottom: 1px solid var(--line); }
+.cv-tt { font-family: var(--f-body); font-weight: 700; letter-spacing: .2em; }
+.cv-names { background: var(--side); }
+.cv-ng { font-size: 11px; color: var(--accent); letter-spacing: .1em; }
+.cv-nm { border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: inherit; font-size: 14px; border-radius: 999px; padding: 6px 12px; cursor: pointer; white-space: nowrap; }
+.cv-nm:hover { border-color: var(--accent); }
+.cv-nm.on { background: var(--accent); color: var(--paper); border-color: var(--accent); font-weight: 700; }
+/* スマホ：名前は上に横一列（指で横に送る） */
+@media (max-width: 759px) {
+  .cv-names { position: sticky; top: 37px; z-index: 2; display: flex; align-items: center; gap: 6px; overflow-x: auto; padding: 8px 10px; border-bottom: 1px solid var(--line); scrollbar-width: none; }
+  .cv-names::-webkit-scrollbar { display: none; }
+  .cv-ng { flex: none; padding-left: 6px; }
+  .cv-ng:first-child { padding-left: 0; }
+}
+/* 広い画面：名前は左に縦一列 */
+@media (min-width: 760px) {
+  .cv-body { display: grid; grid-template-columns: 170px minmax(0, 1fr); }
+  .cv-names { position: sticky; top: 37px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; display: flex; flex-direction: column; gap: 4px; padding: 12px 10px 16px; border-right: 1px solid var(--line); }
+  .cv-ng { margin: 10px 4px 2px; }
+  .cv-ng:first-child { margin-top: 0; }
+  .cv-nm { text-align: left; border-radius: 8px; }
+}
 .cv-list { max-width: 720px; padding-bottom: 20px; }
 .cv-list .cast { margin-top: 0; padding: 0 16px; }
 .cv-top { display: flex; justify-content: space-between; align-items: center; padding: 8px; }
@@ -248,7 +271,7 @@ function castLayer() {
   if (!w) {
     w = document.createElement("div"); w.id = "castView"; w.className = "cv";
     w.addEventListener("click", ev => {
-      const b = ev.target.closest(".cast-card");
+      const b = ev.target.closest(".cast-card, .cv-nm");
       if (b) { openCast(+b.dataset.c); return; }
       if (ev.target.closest(".cv-back")) { showCastList(); return; }
       if (ev.target === w || ev.target.closest(".cv-x")) w.remove();
@@ -259,12 +282,21 @@ function castLayer() {
   return w;
 }
 // 設定画を大きく：絵をタップすると別の画面で原寸
+function namesHTML(cur) {
+  return [...new Set(CAST.map(c => c.g))].map(g => `<div class="cv-ng">${esc(g)}</div>` +
+    CAST.map((c, i) => c.g !== g ? "" : `<button type="button" class="cv-nm${i === cur ? " on" : ""}" data-c="${i}"${i === cur ? ' aria-current="true"' : ""}>${esc(c.name)}</button>`).join("")).join("");
+}
 function openCast(i) {
   const c = CAST[i], w = castLayer();
-  w.innerHTML = `<div class="cv-box" role="dialog" aria-label="${esc(c.name)}"><div class="cv-top"><button class="cv-back" type="button">← 人物一覧</button><button class="cv-x" type="button" aria-label="閉じる">✕</button></div>` +
+  w.innerHTML = `<div class="cv-box cv-person" role="dialog" aria-label="${esc(c.name)}">` +
+    `<div class="cv-top"><button class="cv-back" type="button">一覧で見る</button><span class="cv-tt">登場人物</span><button class="cv-x" type="button" aria-label="閉じる">✕</button></div>` +
+    `<div class="cv-body"><nav class="cv-names" aria-label="人物の名前">${namesHTML(i)}</nav><div class="cv-main">` +
     `<a href="${c.img}" target="_blank" rel="noopener"><img class="cv-img" src="${c.img}" alt="${esc(c.name)}の設定画"></a>` +
     `<div class="cv-txt"><div class="cv-name">${esc(c.name)}</div><div class="cv-role">${esc(c.role)}</div><p class="cv-lead">${esc(c.lead)}</p>` +
-    `<dl>${c.d.map(d => `<dt>${esc(d[0])}</dt><dd>${esc(d[1])}</dd>`).join("")}</dl></div></div>`;
+    `<dl>${c.d.map(d => `<dt>${esc(d[0])}</dt><dd>${esc(d[1])}</dd>`).join("")}</dl></div></div></div></div>`;
+  const on = w.querySelector(".cv-nm.on");
+  if (on) on.scrollIntoView({ block: "nearest", inline: "center" });
+  w.scrollTop = 0;
 }
 function showCastList() {
   const w = castLayer();
@@ -347,7 +379,7 @@ col.addEventListener("scroll", () => { updateProgress(); clearTimeout(t); t = se
 function openToc() { document.body.classList.add("open"); }
 function closeToc() { document.body.classList.remove("open"); }
 $("tocBtn").addEventListener("click", openToc);
-$("castOpen").addEventListener("click", () => { closeToc(); showCastList(); });
+$("castOpen").addEventListener("click", () => { closeToc(); openCast(0); });
 $("scrim").addEventListener("click", closeToc);
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeToc(); });
 $("smaller").addEventListener("click", () => { size = Math.max(14, size - 1); applySize(); store.set("size", size); });
