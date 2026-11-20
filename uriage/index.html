@@ -65,7 +65,7 @@ td.sum{color:var(--acc);font-weight:700}
   <div class="big" id="t-net"></div>
   <div class="note" id="t-gross"></div>
   <table id="t-months"></table>
-  <div class="note">場所帳=¥400×件数の85%（ストア手数料15%引き後）／Kindle=推計ロイヤリティ／LINE=クリエイター分配額。<br>2026年9月からの記録です。</div>
+  <div class="note">場所帳=¥400×件数の85%（ストア手数料15%引き後）／Kindle=推計ロイヤリティ／LINE=クリエイター分配額／note=¥100×件数の85%（手数料を引いた概算）。<br>2026年9月からの記録です（noteは11月から）。</div>
 </div>
 
 <div class="card">
@@ -83,6 +83,14 @@ td.sum{color:var(--acc);font-weight:700}
   <div class="src-title"><span class="dot" style="background:var(--line)"></span>LINEスタンプ <span class="badge" id="line-badge"></span></div>
   <div class="kv" id="line-kv" hidden></div>
   <div class="note" id="line-note"></div>
+</div>
+
+<div class="card">
+  <div class="src-title"><span class="dot" style="background:#41c9b4"></span>note（毒さじ） <span class="badge" id="note-badge"></span></div>
+  <div class="kv" id="note-kv" hidden></div>
+  <table id="note-days" hidden></table>
+  <table id="note-top" hidden></table>
+  <div class="note" id="note-note"></div>
 </div>
 </div>
 
@@ -142,19 +150,28 @@ function render(d){
     playM[m] = (playM[m] || 0) + (e.n || 0);
   }
   const kdpM = d.kdp.months || {}, lineM = d.line.months || {};
-  const months = [...new Set([...Object.keys(playM), ...Object.keys(kdpM), ...Object.keys(lineM)])].sort().reverse();
+  const nt = d.note || {ok:false, events:[], unit:100, rate:0.85};
+  const noteM = {};
+  for(const e of (nt.events || [])){
+    const m = (e.d || "").slice(0,7); if(!m) continue;
+    noteM[m] = (noteM[m] || 0) + (e.n || 1);
+  }
+  const NNET = n => n * nt.unit * nt.rate;
+  const months = [...new Set([...Object.keys(playM), ...Object.keys(kdpM), ...Object.keys(lineM), ...Object.keys(noteM)])].sort().reverse();
   const NET = n => n * d.play.unit * (1 - d.play.fee);
-  let rows = "<tr><th>月</th><th>場所帳</th><th>Kindle</th><th>LINE</th><th>合計</th></tr>";
+  let rows = "<tr><th>月</th><th>場所帳</th><th>Kindle</th><th>LINE</th><th>note</th><th>合計</th></tr>";
   for(const m of months){
-    const p = playM[m] || 0, k = (kdpM[m] && kdpM[m].royalty) || 0, l = lineM[m] || 0;
+    const p = playM[m] || 0, k = (kdpM[m] && kdpM[m].royalty) || 0, l = lineM[m] || 0, n = noteM[m] || 0;
     rows += `<tr><td>${monthLabel(m)}</td><td>${p ? yen(NET(p)) + `<br><small style="color:var(--sub)">${p}件</small>` : "—"}</td>`
-          + `<td>${k ? yen(k) : "—"}</td><td>${d.line.ok ? (l ? yen(l) : "—") : "—"}</td><td class="sum">${yen(NET(p)+k+l)}</td></tr>`;
+          + `<td>${k ? yen(k) : "—"}</td><td>${d.line.ok ? (l ? yen(l) : "—") : "—"}</td>`
+          + `<td>${n ? yen(NNET(n)) + `<br><small style="color:var(--sub)">${n}件</small>` : "—"}</td><td class="sum">${yen(NET(p)+k+l+NNET(n))}</td></tr>`;
   }
   $("t-months").innerHTML = rows;
   const kdpTotal = Object.values(kdpM).reduce((a,v) => a + (v.royalty || 0), 0);
   const lineTotal = d.line.total_yen || 0;
-  const net = NET(d.play.orders_total || 0) + kdpTotal + lineTotal;
-  const gross = (d.play.orders_total || 0) * d.play.unit + kdpTotal + lineTotal;
+  const noteCnt = (nt.events || []).reduce((a,e) => a + (e.n || 1), 0);
+  const net = NET(d.play.orders_total || 0) + kdpTotal + lineTotal + NNET(noteCnt);
+  const gross = (d.play.orders_total || 0) * d.play.unit + kdpTotal + lineTotal + noteCnt * nt.unit;
   $("t-net").innerHTML = yen(net) + " <small>累計</small>";
   $("t-gross").textContent = `販売額ベースの累計: ${yen(gross)}（場所帳を¥400満額で数えた場合）`;
   // 場所帳
@@ -190,7 +207,57 @@ function render(d){
     $("line-badge").textContent = "未連携";
     $("line-note").textContent = "PCの「お知らせハブ」→🔗連携→「🟩 LINEにログイン」→「🟩② LINE接続テスト」で監視が始まります。";
   }
+  renderNote(nt, noteCnt, NNET);
 }
+
+function plus(n){ return n > 0 ? `<span style="color:var(--ok)">+${n}</span>` : n < 0 ? `${n}` : `<span style="color:var(--sub)">±0</span>`; }
+
+function renderNote(nt, cnt, NNET){
+  if(!nt.ok){
+    $("note-badge").textContent = "未連携";
+    $("note-note").textContent = "PCの「お知らせハブ」→🔗連携→「📝 noteにログイン」→「📝② note接続テスト」で監視が始まります。";
+    return;
+  }
+  $("note-badge").textContent = "連携中";
+  $("note-badge").style.background = "var(--ok)";
+  const days = nt.days || {};
+  const keys = Object.keys(days).sort();
+  const cur = keys.length ? days[keys[keys.length-1]] : {pv:0, like:0, comment:0, follower:0};
+  const prev = keys.length > 1 ? days[keys[keys.length-2]] : null;
+  const df = k => prev ? `<small> ${plus((cur[k]||0) - (prev[k]||0))}</small>` : "";
+  $("note-kv").hidden = false;
+  $("note-kv").innerHTML =
+    kv("売れた数（累計）", `${cnt}<small> 件 ・ ${yen(NNET(cnt))}</small>`) +
+    kv("閲覧（累計）", `${cur.pv ?? "?"}${df("pv")}`) +
+    kv("スキ", `${cur.like ?? "?"}${df("like")}`) +
+    kv("フォロワー", `${cur.follower ?? "?"}${df("follower")}`) +
+    kv("コメント", `${cur.comment ?? "?"}${df("comment")}`) +
+    kv("サポート", `${(nt.supports || []).length}<small> 件</small>`);
+  // 日ごとの増え方（新しい日が上・最大7日）
+  let rows = "<tr><th>日</th><th>閲覧</th><th>スキ</th><th>フォロワー</th></tr>";
+  const shown = keys.slice(-8);
+  for(let i = shown.length - 1; i >= 1; i--){
+    const a = days[shown[i]], b = days[shown[i-1]];
+    const [, mo, dd] = shown[i].split("-");
+    rows += `<tr><td>${+mo}/${+dd}</td><td>${plus(a.pv-b.pv)}</td><td>${plus(a.like-b.like)}</td><td>${plus(a.follower-b.follower)}</td></tr>`;
+  }
+  $("note-days").hidden = shown.length < 2;
+  $("note-days").innerHTML = rows;
+  // 記事ごと（閲覧の多い順）
+  const np = nt.notes_prev || {};
+  const list = [...(nt.notes || [])].sort((a,b) => b.pv - a.pv);
+  let trs = "<tr><th>記事</th><th>閲覧</th><th>きょう</th><th>スキ</th></tr>";
+  for(const x of list){
+    const t = np[x.name] == null ? `<span style="color:var(--acc)">新</span>` : plus(x.pv - np[x.name]);
+    trs += `<tr><td style="font-size:12px">${esc(x.name)}</td><td>${x.pv}</td><td>${t}</td><td>${x.like}</td></tr>`;
+  }
+  $("note-top").hidden = !list.length;
+  $("note-top").innerHTML = trs;
+  const sales = (nt.events || []).slice(-5).reverse().map(e => `${e.d.slice(5).replace("-","/")} ${esc(e.note || "記事")}`);
+  $("note-note").innerHTML = (sales.length ? "最近売れた記事：" + sales.join("／") + "<br>" : "")
+    + "閲覧はnote側の集計なので数時間遅れます。金額は¥100×件数から手数料を引いた概算です。";
+}
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]); }
 function kv(k, v){ return `<div><div class="k">${k}</div><div class="v">${v}</div></div>`; }
 
 async function load(pass){
