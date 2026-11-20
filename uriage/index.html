@@ -255,6 +255,7 @@ function renderNote(nt, cnt, NNET){
   $("note-top").innerHTML = trs;
   const sales = (nt.events || []).slice(-5).reverse().map(e => `${e.d.slice(5).replace("-","/")} ${esc(e.note || "記事")}`);
   $("note-note").innerHTML = (sales.length ? "最近売れた記事：" + sales.join("／") + "<br>" : "")
+    + (nt.notices_ok ? "" : "※売れた数は、PCからnoteのお知らせが読めないため、まだ数えられていません。<br>")
     + "閲覧はnote側の集計なので数時間遅れます。金額は¥100×件数から手数料を引いた概算です。";
 }
 function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"})[c]); }
